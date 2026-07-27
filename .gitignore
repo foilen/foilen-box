@@ -1,0 +1,25 @@
+### Go ###
+dist/
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### VS Code ###
+.vscode/
+
+### Android ###
+local.properties
+android/.gradle/
+android/app/build/
+android/app/libs/*.aar
+android/app/libs/*.jar
+android/build/
+
+### Nix ###
+result
+
+### Local Config ###
+_*

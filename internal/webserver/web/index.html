@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Foilen Box</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Material+Symbols+Outlined" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script type="module">
+	import "https://esm.sh/@material/web@2.5.0/all.js";
+</script>
+</head>
+<body>
+<script>window.FOILEN_BOX_TOKEN = {{.Token}};</script>
+
+<div id="top-buffer"></div>
+
+<header id="app-header">
+	<img src="images/icon.png" alt="" id="app-icon">
+	Foilen Box
+</header>
+
+<div id="tabs">
+	<button class="tab-button active" data-tab="realm">Realm</button>
+	<button class="tab-button" data-tab="spec">Spec</button>
+	<button class="tab-button" data-tab="troubleshooting">Troubleshooting</button>
+	<button class="tab-button" data-tab="early">Early</button>
+	<button class="tab-button" data-tab="gps" id="gps-tab-button">GPS</button>
+	<button class="tab-button" data-tab="android-config" id="android-config-tab-button">Android</button>
+	<button class="tab-button" data-tab="logs">Logs</button>
+</div>
+
+<section id="realm" class="tab-panel active">
+	<div id="realm-subtabs" class="subtab-nav">
+		<button class="subtab-button" data-subtab="realm-main">Main</button>
+		<button class="subtab-button" data-subtab="realm-permissions-subtab">Permissions</button>
+		<button class="subtab-button" data-subtab="realm-notification-subtab">Notification</button>
+		<button class="subtab-button" data-subtab="realm-specs-subtab">Specs</button>
+		<button class="subtab-button" data-subtab="realm-scripts-subtab">Scripts</button>
+		<button class="subtab-button" data-subtab="realm-services-subtab">Services</button>
+		<button class="subtab-button" data-subtab="realm-speedtest-subtab">Speed Test</button>
+		<button class="subtab-button" data-subtab="realm-maps-subtab">Maps</button>
+	</div>
+
+	<div id="realm-main" class="subtab-panel">
+		<div class="row">
+			<label><md-checkbox id="realm-enabled"></md-checkbox> Realm networking enabled</label>
+		</div>
+		<p class="hint">Turn off to stop all Realm networking (DHT, mDNS, relay, peer connections) without losing
+			your peer identity or groups. Turning it back on starts fresh, as if the app had just started.</p>
+
+		<div id="realm-peer-id-row" class="row">
+			<span>Peer ID: <code id="realm-peer-id">(none)</code></span>
+			<md-filled-tonal-button id="realm-generate-peer-id-button">Generate Peer ID</md-filled-tonal-button>
+		</div>
+		<div class="row">
+			<span>Hostname: <code id="realm-hostname">(unknown)</code></span>
+		</div>
+		<div class="row">
+			<md-outlined-text-field label="Description (e.g. Laptop)" id="realm-description"></md-outlined-text-field>
+			<md-filled-tonal-button id="realm-save-description-button">Save</md-filled-tonal-button>
+		</div>
+
+		<h3>Discovery</h3>
+		<div id="realm-discovery">
+			<label><md-checkbox id="realm-enable-mdns"></md-checkbox> Enable mDNS (same-LAN discovery)</label>
+			<label><md-checkbox id="realm-enable-dht"></md-checkbox> Enable DHT (internet discovery)</label>
+			<label>DHT mode:
+				<md-outlined-select id="realm-dht-mode">
+					<md-select-option value="client"><div slot="headline">Client</div></md-select-option>
+					<md-select-option value="server"><div slot="headline">Server</div></md-select-option>
+				</md-outlined-select>
+			</label>
+			<p class="hint">Server mode also stores and serves DHT records for other peers on the public
+				network, which helps overall network health at the cost of some extra bandwidth and storage.
+				Client mode only looks up records for yourself.</p>
+			<label>Forget peers not seen for:
+				<md-outlined-text-field type="number" id="realm-peer-retention-days" min="-1" step="1" style="width: 6em;"></md-outlined-text-field>
+				days
+			</label>
+			<p class="hint">Known peers not seen (and currently disconnected) for this many days are
+				automatically removed. 0 uses the default (14 days); -1 disables this and keeps peers
+				forever.</p>
+		</div>
+
+		<h3>NAT traversal</h3>
+		<div id="realm-nat">
+			<p class="hint">UPnP/NAT-PMP port mapping and NAT hole punching are always on, so peers behind a
+				NAT can usually still connect directly.</p>
+			<label><md-checkbox id="realm-enable-relay-service"></md-checkbox> Relay for other peers in my
+				groups</label>
+			<p class="hint">Lets other group members reserve a relay slot on this peer and be reached through
+				it when they're otherwise unreachable. Only useful if this peer is itself publicly reachable
+				(e.g. a VPS); costs it some bandwidth on their behalf.</p>
+		</div>
+
+		<h3>Web listener</h3>
+		<div id="realm-expose-web">
+			<label><md-checkbox id="realm-expose-web-enabled"></md-checkbox> Expose on a web port (80/443)</label>
+			<p class="hint">Adds a websocket listener alongside the normal ports, so this peer stays dialable
+				through firewalls/proxies that only allow common web ports out. Only useful for a peer with a
+				stable public hostname/IP (e.g. a VPS); binding a port below 1024 needs OS permission the app
+				may not have. Changing these settings restarts Realm's networking.</p>
+			<div id="realm-expose-web-fields" class="hidden">
+				<label>Local protocol:
+					<md-outlined-select id="realm-expose-web-listen-protocol">
+						<md-select-option value="wss"><div slot="headline">wss (TLS, self-signed)</div></md-select-option>
+						<md-select-option value="ws"><div slot="headline">ws (plain, e.g. behind a reverse proxy)</div></md-select-option>
+					</md-outlined-select>
+				</label>
+				<label>Local port:
+					<md-outlined-text-field type="number" id="realm-expose-web-listen-port" min="1" max="65535" step="1" style="width: 6em;"></md-outlined-text-field>
+				</label>
+				<p class="hint">With "wss", the certificate is self-signed and not meant to be trusted on its
+					own: peers accept it because the real authentication happens afterwards, via Realm's own
+					peer-identity handshake. Use "ws" only when a reverse proxy in front of this peer already
+					terminates TLS.</p>
+				<label>Announce hostname:
+					<md-outlined-text-field id="realm-expose-web-announce-host" placeholder="e.g. box.example.com"></md-outlined-text-field>
+				</label>
+				<label>Announce port:
+					<md-outlined-text-field type="number" id="realm-expose-web-announce-port" min="0" max="65535" step="1" style="width: 6em;" placeholder="same as local"></md-outlined-text-field>
+				</label>
+				<label>Announce protocol:
+					<md-outlined-select id="realm-expose-web-announce-protocol">
+						<md-select-option value=""><div slot="headline">(same as local protocol)</div></md-select-option>
+						<md-select-option value="wss"><div slot="headline">wss</div></md-select-option>
+						<md-select-option value="ws"><div slot="headline">ws</div></md-select-option>
+					</md-outlined-select>
+				</label>
+				<p class="hint">The announce hostname/port/protocol is what other peers are told to dial; it's
+					required since this address can't be auto-discovered. Set announce port/protocol when a
+					reverse proxy exposes a different public port (typically 443/wss) than the port this
+					process actually binds locally.</p>
+			</div>
+		</div>
+
+		<h3>Groups (<span id="realm-groups-count">0</span>)</h3>
+		<div class="table-scroll">
+			<table id="realm-groups-table">
+				<thead><tr><th>ID</th><th>Private Key</th><th></th><th></th><th></th></tr></thead>
+				<tbody id="realm-groups-tbody"></tbody>
+			</table>
+		</div>
+		<div class="row">
+			<md-outlined-text-field label="Group name" id="realm-new-group-name"></md-outlined-text-field>
+			<md-filled-tonal-button id="realm-add-group-button">Generate New Group</md-filled-tonal-button>
+			<md-filled-tonal-button id="realm-import-group-button">Import Group</md-filled-tonal-button>
+		</div>
+		<div class="row">
+			<span class="hint">Allow this group to:</span>
+			<div id="realm-new-group-actions" class="checkbox-list"></div>
+		</div>
+		<div id="realm-import-form" class="hidden">
+			<div class="row">
+				<input type="file" id="realm-import-file" accept="application/json">
+			</div>
+			<div class="row">
+				<textarea id="realm-import-json" rows="6" placeholder="Paste exported group JSON here"></textarea>
+			</div>
+			<div class="row">
+				<span class="hint">Allow this group to:</span>
+				<div id="realm-import-actions" class="checkbox-list"></div>
+			</div>
+			<div class="row">
+				<md-filled-tonal-button id="realm-import-confirm-button">Import</md-filled-tonal-button>
+				<md-filled-tonal-button id="realm-import-scan-button">Scan QR Code</md-filled-tonal-button>
+				<md-text-button id="realm-import-cancel-button">Cancel</md-text-button>
+			</div>
+		</div>
+
+		<div id="realm-qr-modal" class="modal hidden">
+			<div class="modal-content">
+				<h4 id="realm-qr-title">Group QR Code</h4>
+				<div id="realm-qr-code"></div>
+				<md-text-button id="realm-qr-close-button">Close</md-text-button>
+			</div>
+		</div>
+
+		<div id="realm-scan-modal" class="modal hidden">
+			<div class="modal-content">
+				<h4>Scan Group QR Code</h4>
+				<video id="realm-scan-video" playsinline muted></video>
+				<canvas id="realm-scan-canvas" class="hidden"></canvas>
+				<p id="realm-scan-status" class="hint"></p>
+				<md-text-button id="realm-scan-close-button">Close</md-text-button>
+			</div>
+		</div>
+
+		<h3>Peers (<span id="realm-peers-count">0</span>)</h3>
+		<div class="table-scroll">
+			<table id="realm-peers-table">
+				<thead><tr><th>ID</th><th>Groups</th><th>Connected</th><th>Last Seen</th><th>Addresses</th></tr></thead>
+				<tbody id="realm-peers-tbody"></tbody>
+			</table>
+		</div>
+
+		<h3>Swarm (<span id="realm-swarm-count">0</span>)</h3>
+		<div class="table-scroll">
+			<table id="realm-swarm-table">
+				<thead><tr><th>ID</th><th>Addresses</th></tr></thead>
+				<tbody id="realm-swarm-tbody"></tbody>
+			</table>
+		</div>
+	</div>
+
+	<div id="realm-permissions-subtab" class="subtab-panel">
+		<h3>Permissions (<span id="realm-permissions-count">0</span>)</h3>
+		<p class="hint">By default, no peer or group can invoke any action against this machine. Check the boxes
+			below to grant a group or peer the right to perform an action.</p>
+
+		<h4>Groups</h4>
+		<div id="realm-permissions-groups" class="permission-entity-list"></div>
+
+		<h4>Peers</h4>
+		<div id="realm-permissions-peers" class="permission-entity-list"></div>
+	</div>
+
+	<div id="realm-notification-subtab" class="subtab-panel">
+		<div id="realm-notification-form">
+			<div class="row">
+				<label>To:
+					<md-outlined-select id="realm-notification-to"></md-outlined-select>
+				</label>
+			</div>
+			<div class="row">
+				<md-outlined-text-field label="Title" id="realm-notification-title"></md-outlined-text-field>
+			</div>
+			<div class="row">
+				<textarea id="realm-notification-body" rows="3" placeholder="Message (optional)"></textarea>
+			</div>
+			<div class="row">
+				<label>Keep for:
+					<md-outlined-select id="realm-notification-ttl">
+						<md-select-option value="600"><div slot="headline">10 minutes</div></md-select-option>
+						<md-select-option value="3600"><div slot="headline">1 hour</div></md-select-option>
+						<md-select-option value="86400" selected><div slot="headline">24 hours</div></md-select-option>
+					</md-outlined-select>
+				</label>
+				<md-filled-tonal-button id="realm-notification-send-button">Send</md-filled-tonal-button>
+			</div>
+		</div>
+		<h4>Recent (<span id="realm-notifications-count">0</span>)</h4>
+		<div class="table-scroll">
+			<table id="realm-notifications-table">
+				<thead><tr><th>Direction</th><th>Peer</th><th>Title</th><th>Message</th><th>Sent</th><th>Status</th></tr></thead>
+				<tbody id="realm-notifications-tbody"></tbody>
+			</table>
+		</div>
+	</div>
+
+	<div id="realm-specs-subtab" class="subtab-panel">
+		<p class="hint">Each peer posts its own spec to the "common" store of every group it belongs to, refreshed
+			at most once a day; this lists whatever the currently-configured groups' maps hold.</p>
+		<div class="table-scroll">
+			<table id="realm-specs-table">
+				<thead><tr><th>Peer</th><th>Fetched</th><th>CPU</th><th>Mem</th><th>GPU</th><th>Disk</th><th></th></tr></thead>
+				<tbody id="realm-specs-tbody"></tbody>
+			</table>
+		</div>
+	</div>
+
+	<div id="realm-scripts-subtab" class="subtab-panel">
+		<h3>My Scripts (<span id="realm-scripts-count">0</span>)</h3>
+		<p class="hint">Fixed commands this machine offers to run on request. Only peers/groups granted the
+			"Run scripts on this machine" permission (see the Permissions section on the Main tab) can list or
+			run them.</p>
+		<div class="table-scroll">
+			<table id="realm-my-scripts-table">
+				<thead><tr><th>Name</th><th>Description</th><th>Command</th><th>Args</th><th>Working Directory</th><th></th></tr></thead>
+				<tbody id="realm-my-scripts-tbody"></tbody>
+			</table>
+		</div>
+		<div class="row">
+			<md-outlined-text-field label="Name" id="realm-new-script-name"></md-outlined-text-field>
+			<md-outlined-text-field label="Description (optional)" id="realm-new-script-description"></md-outlined-text-field>
+		</div>
+		<div class="row">
+			<md-outlined-text-field label="Command (e.g. /usr/bin/systemctl)" id="realm-new-script-command"></md-outlined-text-field>
+			<md-outlined-text-field label="Args, space-separated (optional)" id="realm-new-script-args"></md-outlined-text-field>
+			<md-outlined-text-field label="Working directory (optional)" id="realm-new-script-working-directory"></md-outlined-text-field>
+			<md-filled-tonal-button id="realm-add-script-button">Add Script</md-filled-tonal-button>
+		</div>
+
+		<h3>Peer Scripts</h3>
+		<p class="hint">Each peer posts its own scripts to the "common" store of every group it belongs to; this
+			lists whatever the currently-configured groups' maps hold.</p>
+		<div class="table-scroll">
+			<table id="realm-peer-scripts-table">
+				<thead><tr><th>Peer</th><th>Name</th><th>Description</th><th>Status</th><th></th></tr></thead>
+				<tbody id="realm-peer-scripts-tbody"></tbody>
+			</table>
+		</div>
+	</div>
+
+	<div id="realm-services-subtab" class="subtab-panel">
+		<h3>My Services (<span id="realm-services-count">0</span>)</h3>
+		<p class="hint">Local services this machine offers to proxy to. Only peers/groups granted the
+			"Connect to services on this machine" permission (see the Permissions section on the Main tab) can
+			list or connect to them.</p>
+		<div class="table-scroll">
+			<table id="realm-my-services-table">
+				<thead><tr><th>Name</th><th>Description</th><th>Hostname</th><th>Type</th><th>Port</th><th></th></tr></thead>
+				<tbody id="realm-my-services-tbody"></tbody>
+			</table>
+		</div>
+		<div class="row">
+			<md-outlined-text-field label="Name" id="realm-new-service-name"></md-outlined-text-field>
+			<md-outlined-text-field label="Description (optional)" id="realm-new-service-description"></md-outlined-text-field>
+		</div>
+		<div class="row">
+			<md-outlined-text-field label="Hostname (e.g. 127.0.0.1)" value="127.0.0.1" id="realm-new-service-hostname"></md-outlined-text-field>
+			<md-outlined-select id="realm-new-service-type">
+				<md-select-option value="tcp" selected><div slot="headline">tcp</div></md-select-option>
+				<md-select-option value="udp"><div slot="headline">udp</div></md-select-option>
+				<md-select-option value="http"><div slot="headline">http</div></md-select-option>
+				<md-select-option value="https"><div slot="headline">https</div></md-select-option>
+				<md-select-option value="vnc"><div slot="headline">vnc</div></md-select-option>
+				<md-select-option value="vpn"><div slot="headline">vpn</div></md-select-option>
+				<md-select-option value="rdp"><div slot="headline">rdp</div></md-select-option>
+				<md-select-option value="ssh"><div slot="headline">ssh</div></md-select-option>
+			</md-outlined-select>
+			<md-outlined-text-field type="number" label="Port" id="realm-new-service-port" style="width: 8em;"></md-outlined-text-field>
+			<md-filled-tonal-button id="realm-add-service-button">Add Service</md-filled-tonal-button>
+			<md-filled-tonal-button id="realm-scan-ports-button">Scan Local Ports</md-filled-tonal-button>
+		</div>
+
+		<div id="realm-scan-services-modal" class="modal hidden">
+			<div class="modal-content">
+				<h4>Scan Local Ports</h4>
+				<p class="hint">Probes 127.0.0.1 on this machine for a fixed set of known ports. UDP-based
+					services can't be confirmed this way and are listed unverified.</p>
+				<div class="table-scroll">
+					<table id="realm-scan-services-table">
+						<thead><tr><th></th><th>Port</th><th>Guessed Service</th><th>Type</th><th>Status</th></tr></thead>
+						<tbody id="realm-scan-services-tbody"></tbody>
+					</table>
+				</div>
+				<md-filled-tonal-button id="realm-scan-services-add-button">Add Selected</md-filled-tonal-button>
+				<md-text-button id="realm-scan-services-close-button">Close</md-text-button>
+			</div>
+		</div>
+
+		<h3>Peer Services</h3>
+		<p class="hint">Each peer posts its own services to the "common" store of every group it belongs to; this
+			lists whatever the currently-configured groups' maps hold.</p>
+		<div class="table-scroll">
+			<table id="realm-peer-services-table">
+				<thead><tr><th>Peer</th><th>Name</th><th>Description</th><th>Type</th><th>Target</th><th>Proxy</th><th></th></tr></thead>
+				<tbody id="realm-peer-services-tbody"></tbody>
+			</table>
+		</div>
+	</div>
+
+	<div id="realm-speedtest-subtab" class="subtab-panel">
+		<h3>Speed Test</h3>
+		<p class="hint">Runs a raw download/upload throughput test against each selected peer, one after
+			another. Each direction runs for a few seconds. Only peers/groups granted the "Run a speed test
+			against this machine" permission (see the Permissions subtab) can run a test against this
+			machine.</p>
+		<div class="table-scroll">
+			<table id="realm-speedtest-peers-table">
+				<thead><tr><th></th><th>Peer</th></tr></thead>
+				<tbody id="realm-speedtest-peers-tbody"></tbody>
+			</table>
+		</div>
+		<div class="row">
+			<md-filled-tonal-button id="realm-speedtest-run-button">Run Speed Test</md-filled-tonal-button>
+			<progress id="realm-speedtest-progress" class="hidden"></progress>
+		</div>
+		<div class="table-scroll">
+			<table id="realm-speedtest-results-table">
+				<thead><tr><th>Peer</th><th>Status</th><th>Download</th><th>Upload</th></tr></thead>
+				<tbody id="realm-speedtest-results-tbody"></tbody>
+			</table>
+		</div>
+	</div>
+
+	<div id="realm-maps-subtab" class="subtab-panel">
+		<h3>Maps (<span id="realm-maps-count">0</span>)</h3>
+		<p class="hint">Shared Map&lt;String,String&gt; key-value stores, one per group. Every peer that holds the
+			group's private key automatically receives and stays in sync with its maps.</p>
+		<div class="table-scroll">
+			<table id="realm-maps-table">
+				<thead><tr><th>Group</th><th>Store Name</th><th>Entries</th><th>Updated</th><th></th></tr></thead>
+				<tbody id="realm-maps-tbody"></tbody>
+			</table>
+		</div>
+		<div class="row">
+			<label>Group:
+				<md-outlined-select id="realm-new-map-group"></md-outlined-select>
+			</label>
+			<md-outlined-text-field label="Store name" id="realm-new-map-store-name"></md-outlined-text-field>
+			<md-filled-tonal-button id="realm-create-map-button">Create Map</md-filled-tonal-button>
+		</div>
+
+		<div id="realm-map-detail" class="hidden">
+			<h3 id="realm-map-detail-title">Map</h3>
+			<div class="table-scroll">
+				<table id="realm-map-detail-table">
+					<thead><tr><th>Key</th><th>Value</th><th></th></tr></thead>
+					<tbody id="realm-map-detail-tbody"></tbody>
+				</table>
+			</div>
+			<div class="row">
+				<md-outlined-text-field label="Key" id="realm-map-new-key"></md-outlined-text-field>
+				<md-outlined-text-field label="Value" id="realm-map-new-value"></md-outlined-text-field>
+				<md-filled-tonal-button id="realm-map-add-value-button">Set Value</md-filled-tonal-button>
+			</div>
+			<md-text-button id="realm-map-close-detail-button">Close</md-text-button>
+		</div>
+	</div>
+
+	<pre id="realm-output" class="output"></pre>
+</section>
+
+<section id="spec" class="tab-panel">
+	<pre id="spec-output" class="output">Loading...</pre>
+</section>
+
+<section id="troubleshooting" class="tab-panel">
+	<div class="row">
+		<md-outlined-text-field id="domain-input" label="Domain name (e.g. example.com)"></md-outlined-text-field>
+		<md-filled-tonal-button id="troubleshoot-button">Troubleshoot</md-filled-tonal-button>
+	</div>
+	<progress id="troubleshoot-progress" class="hidden"></progress>
+	<pre id="troubleshoot-output" class="output">Enter a domain name and tap Troubleshoot.</pre>
+</section>
+
+<section id="early" class="tab-panel">
+	<div id="early-config">
+		<md-text-button id="early-config-toggle">▼ Configuration</md-text-button>
+		<div id="early-config-body">
+			<md-outlined-text-field label="API Key" id="early-api-key"></md-outlined-text-field>
+			<md-outlined-text-field type="password" label="API Secret" id="early-api-secret"></md-outlined-text-field>
+			<md-filled-tonal-button id="early-save-button">Save Configuration</md-filled-tonal-button>
+		</div>
+	</div>
+	<md-filled-tonal-button id="early-aggregate-button">Aggregate Time Entries</md-filled-tonal-button>
+	<progress id="early-progress" class="hidden"></progress>
+	<div class="row">
+		<label>Delete by Activity:
+			<md-outlined-select id="early-activity-select">
+				<md-select-option value=""><div slot="headline">-- select --</div></md-select-option>
+			</md-outlined-select>
+		</label>
+		<md-filled-tonal-button id="early-delete-button">Delete</md-filled-tonal-button>
+	</div>
+	<pre id="early-output" class="output">Configure API credentials and tap Aggregate.</pre>
+</section>
+
+<section id="gps" class="tab-panel">
+	<div id="gps-unavailable" class="hidden">GPS is only available in the Foilen Box Android app.</div>
+	<div id="gps-available">
+		<md-filled-tonal-button id="gps-start-button">Start Watching Location</md-filled-tonal-button>
+		<md-filled-tonal-button id="gps-stop-button" disabled>Stop</md-filled-tonal-button>
+		<pre id="gps-output" class="output">Tap "Start Watching Location" to retrieve GPS coordinates.</pre>
+	</div>
+</section>
+
+<section id="android-config" class="tab-panel">
+	<div class="row">
+		<label><md-checkbox id="android-boot-autostart"></md-checkbox> Start automatically at boot</label>
+	</div>
+	<p class="hint">Starts the Foilen Box background service (keeping Realm peer connections alive) right
+		after the phone boots, without needing to open the app first.</p>
+</section>
+
+<section id="logs" class="tab-panel">
+	<div class="row logs-controls sticky">
+		<md-outlined-text-field id="logs-search-input" label="Search (grep)"></md-outlined-text-field>
+		<md-filled-tonal-button id="logs-refresh-button">Refresh</md-filled-tonal-button>
+		<label><md-checkbox id="logs-auto-refresh" checked></md-checkbox> Refresh logs</label>
+		<label><md-checkbox id="logs-stay-to-end" checked></md-checkbox> Stay to end</label>
+	</div>
+	<pre id="logs-output" class="output">Loading...</pre>
+</section>
+
+<script src="js/vendor/qrcode-generator.js"></script>
+<script src="js/vendor/jsQR.js"></script>
+<script src="js/app.js" type="module"></script>
+</body>
+</html>
