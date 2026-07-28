@@ -2,12 +2,37 @@ package realm
 
 import (
 	"context"
+	"log"
+	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
+	circuitv2client "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	"github.com/multiformats/go-multiaddr"
 
 	"foilen-realm/model"
 )
+
+// relayReservationCandidateCount bounds how many known peers
+// maintainManualRelayReservation offers itself as candidates each round; the
+// first one that actually runs the relay service (cfg.EnableRelayService)
+// grants a reservation, per groupACL.
+const relayReservationCandidateCount = 5
+
+// relayReservationRenewBefore is how far ahead of expiration
+// maintainManualRelayReservation renews a held reservation. The relay
+// server's default ReservationTTL is 1 hour; renewing with this much margin
+// leaves multiple keepAliveInterval ticks to retry before the old
+// reservation actually lapses.
+const relayReservationRenewBefore = 20 * time.Minute
+
+// relayReservation is a standing circuit-relay-v2 reservation this host
+// holds on another peer, and the addresses (see circuitv2client.Reserve) it
+// can be dialed at through that relay.
+type relayReservation struct {
+	peerID     peer.ID
+	addrs      []multiaddr.Multiaddr
+	expiration time.Time
+}
 
 // groupACL restricts the circuit-relay-v2 server (when cfg.EnableRelayService
 // is on) to peers that share a group with us, so it can't be used as an open
@@ -66,12 +91,15 @@ func (e *Engine) isAllowed(id peer.ID, action model.PermissionAction) bool {
 }
 
 // relayPeerSource implements autorelay.PeerSource: it offers AutoRelay this
-// peer's own known, currently-in-common-group peers as relay candidates.
-// AutoRelay tries a reservation on each; only peers running with
-// cfg.EnableRelayService actually grant one (per groupACL, only to peers
-// they share a group with) — others are simply rejected. There's no
-// dedicated relay infrastructure to draw from, so known group peers are the
-// only pool available in a private swarm.
+// peer's own known, currently-in-common-group peers that last reported
+// running with cfg.EnableRelayService (see identifyPayload.RelayEnabled) as
+// relay candidates — so this never blindly probes peers that can't grant a
+// reservation anyway. AutoRelay/maintainManualRelayReservation still each
+// try a real reservation on every candidate offered here, since groupACL can
+// still refuse (e.g. the candidate turned its relay service off since we
+// last identified it, or doesn't consider us a common-group peer itself).
+// There's no dedicated relay infrastructure to draw from, so known group
+// peers are the only pool available in a private swarm.
 func (e *Engine) relayPeerSource(ctx context.Context, num int) <-chan peer.AddrInfo {
 	e.mu.Lock()
 	groups := e.cfg.Groups
@@ -83,6 +111,9 @@ func (e *Engine) relayPeerSource(ctx context.Context, num int) <-chan peer.AddrI
 		for _, info := range e.peers.List() {
 			if num <= 0 {
 				return
+			}
+			if !info.RelayEnabled {
+				continue
 			}
 			if !hasCommonGroup(info.GroupNames, groups) {
 				continue
@@ -104,4 +135,77 @@ func (e *Engine) relayPeerSource(ctx context.Context, num int) <-chan peer.AddrI
 		}
 	}()
 	return out
+}
+
+// currentRelayReservationAddrs returns the dialable circuit-relay addrs from
+// this host's current standing reservation (see maintainManualRelayReservation),
+// or nil if it doesn't hold one right now.
+func (e *Engine) currentRelayReservationAddrs() []multiaddr.Multiaddr {
+	e.relayMu.Lock()
+	defer e.relayMu.Unlock()
+	if e.relayReservation == nil {
+		return nil
+	}
+	return e.relayReservation.addrs
+}
+
+// maintainManualRelayReservation makes sure this host always holds a
+// reservation on some relay-capable group peer, independent of go-libp2p's
+// own AutoRelay/reachability machinery (see the comment on
+// EnableAutoRelayWithPeerSource in engine.go — that subsystem only acts once
+// the swarm-wide AutoNAT verdict is Private, so it stays dormant for a host
+// that's reachable from most peers but not, say, one stuck behind a
+// restrictive firewall relative to just it). The held reservation's addrs
+// are announced unconditionally via the AddrsFactory set up in engine.go, so
+// that lone unreachable peer still has a relay path in.
+//
+// A no-op if the current reservation still has more than
+// relayReservationRenewBefore left on it. Otherwise tries each of up to
+// relayReservationCandidateCount known common-group peers in turn (only
+// those running with cfg.EnableRelayService actually grant one, per
+// groupACL) and keeps the first success.
+func (e *Engine) maintainManualRelayReservation(ctx context.Context) {
+	e.mu.Lock()
+	h := e.host
+	e.mu.Unlock()
+	if h == nil {
+		return
+	}
+
+	e.relayMu.Lock()
+	current := e.relayReservation
+	e.relayMu.Unlock()
+	if current != nil && time.Until(current.expiration) > relayReservationRenewBefore {
+		return
+	}
+
+	candidatesCtx, cancel := context.WithTimeout(ctx, dialTimeout)
+	defer cancel()
+	for info := range e.relayPeerSource(candidatesCtx, relayReservationCandidateCount) {
+		if info.ID == h.ID() {
+			continue
+		}
+
+		reserveCtx, cancel := context.WithTimeout(ctx, dialTimeout)
+		resv, err := circuitv2client.Reserve(reserveCtx, h, info)
+		cancel()
+		if err != nil {
+			continue
+		}
+
+		e.relayMu.Lock()
+		e.relayReservation = &relayReservation{peerID: info.ID, addrs: resv.Addrs, expiration: resv.Expiration}
+		e.relayMu.Unlock()
+		log.Printf("realm engine: holding standing relay reservation via %s (expires %s)", info.ID, resv.Expiration.Format(time.RFC3339))
+		return
+	}
+
+	// No candidate granted a reservation this round. Drop a previously held
+	// one only once it has actually lapsed, so a transient failure to renew
+	// doesn't immediately stop advertising a still-valid relay addr.
+	e.relayMu.Lock()
+	if e.relayReservation != nil && !time.Now().Before(e.relayReservation.expiration) {
+		e.relayReservation = nil
+	}
+	e.relayMu.Unlock()
 }

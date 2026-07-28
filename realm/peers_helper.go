@@ -88,6 +88,7 @@ func (e *Engine) handleFoundPeer(info peer.AddrInfo, groupName, source string) {
 func (e *Engine) keepAliveLoop(ctx context.Context) {
 	e.maintainGroupRings(ctx)
 	e.maintainDHTSwarm()
+	e.maintainManualRelayReservation(ctx)
 	e.runPeriodicHooks()
 	e.pruneStalePeers()
 
@@ -98,6 +99,7 @@ func (e *Engine) keepAliveLoop(ctx context.Context) {
 		case <-ticker.C:
 			e.maintainGroupRings(ctx)
 			e.maintainDHTSwarm()
+			e.maintainManualRelayReservation(ctx)
 			e.runPeriodicHooks()
 			e.pruneStalePeers()
 		case <-ctx.Done():

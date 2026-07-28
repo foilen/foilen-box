@@ -156,9 +156,9 @@ func (s *Store) SetConnected(id string, connected bool) {
 	})
 }
 
-// SetHostnameDescription updates a known peer's self-reported hostname and
-// description, if present.
-func (s *Store) SetHostnameDescription(id, hostname, description string) {
+// SetHostnameDescription updates a known peer's self-reported hostname,
+// description and relay-service availability, if present.
+func (s *Store) SetHostnameDescription(id, hostname, description string, relayEnabled bool) {
 	s.db.Update(func(d *Data) {
 		p, ok := d.Peers[id]
 		if !ok {
@@ -166,6 +166,7 @@ func (s *Store) SetHostnameDescription(id, hostname, description string) {
 		}
 		p.Hostname = hostname
 		p.Description = description
+		p.RelayEnabled = relayEnabled
 		d.Peers[id] = p
 	})
 }

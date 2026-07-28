@@ -78,6 +78,13 @@ type Engine struct {
 	// reconnectRememberedDHTPeers) instead of only starting from the public
 	// bootstrap list again.
 	lastDHTPeers []peer.AddrInfo
+
+	// relayMu guards relayReservation. Separate from mu so that maintaining
+	// the reservation (which does network I/O, see
+	// maintainManualRelayReservation) never blocks unrelated engine state
+	// access.
+	relayMu          sync.Mutex
+	relayReservation *relayReservation
 }
 
 // New creates an idle Engine. dataDir is where the persistent DHT datastore
@@ -383,7 +390,11 @@ func (e *Engine) Start(cfg model.Config) error {
 		// from). There's no public relay infra for a private swarm, so
 		// candidates come from e.relayPeerSource, i.e. this peer's own
 		// known group peers; only ones that opted into
-		// cfg.EnableRelayService actually grant a reservation.
+		// cfg.EnableRelayService actually grant a reservation. This only
+		// engages once AutoNAT's swarm-wide verdict is Private, so it's a
+		// backstop against everyone being unreachable, not the asymmetric
+		// case (unreachable from just a few peers) — see
+		// maintainManualRelayReservation in relay.go for that.
 		libp2p.EnableAutoRelayWithPeerSource(e.relayPeerSource, autorelay.WithMinCandidates(1)),
 		// AutoNAT (server side): answer other connected peers' dial-back
 		// probes so their AutoNAT client can determine its own reachability.
@@ -444,11 +455,17 @@ func (e *Engine) Start(cfg model.Config) error {
 	if err != nil {
 		log.Printf("realm engine: %v", err)
 	}
-	if webAnnounceAddr != nil {
-		opts = append(opts, libp2p.AddrsFactory(func(addrs []multiaddr.Multiaddr) []multiaddr.Multiaddr {
-			return append(addrs, webAnnounceAddr)
-		}))
-	}
+	// Always append the web-announce addr (if any) and this host's current
+	// standing relay reservation addrs (see maintainManualRelayReservation),
+	// on top of whatever address set go-libp2p/AutoRelay otherwise produces
+	// — so a relay path is advertised unconditionally, not only while
+	// AutoRelay considers this host privately-reachable.
+	opts = append(opts, libp2p.AddrsFactory(func(addrs []multiaddr.Multiaddr) []multiaddr.Multiaddr {
+		if webAnnounceAddr != nil {
+			addrs = append(addrs, webAnnounceAddr)
+		}
+		return append(addrs, e.currentRelayReservationAddrs()...)
+	}))
 
 	if cfg.EnableRelayService {
 		// Circuit-relay-v2 server: let other group peers reserve a slot on
@@ -531,6 +548,11 @@ func (e *Engine) Stop() {
 	e.priv = nil
 	e.ctx = nil
 	e.running = false
+
+	e.relayMu.Lock()
+	e.relayReservation = nil
+	e.relayMu.Unlock()
+
 	log.Printf("realm engine: stopped")
 }
 
