@@ -377,20 +377,22 @@ func (e *Engine) Start(cfg model.Config) error {
 		// DCUtR: once a relayed connection to a peer exists, try to upgrade
 		// it to a direct connection via NAT hole punching.
 		libp2p.EnableHolePunching(),
-		// AutoRelay (client side): if this peer turns out to be
-		// unreachable, reserve a slot on a relay so others can still reach
-		// it (and hole-punching above has a relayed connection to upgrade
-		// from). There's no public relay infra for a private swarm, so
-		// candidates come from e.relayPeerSource, i.e. this peer's own
-		// known group peers; only ones that opted into
-		// cfg.EnableRelayService actually grant a reservation.
+		// AutoRelay (client side): always try to hold a reservation on a
+		// relay so others can still reach us through it (and hole-punching
+		// above has a relayed connection to upgrade from). ForceReachability
+		// is needed because real AutoNAT reachability is a swarm-wide
+		// aggregate ("can peers in general dial me back?") — it stays
+		// Public, and AutoRelay stays dormant, even when one specific peer
+		// (e.g. stuck behind a restrictive firewall/NAT relative to just us)
+		// can't reach this host while everyone else can. Forcing Private
+		// keeps AutoRelay always maintaining a reservation regardless of our
+		// own perceived reachability, which covers that asymmetric case.
+		// There's no public relay infra for a private swarm, so candidates
+		// come from e.relayPeerSource, i.e. this peer's own known group
+		// peers; only ones that opted into cfg.EnableRelayService actually
+		// grant a reservation.
+		libp2p.ForceReachabilityPrivate(),
 		libp2p.EnableAutoRelayWithPeerSource(e.relayPeerSource, autorelay.WithMinCandidates(1)),
-		// AutoNAT (server side): answer other connected peers' dial-back
-		// probes so their AutoNAT client can determine its own reachability.
-		// Without this, nobody in the swarm can confirm anybody else's
-		// reachability, AutoNAT status stays Unknown forever, and the
-		// AutoRelay client above never gets a Private verdict to act on.
-		libp2p.EnableNATService(),
 	}
 	// Customizing the websocket transport's options below (via
 	// libp2p.Transport(ws.New, ...)) opts the whole host out of
