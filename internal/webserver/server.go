@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"foilen-box/internal/logging"
 
@@ -63,6 +64,11 @@ func Start(configDir string, defaultDhtMode string, hostnameOverride string) (*S
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, fmt.Errorf("failed to listen: %w", err)
+	}
+
+	port := listener.Addr().(*net.TCPAddr).Port
+	if err := os.WriteFile(filepath.Join(logDir, "ui-port.txt"), []byte(strconv.Itoa(port)), 0o644); err != nil {
+		return nil, fmt.Errorf("failed to write ui-port.txt: %w", err)
 	}
 
 	staticRoot, err := fs.Sub(webFS, "web")
