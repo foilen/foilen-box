@@ -34,7 +34,7 @@
 
           ldflags = [
             "-X" "foilen-box/internal/webserver.Version=${gitShortHash}"
-            "-X" "foilen-box/internal/webserver.CommitDate=${gitCommitDate}"
+            "-X" "'foilen-box/internal/webserver.CommitDate=${gitCommitDate}'"
           ];
 
           nativeBuildInputs = [ pkgs.pkg-config ];
