@@ -11,6 +11,9 @@
       let
         pkgs = import nixpkgs { inherit system; };
         gitShortHash = self.shortRev or self.dirtyShortRev or "unknown";
+        # self.lastModifiedDate is "YYYYMMDDHHMMSS" in UTC.
+        d = self.lastModifiedDate;
+        gitCommitDate = "${builtins.substring 0 4 d}-${builtins.substring 4 2 d}-${builtins.substring 6 2 d} ${builtins.substring 8 2 d}:${builtins.substring 10 2 d} UTC";
       in
       {
         packages.default = pkgs.buildGoModule {
@@ -29,7 +32,10 @@
 
           subPackages = [ "cmd/foilenbox" ];
 
-          ldflags = [ "-X" "foilen-box/internal/webserver.Version=${gitShortHash}" ];
+          ldflags = [
+            "-X" "foilen-box/internal/webserver.Version=${gitShortHash}"
+            "-X" "foilen-box/internal/webserver.CommitDate=${gitCommitDate}"
+          ];
 
           nativeBuildInputs = [ pkgs.pkg-config ];
           buildInputs = [ pkgs.gtk3 pkgs.libayatana-appindicator ];
