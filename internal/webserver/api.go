@@ -96,6 +96,7 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 
 	realmEng := realm.New(realmConfigSvc.Dir(), realmPeerStore)
 	realmEng.SetHostnameOverride(hostnameOverride)
+	realmEng.SetAppVersion(appVersion())
 	notifFeature := realmnotifications.New(realmNotificationStore)
 	dataDir := realmConfigSvc.Dir()
 	scriptsFeature := realmscripts.New()

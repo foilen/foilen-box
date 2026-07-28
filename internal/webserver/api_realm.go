@@ -860,14 +860,15 @@ func handleRealmSetPeerRetentionDays(a *api, params json.RawMessage) (any, error
 }
 
 type peerResult struct {
-	ID           string    `json:"id"`
-	Hostname     string    `json:"hostname"`
-	Description  string    `json:"description"`
-	LastSeen     time.Time `json:"lastSeen"`
-	Addresses    []string  `json:"addresses"`
-	GroupNames   []string  `json:"groupNames"`
-	Connected    bool      `json:"connected"`
+	ID                  string    `json:"id"`
+	Hostname            string    `json:"hostname"`
+	Description         string    `json:"description"`
+	LastSeen            time.Time `json:"lastSeen"`
+	Addresses           []string  `json:"addresses"`
+	GroupNames          []string  `json:"groupNames"`
+	Connected           bool      `json:"connected"`
 	RelayServiceEnabled bool      `json:"relayServiceEnabled"`
+	Version             string    `json:"version"`
 }
 
 func handleRealmListPeers(a *api, _ json.RawMessage) (any, error) {
@@ -875,14 +876,15 @@ func handleRealmListPeers(a *api, _ json.RawMessage) (any, error) {
 	result := make([]peerResult, 0, len(list))
 	for _, p := range list {
 		result = append(result, peerResult{
-			ID:           p.ID,
-			Hostname:     p.Hostname,
-			Description:  p.Description,
-			LastSeen:     p.LastSeen,
-			Addresses:    p.Addresses,
-			GroupNames:   p.GroupNames,
-			Connected:    p.Connected,
+			ID:                  p.ID,
+			Hostname:            p.Hostname,
+			Description:         p.Description,
+			LastSeen:            p.LastSeen,
+			Addresses:           p.Addresses,
+			GroupNames:          p.GroupNames,
+			Connected:           p.Connected,
 			RelayServiceEnabled: p.RelayServiceEnabled,
+			Version:             p.Version,
 		})
 	}
 	return map[string]any{"peers": result}, nil
@@ -959,4 +961,3 @@ func handleNotificationList(a *api, _ json.RawMessage) (any, error) {
 	}
 	return map[string]any{"notifications": result}, nil
 }
-

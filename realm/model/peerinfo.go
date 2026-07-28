@@ -28,4 +28,7 @@ type PeerInfo struct {
 	// circuit-relay-v2 candidate (see Engine.relayPeerSource) instead of
 	// blindly probing every known peer.
 	RelayServiceEnabled bool `json:"relayServiceEnabled"`
+	// Version is the peer's self-reported application name and version,
+	// e.g. "FoilenBox - abc1234" (see Engine.SetAppVersion).
+	Version string `json:"version"`
 }

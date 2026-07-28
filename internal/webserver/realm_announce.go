@@ -46,6 +46,7 @@ type peerAnnounceInfo struct {
 	Description         string   `json:"description"`
 	Addresses           []string `json:"addresses"`
 	RelayServiceEnabled bool     `json:"relayServiceEnabled"`
+	Version             string   `json:"version"`
 }
 
 // realmAnnounce implements realm.Feature and realm.PeriodicHook: on every
@@ -111,7 +112,7 @@ func (a *realmAnnounce) RunPeriodic(reg *realm.Registrar) {
 		}
 	}
 
-	peerInfo := peerAnnounceInfo{Hostname: a.hostname(), Description: cfg.Description, Addresses: ownAddresses(reg), RelayServiceEnabled: cfg.EnableRelayService}
+	peerInfo := peerAnnounceInfo{Hostname: a.hostname(), Description: cfg.Description, Addresses: ownAddresses(reg), RelayServiceEnabled: cfg.EnableRelayService, Version: appVersion()}
 	postPeerInfo := a.dueForPeerInfoPost(peerInfo)
 	var peerInfoJSON []byte
 	if postPeerInfo {
@@ -257,6 +258,7 @@ func (a *realmAnnounce) consumePeerInfo(reg *realm.Registrar, cfg realmmodel.Con
 				Hostname:            info.Hostname,
 				Description:         info.Description,
 				RelayServiceEnabled: info.RelayServiceEnabled,
+				Version:             info.Version,
 			}, "announce")
 		}
 	}
@@ -294,6 +296,13 @@ func ownAddresses(reg *realm.Registrar) []string {
 		result[i] = a.String()
 	}
 	return result
+}
+
+// appVersion returns this build's self-reported application name and
+// version, e.g. "FoilenBox - abc1234", posted alongside peer announce info
+// so other peers can tell which application (and build) they're talking to.
+func appVersion() string {
+	return "FoilenBox - " + Version
 }
 
 func containsString(list []string, s string) bool {

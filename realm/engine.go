@@ -49,6 +49,7 @@ type Engine struct {
 	dataDir          string
 	peers            *peers.Store
 	hostnameOverride string
+	appVersion       string
 
 	features            []Feature
 	peerConnectedHooks  []PeerConnectedHook
@@ -102,6 +103,15 @@ func (e *Engine) SetHostnameOverride(hostname string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.hostnameOverride = hostname
+}
+
+// SetAppVersion sets the application name/version reported to other peers
+// during the identify exchange (see selfIdentifyPayload), e.g.
+// "FoilenBox - abc1234".
+func (e *Engine) SetAppVersion(version string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.appVersion = version
 }
 
 // Register adds f to the engine's set of active features: its actions join

@@ -73,6 +73,7 @@ export function initRealmPeers(api, onPeersUpdate) {
 				["Groups", (peer.groupNames || []).join(", ")],
 				["Connected", peer.connected ? "yes" : "no"],
 				["Relay Service", peer.relayServiceEnabled ? "yes" : "no"],
+				["Version", peer.version || ""],
 				["Last Seen", peer.lastSeen ? new Date(peer.lastSeen).toLocaleString() : ""],
 			];
 			for (const [label, value] of cells) {

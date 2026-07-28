@@ -29,11 +29,14 @@ const (
 // challenging this peer on, see challengeGroup. RelayServiceEnabled reports whether
 // the sender runs with cfg.EnableRelayService, so peers can pick relay
 // candidates (see Engine.relayPeerSource) without blindly probing everyone.
+// Version is the sender's self-reported application name and version (see
+// Engine.SetAppVersion).
 type identifyPayload struct {
-	Hostname     string   `json:"hostname"`
-	Description  string   `json:"description"`
-	GroupIDs     []string `json:"groupIds"`
+	Hostname            string   `json:"hostname"`
+	Description         string   `json:"description"`
+	GroupIDs            []string `json:"groupIds"`
 	RelayServiceEnabled bool     `json:"relayServiceEnabled"`
+	Version             string   `json:"version"`
 }
 
 // handleIdentifyStream answers a connected, known peer's identify request:
@@ -97,20 +100,22 @@ func (e *Engine) fetchPeerIdentity(id peer.ID) {
 		log.Printf("realm engine: failed to read identify payload from %s: %v", id, err)
 		return
 	}
-	e.peers.SetHostnameDescription(id.String(), payload.Hostname, payload.Description, payload.RelayServiceEnabled)
+	e.peers.SetHostnameDescription(id.String(), payload.Hostname, payload.Description, payload.RelayServiceEnabled, payload.Version)
 
 	e.processClaimedGroups(id, payload.GroupIDs)
 }
 
 // selfIdentifyPayload builds our own identifyPayload: hostname/description
 // plus the public group ids (not names) of every group we're configured
-// with, and whether we're currently running the relay service.
+// with, whether we're currently running the relay service, and our own
+// appVersion.
 func (e *Engine) selfIdentifyPayload() identifyPayload {
 	e.mu.Lock()
 	hostname := e.hostnameOverride
 	description := e.cfg.Description
 	groups := e.cfg.Groups
 	relayServiceEnabled := e.cfg.EnableRelayService
+	version := e.appVersion
 	e.mu.Unlock()
 
 	if hostname == "" {
@@ -125,7 +130,7 @@ func (e *Engine) selfIdentifyPayload() identifyPayload {
 	for _, g := range groups {
 		groupIDs = append(groupIDs, g.KeyPair.ID)
 	}
-	return identifyPayload{Hostname: hostname, Description: description, GroupIDs: groupIDs, RelayServiceEnabled: relayServiceEnabled}
+	return identifyPayload{Hostname: hostname, Description: description, GroupIDs: groupIDs, RelayServiceEnabled: relayServiceEnabled, Version: version}
 }
 
 // processClaimedGroups issues a group-challenge (see challengeGroup) toward
