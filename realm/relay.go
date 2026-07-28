@@ -93,7 +93,7 @@ func (e *Engine) isAllowed(id peer.ID, action model.PermissionAction) bool {
 
 // relayPeerSource implements autorelay.PeerSource: it offers AutoRelay this
 // peer's own known, currently-in-common-group peers that last reported
-// running with cfg.EnableRelayService (see identifyPayload.RelayEnabled) as
+// running with cfg.EnableRelayService (see identifyPayload.RelayServiceEnabled) as
 // relay candidates — so this never blindly probes peers that can't grant a
 // reservation anyway. AutoRelay/maintainManualRelayReservation still each
 // try a real reservation on every candidate offered here, since groupACL can
@@ -119,7 +119,7 @@ func (e *Engine) relayPeerSource(ctx context.Context, num int) <-chan peer.AddrI
 		candidates := make([]peer.AddrInfo, 0, num)
 		var connected, disconnected []peer.AddrInfo
 		for _, info := range e.peers.List() {
-			if !info.RelayEnabled {
+			if !info.RelayServiceEnabled {
 				continue
 			}
 			if !hasCommonGroup(info.GroupNames, groups) {

@@ -26,14 +26,14 @@ const (
 // identifyProtocolID. GroupIDs are self-claimed (each peer's own group
 // public ids, model.Group.KeyPair.ID) — merely receiving one does not grant
 // membership; it only tells the recipient which of its own groups are worth
-// challenging this peer on, see challengeGroup. RelayEnabled reports whether
+// challenging this peer on, see challengeGroup. RelayServiceEnabled reports whether
 // the sender runs with cfg.EnableRelayService, so peers can pick relay
 // candidates (see Engine.relayPeerSource) without blindly probing everyone.
 type identifyPayload struct {
 	Hostname     string   `json:"hostname"`
 	Description  string   `json:"description"`
 	GroupIDs     []string `json:"groupIds"`
-	RelayEnabled bool     `json:"relayEnabled"`
+	RelayServiceEnabled bool     `json:"relayServiceEnabled"`
 }
 
 // handleIdentifyStream answers a connected, known peer's identify request:
@@ -97,7 +97,7 @@ func (e *Engine) fetchPeerIdentity(id peer.ID) {
 		log.Printf("realm engine: failed to read identify payload from %s: %v", id, err)
 		return
 	}
-	e.peers.SetHostnameDescription(id.String(), payload.Hostname, payload.Description, payload.RelayEnabled)
+	e.peers.SetHostnameDescription(id.String(), payload.Hostname, payload.Description, payload.RelayServiceEnabled)
 
 	e.processClaimedGroups(id, payload.GroupIDs)
 }
@@ -110,7 +110,7 @@ func (e *Engine) selfIdentifyPayload() identifyPayload {
 	hostname := e.hostnameOverride
 	description := e.cfg.Description
 	groups := e.cfg.Groups
-	relayEnabled := e.cfg.EnableRelayService
+	relayServiceEnabled := e.cfg.EnableRelayService
 	e.mu.Unlock()
 
 	if hostname == "" {
@@ -125,7 +125,7 @@ func (e *Engine) selfIdentifyPayload() identifyPayload {
 	for _, g := range groups {
 		groupIDs = append(groupIDs, g.KeyPair.ID)
 	}
-	return identifyPayload{Hostname: hostname, Description: description, GroupIDs: groupIDs, RelayEnabled: relayEnabled}
+	return identifyPayload{Hostname: hostname, Description: description, GroupIDs: groupIDs, RelayServiceEnabled: relayServiceEnabled}
 }
 
 // processClaimedGroups issues a group-challenge (see challengeGroup) toward

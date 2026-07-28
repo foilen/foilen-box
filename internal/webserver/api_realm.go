@@ -867,7 +867,7 @@ type peerResult struct {
 	Addresses    []string  `json:"addresses"`
 	GroupNames   []string  `json:"groupNames"`
 	Connected    bool      `json:"connected"`
-	RelayEnabled bool      `json:"relayEnabled"`
+	RelayServiceEnabled bool      `json:"relayServiceEnabled"`
 }
 
 func handleRealmListPeers(a *api, _ json.RawMessage) (any, error) {
@@ -882,7 +882,7 @@ func handleRealmListPeers(a *api, _ json.RawMessage) (any, error) {
 			Addresses:    p.Addresses,
 			GroupNames:   p.GroupNames,
 			Connected:    p.Connected,
-			RelayEnabled: p.RelayEnabled,
+			RelayServiceEnabled: p.RelayServiceEnabled,
 		})
 	}
 	return map[string]any{"peers": result}, nil
