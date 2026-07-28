@@ -89,7 +89,7 @@ func Start(configDir string, defaultDhtMode string, hostnameOverride string) (*S
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_ = indexTmpl.Execute(w, map[string]string{"Token": s.token})
+		_ = indexTmpl.Execute(w, map[string]string{"Token": s.token, "Version": Version})
 	})
 	mux.HandleFunc("/ws", s.handleWS)
 

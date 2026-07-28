@@ -10,6 +10,7 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
+        gitShortHash = self.shortRev or self.dirtyShortRev or "unknown";
       in
       {
         packages.default = pkgs.buildGoModule {
@@ -27,6 +28,8 @@
           vendorHash = "sha256-hZ87pZilbkFUeFGb8EX8kpO3u07ntxQgtui0as8cQxs=";
 
           subPackages = [ "cmd/foilenbox" ];
+
+          ldflags = [ "-X" "foilen-box/internal/webserver.Version=${gitShortHash}" ];
 
           nativeBuildInputs = [ pkgs.pkg-config ];
           buildInputs = [ pkgs.gtk3 pkgs.libayatana-appindicator ];

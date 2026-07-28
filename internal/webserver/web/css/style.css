@@ -99,6 +99,14 @@ body {
 	border-radius: 50%;
 }
 
+#app-footer {
+	flex-shrink: 0;
+	padding: 0.4em 1.25em;
+	font-size: 0.75em;
+	opacity: 0.6;
+	text-align: center;
+}
+
 #tabs {
 	display: flex;
 	border-bottom: 1px solid var(--md-outline-variant);

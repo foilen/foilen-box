@@ -21,7 +21,8 @@ mkdir -p dist/android android/app/libs
 # (net.zoneCache) for cgo-free interface lookups on Android. Go's linker
 # validates such references since Go 1.23 and this package's pinned
 # reference no longer matches Go 1.26's internals, so relax the check.
-"$GOMOBILE" bind -target=android -androidapi 21 -ldflags="-checklinkname=0" -o android/app/libs/foilenbox.aar ./cmd/mobile
+GIT_COMMIT=$(git rev-parse --short HEAD)
+"$GOMOBILE" bind -target=android -androidapi 21 -ldflags="-checklinkname=0 -X foilen-box/internal/webserver.Version=$GIT_COMMIT" -o android/app/libs/foilenbox.aar ./cmd/mobile
 (
     cd android
     # Uses the Gradle wrapper if present (run `gradle wrapper` once inside
