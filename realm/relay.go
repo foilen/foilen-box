@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	circuitv2client "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
 	"github.com/multiformats/go-multiaddr"
@@ -100,18 +101,24 @@ func (e *Engine) isAllowed(id peer.ID, action model.PermissionAction) bool {
 // last identified it, or doesn't consider us a common-group peer itself).
 // There's no dedicated relay infrastructure to draw from, so known group
 // peers are the only pool available in a private swarm.
+//
+// Candidates already connected are offered first: reserving on one avoids an
+// extra dial (the reservation stream can reuse the live connection) and is
+// more likely to succeed right away. Not-yet-connected candidates are still
+// offered afterwards, up to num, as a fallback.
 func (e *Engine) relayPeerSource(ctx context.Context, num int) <-chan peer.AddrInfo {
 	e.mu.Lock()
 	groups := e.cfg.Groups
+	h := e.host
 	e.mu.Unlock()
 
 	out := make(chan peer.AddrInfo)
 	go func() {
 		defer close(out)
+
+		candidates := make([]peer.AddrInfo, 0, num)
+		var connected, disconnected []peer.AddrInfo
 		for _, info := range e.peers.List() {
-			if num <= 0 {
-				return
-			}
 			if !info.RelayEnabled {
 				continue
 			}
@@ -126,8 +133,22 @@ func (e *Engine) relayPeerSource(ctx context.Context, num int) <-chan peer.AddrI
 			if len(addrs) == 0 {
 				continue
 			}
+			ai := peer.AddrInfo{ID: pid, Addrs: addrs}
+			if h != nil && h.Network().Connectedness(pid) == network.Connected {
+				connected = append(connected, ai)
+			} else {
+				disconnected = append(disconnected, ai)
+			}
+		}
+		candidates = append(candidates, connected...)
+		candidates = append(candidates, disconnected...)
+
+		for _, ai := range candidates {
+			if num <= 0 {
+				return
+			}
 			select {
-			case out <- peer.AddrInfo{ID: pid, Addrs: addrs}:
+			case out <- ai:
 				num--
 			case <-ctx.Done():
 				return
