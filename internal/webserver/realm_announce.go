@@ -42,9 +42,10 @@ const (
 // own self-reported reachability info, analogous to model.PeerSpec but for
 // "how do I connect to you" rather than "what's your system report".
 type peerAnnounceInfo struct {
-	Hostname    string   `json:"hostname"`
-	Description string   `json:"description"`
-	Addresses   []string `json:"addresses"`
+	Hostname            string   `json:"hostname"`
+	Description         string   `json:"description"`
+	Addresses           []string `json:"addresses"`
+	RelayServiceEnabled bool     `json:"relayServiceEnabled"`
 }
 
 // realmAnnounce implements realm.Feature and realm.PeriodicHook: on every
@@ -110,7 +111,7 @@ func (a *realmAnnounce) RunPeriodic(reg *realm.Registrar) {
 		}
 	}
 
-	peerInfo := peerAnnounceInfo{Hostname: a.hostname(), Description: cfg.Description, Addresses: ownAddresses(reg)}
+	peerInfo := peerAnnounceInfo{Hostname: a.hostname(), Description: cfg.Description, Addresses: ownAddresses(reg), RelayServiceEnabled: cfg.EnableRelayService}
 	postPeerInfo := a.dueForPeerInfoPost(peerInfo)
 	var peerInfoJSON []byte
 	if postPeerInfo {
@@ -248,13 +249,14 @@ func (a *realmAnnounce) consumePeerInfo(reg *realm.Registrar, cfg realmmodel.Con
 			}
 
 			peersStore.Upsert(realmmodel.PeerInfo{
-				ID:          peerID,
-				LastSeen:    lastSeen,
-				Addresses:   info.Addresses,
-				GroupNames:  groupNames,
-				Connected:   connected,
-				Hostname:    info.Hostname,
-				Description: info.Description,
+				ID:                  peerID,
+				LastSeen:            lastSeen,
+				Addresses:           info.Addresses,
+				GroupNames:          groupNames,
+				Connected:           connected,
+				Hostname:            info.Hostname,
+				Description:         info.Description,
+				RelayServiceEnabled: info.RelayServiceEnabled,
 			}, "announce")
 		}
 	}
