@@ -385,6 +385,12 @@ func (e *Engine) Start(cfg model.Config) error {
 		// known group peers; only ones that opted into
 		// cfg.EnableRelayService actually grant a reservation.
 		libp2p.EnableAutoRelayWithPeerSource(e.relayPeerSource, autorelay.WithMinCandidates(1)),
+		// AutoNAT (server side): answer other connected peers' dial-back
+		// probes so their AutoNAT client can determine its own reachability.
+		// Without this, nobody in the swarm can confirm anybody else's
+		// reachability, AutoNAT status stays Unknown forever, and the
+		// AutoRelay client above never gets a Private verdict to act on.
+		libp2p.EnableNATService(),
 	}
 	// Customizing the websocket transport's options below (via
 	// libp2p.Transport(ws.New, ...)) opts the whole host out of
