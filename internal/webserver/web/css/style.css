@@ -315,6 +315,18 @@ md-outlined-select {
 	margin: 0;
 }
 
+.status-dot {
+	display: inline-block;
+	width: 0.75em;
+	height: 0.75em;
+	border-radius: 50%;
+	background: #d93025;
+}
+
+.status-dot.connected {
+	background: #1e8e3e;
+}
+
 .table-scroll {
 	max-width: 100%;
 	overflow-x: auto;

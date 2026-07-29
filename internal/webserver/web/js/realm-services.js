@@ -168,6 +168,8 @@ export function initRealmServices(api, output, renderConfig) {
 		statusCell.textContent = localPort ? `Running on 127.0.0.1:${localPort}` : "Stopped";
 		row.appendChild(statusCell);
 
+		appendConnectedCell(row, peerId);
+
 		const actionsCell = document.createElement("td");
 
 		const toggleButton = document.createElement("md-text-button");
@@ -234,6 +236,17 @@ export function initRealmServices(api, output, renderConfig) {
 			statusLabelAndButtons(row, service.peerId, service);
 			peerServicesBody.appendChild(row);
 		}
+	}
+
+	function appendConnectedCell(row, peerId) {
+		const connected = knownPeers.find((p) => p.id === peerId)?.connected ?? false;
+		const cell = document.createElement("td");
+		cell.dataset.label = "Connected";
+		const dot = document.createElement("span");
+		dot.className = `status-dot${connected ? " connected" : ""}`;
+		dot.title = connected ? "Connected" : "Not connected";
+		cell.appendChild(dot);
+		row.appendChild(cell);
 	}
 
 	async function refreshPeerServices() {
