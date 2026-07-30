@@ -25,15 +25,25 @@ func (e *Engine) onConnected(_ network.Network, conn network.Conn) {
 	}
 }
 
-// onDisconnected fires for every disconnect, app-initiated (ring/DHT-swarm
-// trimming, see connection_ring.go/discovery_dht.go, both of which already
-// log why they closed the connection) or not; logging unconditionally here
-// makes a spontaneous/network-level drop distinguishable from those: it's
-// any disconnect log line that isn't immediately preceded by one of theirs.
+// onDisconnected fires once per closed network.Conn, not once per peer
+// actually going unreachable: a peer can have more than one simultaneous
+// Conn (e.g. both sides dialed each other, or more than one transport
+// succeeded), so closing one of them isn't a real disconnect as long as net
+// still reports another live Conn to the same peer. Only a disconnect that
+// drops the peer's last Conn is logged/recorded here; the rest are ignored.
+//
+// Real disconnects are app-initiated (ring/DHT-swarm trimming, see
+// connection_ring.go/discovery_dht.go, both of which already log why they
+// closed the connection) or not; logging unconditionally here makes a
+// spontaneous/network-level drop distinguishable from those: it's any
+// disconnect log line that isn't immediately preceded by one of theirs.
 // Unknown peers (e.g. DHT routing connections to strangers) are skipped;
 // only known peers are worth surfacing.
-func (e *Engine) onDisconnected(_ network.Network, conn network.Conn) {
+func (e *Engine) onDisconnected(net network.Network, conn network.Conn) {
 	remote := conn.RemotePeer()
+	if net.Connectedness(remote) == network.Connected {
+		return
+	}
 	e.peers.SetConnected(remote.String(), false)
 
 	info, known := e.peers.Get(remote.String())
