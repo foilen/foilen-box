@@ -30,17 +30,19 @@ func (e *Engine) onConnected(_ network.Network, conn network.Conn) {
 // log why they closed the connection) or not; logging unconditionally here
 // makes a spontaneous/network-level drop distinguishable from those: it's
 // any disconnect log line that isn't immediately preceded by one of theirs.
+// Unknown peers (e.g. DHT routing connections to strangers) are skipped;
+// only known peers are worth surfacing.
 func (e *Engine) onDisconnected(_ network.Network, conn network.Conn) {
 	remote := conn.RemotePeer()
 	e.peers.SetConnected(remote.String(), false)
 
 	info, known := e.peers.Get(remote.String())
-	switch {
-	case !known:
-		log.Printf("realm engine: disconnected from unknown peer %s", remote)
-	case len(info.GroupNames) == 0:
+	if !known {
+		return
+	}
+	if len(info.GroupNames) == 0 {
 		log.Printf("realm engine: disconnected from peer %s (%s, no confirmed group)", remote, info.Hostname)
-	default:
+	} else {
 		log.Printf("realm engine: disconnected from peer %s (%s, groups: %v)", remote, info.Hostname, info.GroupNames)
 	}
 }
