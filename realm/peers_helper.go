@@ -91,13 +91,15 @@ func (e *Engine) handleFoundPeer(info peer.AddrInfo, groupName, source string) {
 
 	connected := h.Network().Connectedness(info.ID) == network.Connected
 	e.peers.Upsert(model.PeerInfo{
-		ID:          id,
-		LastSeen:    time.Now(),
-		Addresses:   addrs,
-		GroupNames:  existing.GroupNames,
-		Connected:   connected,
-		Hostname:    existing.Hostname,
-		Description: existing.Description,
+		ID:                  id,
+		LastSeen:            time.Now(),
+		Addresses:           addrs,
+		GroupNames:          existing.GroupNames,
+		Connected:           connected,
+		Hostname:            existing.Hostname,
+		Description:         existing.Description,
+		RelayServiceEnabled: existing.RelayServiceEnabled,
+		Version:             existing.Version,
 	}, source)
 
 	if !connected && len(info.Addrs) > 0 {
@@ -121,12 +123,22 @@ func (e *Engine) handleFoundPeer(info peer.AddrInfo, groupName, source string) {
 // keepAliveLoop runs the per-group connection ring maintenance (see
 // maintainGroupRings) and DHT swarm trimming (see maintainDHTSwarm) every
 // keepAliveInterval, and drives every registered feature's PeriodicHook on
-// the same cadence.
+// the same cadence. PeriodicHook runs first: the "common/announce" hook it
+// drives (see realmAnnounce.RunPeriodic in internal/webserver) is what
+// merges peers' self-reported reachability addresses from the RealmMap
+// ("announce" source, see peers.addressSourcePriority) into the local known-
+// peers store, and a peer's real (e.g. LAN) address learned that way —
+// picked up via gossip through any group member, not only a direct
+// connection to that peer — is often already available and more likely
+// dialable than whatever mDNS/DHT discovery has found so far. Running it
+// before maintainGroupRings means the ring reconnect attempt below uses
+// addresses as fresh as this tick, instead of ones left over from the
+// previous one.
 func (e *Engine) keepAliveLoop(ctx context.Context) {
+	e.runPeriodicHooks()
 	e.maintainGroupRings(ctx)
 	e.maintainDHTSwarm()
 	e.maintainManualRelayReservation(ctx)
-	e.runPeriodicHooks()
 	e.pruneStalePeers()
 
 	ticker := time.NewTicker(keepAliveInterval)
@@ -134,10 +146,10 @@ func (e *Engine) keepAliveLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
+			e.runPeriodicHooks()
 			e.maintainGroupRings(ctx)
 			e.maintainDHTSwarm()
 			e.maintainManualRelayReservation(ctx)
-			e.runPeriodicHooks()
 			e.pruneStalePeers()
 		case <-ctx.Done():
 			return

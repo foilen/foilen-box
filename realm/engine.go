@@ -485,7 +485,17 @@ func (e *Engine) Start(cfg model.Config) error {
 		// stranger who finds this peer on the public DHT — only peers that
 		// share a group with us (per the known-peers store) may reserve a
 		// slot or relay a connection through us.
-		opts = append(opts, libp2p.EnableRelayService(circuitrelay.WithACL(&groupACL{e: e})))
+		//
+		// The library's own defaults (Limit.Duration: 2min, Limit.Data:
+		// 128KB) reset a relayed connection long before hole-punching
+		// usually has a chance to upgrade it to direct, or before a peer
+		// with no other reachable address (e.g. one behind CGNAT/a
+		// restrictive mobile carrier) can do any real work over it. Every
+		// relay client here already authenticated via groupACL, so there's
+		// no abuse concern in leaving connections unlimited (Limit: nil).
+		relayResources := circuitrelay.DefaultResources()
+		relayResources.Limit = nil
+		opts = append(opts, libp2p.EnableRelayService(circuitrelay.WithACL(&groupACL{e: e}), circuitrelay.WithResources(relayResources)))
 	}
 
 	h, err := libp2p.New(opts...)

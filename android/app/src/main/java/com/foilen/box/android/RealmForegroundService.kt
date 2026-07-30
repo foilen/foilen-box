@@ -7,6 +7,7 @@ import android.content.Context
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
@@ -35,10 +36,18 @@ import mobile.Mobile
  */
 class RealmForegroundService : Service() {
 
+	// Android drops incoming Wi-Fi multicast packets (including mDNS,
+	// go-libp2p's LAN peer discovery) for any app that doesn't hold this
+	// lock — without it, this peer can only ever be found by other group
+	// members via the public DHT, never directly over the LAN even when
+	// they're on the same network. Held for as long as the engine runs.
+	private var multicastLock: WifiManager.MulticastLock? = null
+
 	override fun onCreate() {
 		super.onCreate()
 		createNotificationChannel()
 		showNotification()
+		acquireMulticastLock()
 		Thread {
 			try {
 				Mobile.startServer(filesDir.absolutePath, deviceName(), null, null)
@@ -46,6 +55,14 @@ class RealmForegroundService : Service() {
 				Log.e(TAG, "failed to start server", e)
 			}
 		}.start()
+	}
+
+	private fun acquireMulticastLock() {
+		val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+		val lock = wifiManager.createMulticastLock(TAG)
+		lock.setReferenceCounted(false)
+		lock.acquire()
+		multicastLock = lock
 	}
 
 	// Same fallback as MainActivity.deviceName(): Go's os.Hostname() always
@@ -113,6 +130,12 @@ class RealmForegroundService : Service() {
 		}.start()
 		stopSelf()
 		super.onTaskRemoved(rootIntent)
+	}
+
+	override fun onDestroy() {
+		multicastLock?.let { if (it.isHeld) it.release() }
+		multicastLock = null
+		super.onDestroy()
 	}
 
 	private fun createNotificationChannel() {
