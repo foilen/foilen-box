@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
@@ -30,13 +31,20 @@ const (
 // the sender runs with cfg.EnableRelayService, so peers can pick relay
 // candidates (see Engine.relayPeerSource) without blindly probing everyone.
 // Version is the sender's self-reported application name and version (see
-// Engine.SetAppVersion).
+// Engine.SetAppVersion). Addresses is the sender's own current listen
+// multiaddrs (host.Addrs()): recorded by the recipient as the peer store's
+// "announce" address source (see peers.Store.SetAnnouncedAddresses), a
+// fallback dial source for the next time this peer needs reconnecting but
+// has since dropped off mDNS/DHT discovery — since identify only runs over
+// an already-established connection, exchanging it here doesn't help find a
+// peer for the first time, only keep addresses for one already known.
 type identifyPayload struct {
 	Hostname            string   `json:"hostname"`
 	Description         string   `json:"description"`
 	GroupIDs            []string `json:"groupIds"`
 	RelayServiceEnabled bool     `json:"relayServiceEnabled"`
 	Version             string   `json:"version"`
+	Addresses           []string `json:"addresses"`
 }
 
 // handleIdentifyStream answers a connected, known peer's identify request:
@@ -58,8 +66,15 @@ func (e *Engine) handleIdentifyStream(s network.Stream) {
 		log.Printf("realm engine: failed to read identify payload from %s: %v", remote, err)
 		return
 	}
+	e.peers.SetAnnouncedAddresses(remote.String(), reqPayload.Addresses)
 
-	if err := json.NewEncoder(s).Encode(e.selfIdentifyPayload()); err != nil {
+	e.mu.Lock()
+	h := e.host
+	e.mu.Unlock()
+	if h == nil {
+		return
+	}
+	if err := json.NewEncoder(s).Encode(e.selfIdentifyPayload(h)); err != nil {
 		log.Printf("realm engine: failed to send identify payload to %s: %v", remote, err)
 		return
 	}
@@ -90,7 +105,7 @@ func (e *Engine) fetchPeerIdentity(id peer.ID) {
 	defer s.Close()
 	_ = s.SetDeadline(time.Now().Add(identifyIOTimeout))
 
-	if err := json.NewEncoder(s).Encode(e.selfIdentifyPayload()); err != nil {
+	if err := json.NewEncoder(s).Encode(e.selfIdentifyPayload(h)); err != nil {
 		log.Printf("realm engine: failed to send identify payload to %s: %v", id, err)
 		return
 	}
@@ -101,15 +116,16 @@ func (e *Engine) fetchPeerIdentity(id peer.ID) {
 		return
 	}
 	e.peers.SetHostnameDescription(id.String(), payload.Hostname, payload.Description, payload.RelayServiceEnabled, payload.Version)
+	e.peers.SetAnnouncedAddresses(id.String(), payload.Addresses)
 
 	e.processClaimedGroups(id, payload.GroupIDs)
 }
 
 // selfIdentifyPayload builds our own identifyPayload: hostname/description
 // plus the public group ids (not names) of every group we're configured
-// with, whether we're currently running the relay service, and our own
-// appVersion.
-func (e *Engine) selfIdentifyPayload() identifyPayload {
+// with, whether we're currently running the relay service, our own
+// appVersion, and h's current listen addrs (see identifyPayload.Addresses).
+func (e *Engine) selfIdentifyPayload(h host.Host) identifyPayload {
 	e.mu.Lock()
 	hostname := e.hostnameOverride
 	description := e.cfg.Description
@@ -130,7 +146,14 @@ func (e *Engine) selfIdentifyPayload() identifyPayload {
 	for _, g := range groups {
 		groupIDs = append(groupIDs, g.KeyPair.ID)
 	}
-	return identifyPayload{Hostname: hostname, Description: description, GroupIDs: groupIDs, RelayServiceEnabled: relayServiceEnabled, Version: version}
+	return identifyPayload{
+		Hostname:            hostname,
+		Description:         description,
+		GroupIDs:            groupIDs,
+		RelayServiceEnabled: relayServiceEnabled,
+		Version:             version,
+		Addresses:           addrsToStrings(h.Addrs()),
+	}
 }
 
 // processClaimedGroups issues a group-challenge (see challengeGroup) toward

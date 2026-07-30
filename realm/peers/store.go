@@ -173,6 +173,29 @@ func (s *Store) SetHostnameDescription(id, hostname, description string, relaySe
 	})
 }
 
+// SetAnnouncedAddresses records addrs as the "announce" source's address
+// list for peer id (see addressSourcePriority) and recomputes the merged
+// Addresses, if the peer is already known. A no-op otherwise, since this is
+// only ever called with a peer's self-reported addrs from the identify
+// exchange, which only runs over an already-established connection to an
+// already-known peer (see handleIdentifyStream).
+func (s *Store) SetAnnouncedAddresses(id string, addrs []string) {
+	s.db.Update(func(d *Data) {
+		p, ok := d.Peers[id]
+		if !ok {
+			return
+		}
+		bySource := make(map[string][]string, len(p.AddressesBySource)+1)
+		for k, v := range p.AddressesBySource {
+			bySource[k] = v
+		}
+		bySource["announce"] = addrs
+		p.AddressesBySource = bySource
+		p.Addresses = mergeAddresses(bySource)
+		d.Peers[id] = p
+	})
+}
+
 // AddGroupName records that a peer has passed the group-challenge for
 // groupName, if present. A no-op if the peer already has it.
 func (s *Store) AddGroupName(id, groupName string) {

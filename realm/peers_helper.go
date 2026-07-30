@@ -25,8 +25,24 @@ func (e *Engine) onConnected(_ network.Network, conn network.Conn) {
 	}
 }
 
+// onDisconnected fires for every disconnect, app-initiated (ring/DHT-swarm
+// trimming, see connection_ring.go/discovery_dht.go, both of which already
+// log why they closed the connection) or not; logging unconditionally here
+// makes a spontaneous/network-level drop distinguishable from those: it's
+// any disconnect log line that isn't immediately preceded by one of theirs.
 func (e *Engine) onDisconnected(_ network.Network, conn network.Conn) {
-	e.peers.SetConnected(conn.RemotePeer().String(), false)
+	remote := conn.RemotePeer()
+	e.peers.SetConnected(remote.String(), false)
+
+	info, known := e.peers.Get(remote.String())
+	switch {
+	case !known:
+		log.Printf("realm engine: disconnected from unknown peer %s", remote)
+	case len(info.GroupNames) == 0:
+		log.Printf("realm engine: disconnected from peer %s (%s, no confirmed group)", remote, info.Hostname)
+	default:
+		log.Printf("realm engine: disconnected from peer %s (%s, groups: %v)", remote, info.Hostname, info.GroupNames)
+	}
 }
 
 // handleFoundPeer records a peer surfaced by mDNS/DHT discovery under
