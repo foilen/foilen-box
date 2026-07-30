@@ -13,6 +13,14 @@ import (
 
 func (e *Engine) onConnected(_ network.Network, conn network.Conn) {
 	remote := conn.RemotePeer()
+
+	// Only known peers are worth surfacing (mirrors onDisconnected below);
+	// a peer already marked connected means this is an extra simultaneous
+	// Conn to the same peer, not a fresh connect worth logging again.
+	if info, known := e.peers.Get(remote.String()); known && !info.Connected {
+		log.Printf("realm engine: connected to peer %s (%s)", remote, info.Hostname)
+	}
+
 	e.peers.SetConnected(remote.String(), true)
 
 	if _, ok := e.peers.Get(remote.String()); ok {
@@ -102,6 +110,7 @@ func (e *Engine) handleFoundPeer(info peer.AddrInfo, groupName, source string) {
 		go func(dialCtx context.Context, info peer.AddrInfo) {
 			connectCtx, cancel := context.WithTimeout(dialCtx, dialTimeout)
 			defer cancel()
+			log.Printf("realm engine: connecting to newly found peer %s", info.ID)
 			if err := h.Connect(connectCtx, info); err != nil {
 				log.Printf("realm engine: failed to connect to newly found peer %s: %v", info.ID, err)
 			}

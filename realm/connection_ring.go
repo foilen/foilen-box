@@ -137,6 +137,7 @@ func (e *Engine) connectRingCandidates(ctx context.Context, h host.Host, candida
 		if len(addrs) == 0 {
 			continue
 		}
+		log.Printf("realm engine: connecting to ring peer %s", candidate)
 		dialCtx, cancel := context.WithTimeout(ctx, dialTimeout)
 		err = h.Connect(dialCtx, peer.AddrInfo{ID: pid, Addrs: addrs})
 		cancel()

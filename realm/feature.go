@@ -2,6 +2,7 @@ package realm
 
 import (
 	"context"
+	"log"
 
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -166,5 +167,6 @@ func (r *Registrar) EnsureConnected(ctx context.Context, id peer.ID) error {
 
 	dialCtx, cancel := context.WithTimeout(ctx, dialTimeout)
 	defer cancel()
+	log.Printf("realm engine: connecting to peer %s", id)
 	return h.Connect(dialCtx, peer.AddrInfo{ID: id, Addrs: addrs})
 }

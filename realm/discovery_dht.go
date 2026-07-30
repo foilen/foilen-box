@@ -159,6 +159,7 @@ func (e *Engine) reconnectRememberedDHTPeers(ctx context.Context, h host.Host) {
 		if h.Network().Connectedness(info.ID) == network.Connected {
 			continue
 		}
+		log.Printf("realm engine: reconnecting to remembered DHT swarm peer %s", info.ID)
 		dialCtx, cancel := context.WithTimeout(ctx, dialTimeout)
 		err := h.Connect(dialCtx, info)
 		cancel()
