@@ -63,6 +63,15 @@ func (e *Engine) onDisconnected(net network.Network, conn network.Conn) {
 	} else {
 		log.Printf("realm engine: disconnected from peer %s (%s, groups: %v)", remote, info.Hostname, info.GroupNames)
 	}
+
+	if e.isRingNeighbor(remote.String()) {
+		e.mu.Lock()
+		ctx := e.ctx
+		e.mu.Unlock()
+		if ctx != nil {
+			go e.reconnectRingPeerOnce(ctx, remote.String())
+		}
+	}
 }
 
 // handleFoundPeer records a peer surfaced by mDNS/DHT discovery under

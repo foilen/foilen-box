@@ -72,6 +72,7 @@ export function initRealmPeers(api, onPeersUpdate) {
 				["ID", formatPeerLabel(peer)],
 				["Groups", (peer.groupNames || []).join(", ")],
 				["Connected", peer.connected ? "yes" : "no"],
+				["Main", peer.mainPeer ? "yes" : "no"],
 				["Relay Service", peer.relayServiceEnabled ? "yes" : "no"],
 				["Version", peer.version || ""],
 				["Last Seen", peer.lastSeen ? new Date(peer.lastSeen).toLocaleString() : ""],

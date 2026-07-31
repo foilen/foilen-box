@@ -5,6 +5,7 @@ import (
 	"log"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -185,4 +186,102 @@ func (e *Engine) isPeerInUse(id peer.ID) bool {
 		}
 	}
 	return false
+}
+
+// IsRingNeighbor reports whether the peer with the given id is one of this
+// peer's ring neighbors ("main" peers) for any configured group — see
+// isRingNeighbor.
+func (e *Engine) IsRingNeighbor(id string) bool {
+	return e.isRingNeighbor(id)
+}
+
+// isRingNeighbor reports whether id is one of this peer's ringNeighborCount
+// closest previous/next members, in either direction, for any configured
+// group — i.e. whether maintainGroupRings actively wants it connected,
+// regardless of whether it currently is. Used to decide which disconnects
+// are worth a one-time reconnect attempt (see reconnectRingPeerOnce).
+func (e *Engine) isRingNeighbor(id string) bool {
+	e.mu.Lock()
+	cfg := e.cfg
+	e.mu.Unlock()
+
+	selfID := ""
+	if h := e.getHost(); h != nil {
+		selfID = h.ID().String()
+	}
+	if selfID == "" {
+		return false
+	}
+	known := e.peers.List()
+
+	for _, group := range cfg.Groups {
+		members := ringMemberIDs(known, group.Name, selfID)
+		selfIdx := indexOfString(members, selfID)
+		if selfIdx < 0 || len(members) < 2 {
+			continue
+		}
+		for _, dir := range [2]int{-1, 1} {
+			candidates := ringCandidateOrder(members, selfIdx, dir)
+			if len(candidates) > ringNeighborCount {
+				candidates = candidates[:ringNeighborCount]
+			}
+			if indexOfString(candidates, id) >= 0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// getHost returns the currently running libp2p host, or nil if the engine
+// isn't started.
+func (e *Engine) getHost() host.Host {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.host
+}
+
+// reconnectRingPeerOnce waits reconnectDelay then, if the engine is still
+// running and id is still disconnected, makes a single dial attempt. Meant
+// to be run in its own goroutine right after a ring-neighbor ("main" peer)
+// disconnect: the next scheduled ring maintenance pass (see
+// maintainGroupRings) could be up to keepAliveInterval away, so a short,
+// one-shot retry gives a neighbor that dropped for a transient reason (e.g.
+// a brief network blip) a chance to come back sooner without waiting for
+// that tick.
+func (e *Engine) reconnectRingPeerOnce(ctx context.Context, id string) {
+	timer := time.NewTimer(reconnectDelay)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-ctx.Done():
+		return
+	}
+
+	h := e.getHost()
+	if h == nil {
+		return
+	}
+	pid, err := peer.Decode(id)
+	if err != nil {
+		return
+	}
+	if h.Network().Connectedness(pid) == network.Connected {
+		return
+	}
+	info, ok := e.peers.Get(id)
+	if !ok {
+		return
+	}
+	addrs := parseMultiaddrs(info.Addresses)
+	if len(addrs) == 0 {
+		return
+	}
+
+	log.Printf("realm engine: reconnecting to main peer %s after disconnect", id)
+	dialCtx, cancel := context.WithTimeout(ctx, dialTimeout)
+	defer cancel()
+	if err := h.Connect(dialCtx, peer.AddrInfo{ID: pid, Addrs: addrs}); err != nil {
+		log.Printf("realm engine: reconnect to main peer %s failed: %v", id, err)
+	}
 }

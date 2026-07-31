@@ -39,6 +39,11 @@ const (
 	dhtDatastoreDirName = "realm-dht-datastore"
 	keepAliveInterval   = 10 * time.Minute
 	dialTimeout         = 30 * time.Second
+
+	// reconnectDelay is how long onDisconnected waits before making a single
+	// reconnect attempt to a main (ring-neighbor) peer that just dropped.
+	// See reconnectRingPeerOnce.
+	reconnectDelay = 10 * time.Second
 )
 
 // Engine owns a running Realm host, if any. The zero value (via New) is

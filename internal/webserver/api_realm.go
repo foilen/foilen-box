@@ -869,6 +869,7 @@ type peerResult struct {
 	Connected           bool      `json:"connected"`
 	RelayServiceEnabled bool      `json:"relayServiceEnabled"`
 	Version             string    `json:"version"`
+	MainPeer            bool      `json:"mainPeer"`
 }
 
 func handleRealmListPeers(a *api, _ json.RawMessage) (any, error) {
@@ -885,6 +886,7 @@ func handleRealmListPeers(a *api, _ json.RawMessage) (any, error) {
 			Connected:           p.Connected,
 			RelayServiceEnabled: p.RelayServiceEnabled,
 			Version:             p.Version,
+			MainPeer:            a.realmEngine.IsRingNeighbor(p.ID),
 		})
 	}
 	return map[string]any{"peers": result}, nil
