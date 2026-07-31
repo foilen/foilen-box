@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"foilen-realm/model"
 )
@@ -60,9 +61,9 @@ func (s *Service) Dir() string {
 }
 
 // Load returns the persisted config, or a default config (per-platform
-// DhtMode, mDNS/DHT both enabled) if the file is missing or
-// unreadable/corrupt — read errors are intentionally swallowed here,
-// matching early/config.Service.
+// DhtMode, DHT enabled, mDNS enabled except on Android) if the file is
+// missing or unreadable/corrupt — read errors are intentionally swallowed
+// here, matching early/config.Service.
 func (s *Service) Load() model.Config {
 	data, err := os.ReadFile(s.configFile)
 	if err != nil {
@@ -77,8 +78,11 @@ func (s *Service) Load() model.Config {
 
 func (s *Service) defaultConfig() model.Config {
 	return model.Config{
-		DhtMode:    s.defaultDhtMode,
-		EnableMdns: true,
+		DhtMode: s.defaultDhtMode,
+		// mDNS isn't supported on Android (see realm.mdnsSupported); default
+		// it off there so a fresh config doesn't advertise a setting that
+		// silently does nothing.
+		EnableMdns: runtime.GOOS != "android",
 		EnableDht:  true,
 	}
 }

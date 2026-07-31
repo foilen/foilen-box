@@ -85,7 +85,7 @@ initSpecTab(api);
 initTroubleshootingTab(api);
 initEarlyTab(api);
 initGpsTab(isAndroid);
-initRealmTab(api);
+initRealmTab(api, isAndroid);
 initAndroidConfigTab(isAndroid);
 initLogsTab(api);
 

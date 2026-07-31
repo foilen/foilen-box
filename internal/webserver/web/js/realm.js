@@ -28,7 +28,7 @@ function initRealmSubtabs(onActivate) {
 	document.getElementById(buttons[0].dataset.subtab).classList.add("active");
 }
 
-export function initRealmTab(api) {
+export function initRealmTab(api, isAndroid) {
 	const enabledCheckbox = document.getElementById("realm-enabled");
 	const peerIdEl = document.getElementById("realm-peer-id");
 	const generatePeerIdButton = document.getElementById("realm-generate-peer-id-button");
@@ -36,6 +36,15 @@ export function initRealmTab(api) {
 	const descriptionInput = document.getElementById("realm-description");
 	const saveDescriptionButton = document.getElementById("realm-save-description-button");
 	const enableMdnsCheckbox = document.getElementById("realm-enable-mdns");
+	// mDNS (LAN discovery) isn't supported on Android — see
+	// realm.mdnsSupported in the Go backend — so don't offer a toggle that
+	// would silently do nothing; DHT discovery is unaffected. The detached
+	// enableMdnsCheckbox reference stays valid for the rest of this module
+	// (setting .checked on it below is a harmless no-op), so nothing else
+	// needs to change.
+	if (isAndroid) {
+		document.getElementById("realm-mdns-row").remove();
+	}
 	const enableDhtCheckbox = document.getElementById("realm-enable-dht");
 	const dhtModeSelect = document.getElementById("realm-dht-mode");
 	const peerRetentionDaysInput = document.getElementById("realm-peer-retention-days");

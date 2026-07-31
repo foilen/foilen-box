@@ -336,7 +336,7 @@ func (e *Engine) reconcileLocked(cfg model.Config) error {
 		}
 	}
 
-	if cfg.EnableMdns {
+	if cfg.EnableMdns && mdnsSupported {
 		desired := groupsByKey(cfg.Groups)
 		for key, svc := range e.mdnsSvcs {
 			if _, ok := desired[key]; !ok {
@@ -542,7 +542,7 @@ func (e *Engine) Start(cfg model.Config) error {
 		}
 	}
 
-	if cfg.EnableMdns {
+	if cfg.EnableMdns && mdnsSupported {
 		for _, group := range cfg.Groups {
 			e.startGroupMdnsLocked(h, group)
 		}
