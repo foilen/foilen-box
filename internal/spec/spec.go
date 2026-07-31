@@ -19,10 +19,11 @@ import (
 // text dump. Any field is left empty if that piece of information couldn't
 // be determined.
 type Summary struct {
-	CPU  string `json:"cpu"`
-	Mem  string `json:"mem"`
-	GPU  string `json:"gpu"`
-	Disk string `json:"disk"`
+	CPU     string `json:"cpu"`
+	Mem     string `json:"mem"`
+	Battery string `json:"battery"`
+	GPU     string `json:"gpu"`
+	Disk    string `json:"disk"`
 }
 
 // GetSummary returns the compact Summary. extraPath is used the same way as
@@ -49,6 +50,14 @@ func GetSummary(extraPath string) Summary {
 
 	if vmem, err := mem.VirtualMemory(); err == nil {
 		s.Mem = fmt.Sprintf("%s / %s used", formatBytes(vmem.Used), formatBytes(vmem.Total))
+	}
+
+	if infos := batteryInfos(); len(infos) > 0 {
+		names := make([]string, len(infos))
+		for i, info := range infos {
+			names[i] = info.String()
+		}
+		s.Battery = strings.Join(names, ", ")
 	}
 
 	if infos := gpuInfos(); len(infos) > 0 {
@@ -121,6 +130,14 @@ func Report(extraPath string) string {
 		fmt.Fprintf(&sb, "Swap Used:  %s (%.1f%%)\n", formatBytes(swap.Used), swap.UsedPercent)
 	}
 	sb.WriteString("\n")
+
+	if infos := batteryInfos(); len(infos) > 0 {
+		sb.WriteString("=== Battery ===\n")
+		for _, info := range infos {
+			fmt.Fprintf(&sb, "%s\n", info)
+		}
+		sb.WriteString("\n")
+	}
 
 	sb.WriteString("=== GPU ===\n")
 	if infos := gpuInfos(); len(infos) > 0 {

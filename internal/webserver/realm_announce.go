@@ -99,6 +99,7 @@ func (a *realmAnnounce) RunPeriodic(reg *realm.Registrar) {
 			Text:      a.specText(),
 			CPU:       summary.CPU,
 			Mem:       summary.Mem,
+			Battery:   summary.Battery,
 			GPU:       summary.GPU,
 			Disk:      summary.Disk,
 			FetchedAt: time.Now().UTC(),

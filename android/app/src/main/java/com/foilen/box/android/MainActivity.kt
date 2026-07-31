@@ -4,8 +4,10 @@ import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -24,6 +26,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import mobile.BatteryProvider
 import mobile.Mobile
 import mobile.NotificationSink
 import mobile.RealmStateSink
@@ -47,8 +50,13 @@ import java.util.concurrent.atomic.AtomicInteger
  * Also implements mobile.RealmStateSink so RealmForegroundService's
  * notification can be dropped (and restored) when the user toggles Realm
  * networking off/on from the web UI's Realm settings.
+ *
+ * Also implements mobile.BatteryProvider so the Specs tab can show battery
+ * info: Go's usual sysfs-based detection (internal/spec) can't read
+ * /sys/class/power_supply on Android, since that's commonly blocked by
+ * SELinux for regular (non-system) apps, so BatteryManager is used instead.
  */
-class MainActivity : ComponentActivity(), NotificationSink, RealmStateSink {
+class MainActivity : ComponentActivity(), NotificationSink, RealmStateSink, BatteryProvider {
 
 	private lateinit var webView: WebView
 	private var filePickerCallback: ValueCallback<Array<Uri>>? = null
@@ -144,7 +152,7 @@ class MainActivity : ComponentActivity(), NotificationSink, RealmStateSink {
 		// the server URL and reload if it no longer matches what's loaded.
 		Thread {
 			try {
-				val url = Mobile.startServer(filesDir.absolutePath, deviceName(), this, this)
+				val url = Mobile.startServer(filesDir.absolutePath, deviceName(), this, this, this)
 				val currentUrl = webView.url
 				if (currentUrl == null || !currentUrl.startsWith(url)) {
 					runOnUiThread { webView.loadUrl("$url?platform=android") }
@@ -171,7 +179,7 @@ class MainActivity : ComponentActivity(), NotificationSink, RealmStateSink {
 	private fun startServerAndLoad() {
 		Thread {
 			try {
-				val url = Mobile.startServer(filesDir.absolutePath, deviceName(), this, this)
+				val url = Mobile.startServer(filesDir.absolutePath, deviceName(), this, this, this)
 				runOnUiThread { webView.loadUrl("$url?platform=android") }
 			} catch (e: Exception) {
 				Log.e(TAG, "failed to start server", e)
@@ -228,6 +236,27 @@ class MainActivity : ComponentActivity(), NotificationSink, RealmStateSink {
 	// re-enabled.
 	override fun setRealmEnabled(enabled: Boolean) {
 		RealmForegroundService.setRealmEnabled(this, enabled)
+	}
+
+	// mobile.BatteryProvider: called synchronously from Go whenever the specs
+	// report is (re)generated (at most once a day, see realm_announce.go, or
+	// on-demand from the Specs tab).
+	override fun batteryPercent(): Int {
+		val bm = getSystemService(BatteryManager::class.java) ?: return -1
+		val percent = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+		return if (percent in 0..100) percent else -1
+	}
+
+	override fun batteryStatus(): String {
+		val status = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+			?.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+		return when (status) {
+			BatteryManager.BATTERY_STATUS_CHARGING -> "Charging"
+			BatteryManager.BATTERY_STATUS_DISCHARGING -> "Discharging"
+			BatteryManager.BATTERY_STATUS_FULL -> "Full"
+			BatteryManager.BATTERY_STATUS_NOT_CHARGING -> "Not Charging"
+			else -> ""
+		}
 	}
 
 	companion object {

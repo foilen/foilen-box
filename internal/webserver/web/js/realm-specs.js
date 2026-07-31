@@ -30,7 +30,7 @@ export function initRealmSpecs(api) {
 			fetchedCell.dataset.label = "Fetched";
 			row.appendChild(fetchedCell);
 
-			for (const [label, value] of [["CPU", s.cpu], ["Mem", s.mem], ["GPU", s.gpu], ["Disk", s.disk]]) {
+			for (const [label, value] of [["CPU", s.cpu], ["Mem", s.mem], ["Battery", s.battery], ["GPU", s.gpu], ["Disk", s.disk]]) {
 				const cell = document.createElement("td");
 				cell.textContent = value || "";
 				cell.dataset.label = label;
@@ -72,6 +72,7 @@ export function initRealmSpecs(api) {
 					text: parsed.text || "",
 					cpu: parsed.cpu || "",
 					mem: parsed.mem || "",
+					battery: parsed.battery || "",
 					gpu: parsed.gpu || "",
 					disk: parsed.disk || "",
 					fetchedAt: parsed.fetchedAt,

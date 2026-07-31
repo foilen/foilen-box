@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	appspec "foilen-box/internal/spec"
 	"foilen-box/internal/webserver"
 	realmmodel "foilen-realm/model"
 )
@@ -35,17 +36,28 @@ type RealmStateSink interface {
 	SetRealmEnabled(enabled bool)
 }
 
+// BatteryProvider is implemented on the Kotlin side (MainActivity, backed by
+// Android's BatteryManager) and passed to StartServer; gomobile binds it to a
+// Java/Kotlin interface so the specs report can show battery info on
+// Android, where Go's usual sysfs-based detection (internal/spec) is
+// unreliable — see appspec.BatteryProvider.
+type BatteryProvider interface {
+	BatteryPercent() int32
+	BatteryStatus() string
+}
+
 // StartServer starts the local web UI/API server, persisting local config
 // (Early API credentials) under filesDir (the Android app's private files
 // directory), and returns the base URL to load in a WebView. deviceName is
 // reported as the Realm config's hostname in place of os.Hostname(), which
 // always returns "localhost" on Android; pass "" to fall back to that
-// default. notifSink and stateSink may be nil; deviceName is only applied on
-// the first call. Calling it again while already running still (re)applies
-// any non-nil sink passed this time, so a caller that started the server
-// without sinks (e.g. RealmForegroundService starting the engine on boot,
-// before MainActivity exists) can be followed by one that wires them up.
-func StartServer(filesDir string, deviceName string, notifSink NotificationSink, stateSink RealmStateSink) (string, error) {
+// default. notifSink, stateSink, and batteryProvider may be nil; deviceName
+// is only applied on the first call. Calling it again while already running
+// still (re)applies any non-nil sink passed this time, so a caller that
+// started the server without sinks (e.g. RealmForegroundService starting the
+// engine on boot, before MainActivity exists) can be followed by one that
+// wires them up.
+func StartServer(filesDir string, deviceName string, notifSink NotificationSink, stateSink RealmStateSink, batteryProvider BatteryProvider) (string, error) {
 	mu.Lock()
 	defer mu.Unlock()
 
@@ -64,6 +76,9 @@ func StartServer(filesDir string, deviceName string, notifSink NotificationSink,
 	}
 	if stateSink != nil {
 		server.SetRealmStateSink(stateSink)
+	}
+	if batteryProvider != nil {
+		appspec.SetAndroidBatteryProvider(batteryProvider)
 	}
 	return server.URL(), nil
 }
