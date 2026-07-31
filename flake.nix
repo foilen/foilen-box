@@ -13,7 +13,7 @@
         gitShortHash = self.shortRev or self.dirtyShortRev or "unknown";
         # self.lastModifiedDate is "YYYYMMDDHHMMSS" in UTC.
         d = self.lastModifiedDate;
-        gitCommitDate = "${builtins.substring 0 4 d}-${builtins.substring 4 2 d}-${builtins.substring 6 2 d} ${builtins.substring 8 2 d}:${builtins.substring 10 2 d} UTC";
+        gitCommitDate = "${builtins.substring 0 8 d}_${builtins.substring 8 4 d}";
       in
       {
         packages.default = pkgs.buildGoModule {

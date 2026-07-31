@@ -9,3 +9,12 @@ var (
 	Version    = "dev"
 	CommitDate = ""
 )
+
+// displayVersion returns the commit date (if set at build time) and short
+// hash, e.g. "20260731_1557 abc1234".
+func displayVersion() string {
+	if CommitDate == "" {
+		return Version
+	}
+	return CommitDate + " " + Version
+}

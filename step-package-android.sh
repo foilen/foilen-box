@@ -22,7 +22,7 @@ mkdir -p dist/android android/app/libs
 # validates such references since Go 1.23 and this package's pinned
 # reference no longer matches Go 1.26's internals, so relax the check.
 GIT_COMMIT=$(git rev-parse --short HEAD)
-GIT_COMMIT_DATE=$(TZ=UTC git log -1 --format=%cd --date=format-local:'%Y-%m-%d %H:%M UTC')
+GIT_COMMIT_DATE=$(TZ=UTC git log -1 --format=%cd --date=format-local:'%Y%m%d_%H%M')
 "$GOMOBILE" bind -target=android -androidapi 21 -ldflags="-checklinkname=0 -X foilen-box/internal/webserver.Version=$GIT_COMMIT -X 'foilen-box/internal/webserver.CommitDate=$GIT_COMMIT_DATE'" -o android/app/libs/foilenbox.aar ./cmd/mobile
 (
     cd android
