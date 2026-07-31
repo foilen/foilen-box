@@ -29,7 +29,7 @@ const (
 	// specRefreshInterval caps how often the (comparatively expensive)
 	// system report is gathered and posted, independently of RunPeriodic's
 	// own (much shorter) cadence.
-	specRefreshInterval = 24 * time.Hour
+	specRefreshInterval = 6 * time.Hour
 
 	// peerInfoRefreshInterval caps how often this peer's own
 	// hostname/description/addresses are re-posted when nothing has
