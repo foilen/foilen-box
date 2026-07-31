@@ -29,9 +29,10 @@ const (
 )
 
 // Setup points the standard logger at a rotating file inside dir, creating
-// dir if needed. It's meant to be called once, as early as possible, by
-// each entry point (desktop, Android) before any other package logs
-// anything.
+// dir if needed, and clears any existing log file so each process start
+// begins with an empty log. It's meant to be called once, as early as
+// possible, by each entry point (desktop, Android) before any other package
+// logs anything.
 func Setup(dir string) error {
 	w, err := newRotatingWriter(dir)
 	if err != nil {
@@ -67,7 +68,7 @@ func (w *rotatingWriter) logPath() string  { return filepath.Join(w.dir, LogFile
 func (w *rotatingWriter) metaPath() string { return filepath.Join(w.dir, metaFileName) }
 
 func (w *rotatingWriter) open() error {
-	f, err := os.OpenFile(w.logPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	f, err := os.OpenFile(w.logPath(), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		return err
 	}
