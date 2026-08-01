@@ -5,6 +5,7 @@ import { initGpsTab } from "./gps.js";
 import { initRealmTab } from "./realm.js";
 import { initAndroidConfigTab } from "./android-config.js";
 import { initLogsTab } from "./logs.js";
+import { parseHash, updateHash } from "./hash.js";
 
 class Api {
 	constructor() {
@@ -63,15 +64,23 @@ class Api {
 	}
 }
 
+function activateTab(tabId) {
+	const button = document.querySelector(`.tab-button[data-tab="${tabId}"]`);
+	if (!button) return false;
+	document.querySelectorAll(".tab-button").forEach((b) => b.classList.remove("active"));
+	document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
+	button.classList.add("active");
+	document.getElementById(tabId).classList.add("active");
+	return true;
+}
+
 function initTabs() {
 	const buttons = document.querySelectorAll(".tab-button");
 	buttons.forEach((button) => {
 		button.addEventListener("click", () => {
 			console.log("[action] switch tab", { tab: button.dataset.tab });
-			buttons.forEach((b) => b.classList.remove("active"));
-			document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
-			button.classList.add("active");
-			document.getElementById(button.dataset.tab).classList.add("active");
+			activateTab(button.dataset.tab);
+			updateHash();
 		});
 	});
 }
@@ -94,3 +103,7 @@ if (!isAndroid) {
 	document.getElementById("android-config-tab-button").remove();
 	document.getElementById("top-buffer").remove();
 }
+
+const { tab } = parseHash();
+if (tab) activateTab(tab);
+updateHash();

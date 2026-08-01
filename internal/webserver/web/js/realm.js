@@ -7,24 +7,30 @@ import { initRealmScripts } from "./realm-scripts.js";
 import { initRealmServices } from "./realm-services.js";
 import { initRealmSpeedtest } from "./realm-speedtest.js";
 import { initRealmMaps } from "./realm-maps.js";
+import { parseHash, updateHash } from "./hash.js";
 
 // initRealmSubtabs wires subtab switching; onActivate, if given, is called
 // with the activated button's data-subtab value every time a subtab is
 // switched to (used by Services to refresh stale peers on activation).
 function initRealmSubtabs(onActivate) {
 	const buttons = document.querySelectorAll("#realm-subtabs .subtab-button");
+	function activate(button) {
+		buttons.forEach((b) => b.classList.remove("active"));
+		document.querySelectorAll("#realm .subtab-panel").forEach((p) => p.classList.remove("active"));
+		button.classList.add("active");
+		document.getElementById(button.dataset.subtab).classList.add("active");
+		if (onActivate) onActivate(button.dataset.subtab);
+	}
 	buttons.forEach((button) => {
 		button.addEventListener("click", () => {
 			console.log("[action] switch realm subtab", { subtab: button.dataset.subtab });
-			buttons.forEach((b) => b.classList.remove("active"));
-			document.querySelectorAll("#realm .subtab-panel").forEach((p) => p.classList.remove("active"));
-			button.classList.add("active");
-			document.getElementById(button.dataset.subtab).classList.add("active");
-			if (onActivate) onActivate(button.dataset.subtab);
+			activate(button);
+			updateHash();
 		});
 	});
-	buttons[0].classList.add("active");
-	document.getElementById(buttons[0].dataset.subtab).classList.add("active");
+	const { tab, subtab } = parseHash();
+	const fromHash = tab === "realm" && subtab && [...buttons].find((b) => b.dataset.subtab === subtab);
+	activate(fromHash || buttons[0]);
 }
 
 export function initRealmTab(api, isAndroid) {
