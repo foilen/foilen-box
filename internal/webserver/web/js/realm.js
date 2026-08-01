@@ -1,5 +1,6 @@
 import { report } from "./util.js";
 import { initRealmGroups } from "./realm-groups.js";
+import { initRealmIdentities } from "./realm-identities.js";
 import { initRealmPermissions } from "./realm-permissions.js";
 import { initRealmPeers } from "./realm-peers.js";
 import { initRealmSpecs } from "./realm-specs.js";
@@ -70,6 +71,8 @@ export function initRealmTab(api, isAndroid) {
 	// declared so it can be handed to initRealmGroups/initRealmPermissions
 	// before their own render functions exist.
 	let renderGroups = () => {};
+	let renderIdentities = () => {};
+	let onIdentitiesConfigUpdate = () => {};
 	let renderPermissions = () => {};
 	let updatePeersForPermissions = () => {};
 	let renderMyScripts = () => {};
@@ -98,6 +101,7 @@ export function initRealmTab(api, isAndroid) {
 		specsModule.onPeersUpdate(peers);
 		scriptsModule.onPeersUpdate(peers);
 		speedtestModule.onPeersUpdate(peers);
+		identitiesModule.onPeersUpdate(peers);
 	}
 
 	function renderConfig(cfg) {
@@ -131,6 +135,8 @@ export function initRealmTab(api, isAndroid) {
 		exposeWebAnnounceProtocolSelect.value = cfg.exposeWebAnnounceProtocol || "";
 
 		renderGroups(cfg);
+		renderIdentities(cfg);
+		onIdentitiesConfigUpdate(cfg);
 		renderPermissions(cfg);
 		renderMyScripts(cfg);
 		renderMyServices(cfg);
@@ -145,6 +151,9 @@ export function initRealmTab(api, isAndroid) {
 	}
 
 	renderGroups = initRealmGroups(api, output, renderConfig).renderGroups;
+	const identitiesModule = initRealmIdentities(api, output, renderConfig);
+	renderIdentities = identitiesModule.renderIdentities;
+	onIdentitiesConfigUpdate = identitiesModule.onConfigUpdate;
 	const permissionsModule = initRealmPermissions(api, output, renderConfig);
 	renderPermissions = permissionsModule.renderPermissions;
 	updatePeersForPermissions = permissionsModule.updatePeers;

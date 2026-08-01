@@ -14,6 +14,7 @@ import (
 
 	realm "foilen-realm"
 	realmconfig "foilen-realm/config"
+	realmidentity "foilen-realm/features/identity"
 	realmmaps "foilen-realm/features/maps"
 	realmscripts "foilen-realm/features/scripts"
 	realmservices "foilen-realm/features/services"
@@ -50,6 +51,7 @@ type api struct {
 	realmServicesStore *realmservices.Store
 	realmMapsFeature   *realmmaps.Feature
 	realmSpeedTest     *boxspeedtest.Feature
+	realmIdentity      *realmidentity.Feature
 	realmStateSink     RealmStateSink
 }
 
@@ -96,13 +98,22 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 	mapsFeature := realmmaps.New(realmMapsStore)
 	announceFeature := newRealmAnnounce(mapsFeature, func() string { return appspec.Report(dataDir) }, func() appspec.Summary { return appspec.GetSummary(dataDir) }, func() string { return resolveHostname(hostnameOverride) })
 	speedTestFeature := boxspeedtest.New()
+	// a is assigned below, but the identity feature's onReceive callback
+	// can only ever fire later (once a peer actually pushes an identity to
+	// us), long after a is fully constructed, so it's safe for the closure
+	// to capture this forward-declared pointer.
+	var a *api
+	identityFeature := realmidentity.New(func(name string, kp realmmodel.KeyPair) error {
+		return a.importPushedIdentity(name, kp)
+	})
 	realmEng.Register(scriptsFeature)
 	realmEng.Register(servicesFeature)
 	realmEng.Register(mapsFeature)
 	realmEng.Register(announceFeature)
 	realmEng.Register(speedTestFeature)
+	realmEng.Register(identityFeature)
 
-	a := &api{
+	a = &api{
 		configDir:          configDir,
 		hostnameOverride:   hostnameOverride,
 		earlyConfig:        configService,
@@ -115,6 +126,7 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 		realmServicesStore: realmServicesStore,
 		realmMapsFeature:   mapsFeature,
 		realmSpeedTest:     speedTestFeature,
+		realmIdentity:      identityFeature,
 	}
 
 	// Auto-start the realm engine once a peer id already exists
@@ -159,6 +171,21 @@ func (a *api) updateRealmConfig(fn func(cfg *realmmodel.Config)) (realmmodel.Con
 		log.Printf("realm: failed to apply engine config: %v", err)
 	}
 	return cfg, nil
+}
+
+// importPushedIdentity is the identity feature's onReceive callback: it's
+// invoked whenever another peer pushes an identity to us and permission
+// allows it, and imports it automatically (no user confirmation), renaming
+// on a name collision rather than rejecting the push outright.
+func (a *api) importPushedIdentity(name string, kp realmmodel.KeyPair) error {
+	unique := name
+	for i := 2; a.identityExists(unique); i++ {
+		unique = fmt.Sprintf("%s (%d)", name, i)
+	}
+	_, err := a.updateRealmConfig(func(c *realmmodel.Config) {
+		c.Identities = append(c.Identities, realmmodel.Identity{Name: unique, KeyPair: kp})
+	})
+	return err
 }
 
 // resolveHostname returns override if set, falling back to the OS-reported
@@ -222,6 +249,11 @@ var handlers = map[string]handlerFunc{
 	"realm.addPermission":         handleRealmAddPermission,
 	"realm.deletePermission":      handleRealmDeletePermission,
 	"realm.exportGroup":           handleRealmExportGroup,
+	"realm.addIdentity":           handleRealmAddIdentity,
+	"realm.importIdentity":        handleRealmImportIdentity,
+	"realm.deleteIdentity":        handleRealmDeleteIdentity,
+	"realm.exportIdentity":        handleRealmExportIdentity,
+	"realm.pushIdentity":          handleRealmPushIdentity,
 	"realm.setDescription":        handleRealmSetDescription,
 	"realm.setEnabled":            handleRealmSetEnabled,
 	"realm.setDhtMode":            handleRealmSetDhtMode,

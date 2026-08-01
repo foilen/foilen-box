@@ -35,6 +35,7 @@
 <section id="realm" class="tab-panel active">
 	<div id="realm-subtabs" class="subtab-nav">
 		<button class="subtab-button" data-subtab="realm-main">Main</button>
+		<button class="subtab-button" data-subtab="realm-identities-subtab">Identities</button>
 		<button class="subtab-button" data-subtab="realm-permissions-subtab">Permissions</button>
 		<button class="subtab-button" data-subtab="realm-specs-subtab">Specs</button>
 		<button class="subtab-button" data-subtab="realm-scripts-subtab">Scripts</button>
@@ -202,6 +203,46 @@
 				<thead><tr><th>ID</th><th>Addresses</th></tr></thead>
 				<tbody id="realm-swarm-tbody"></tbody>
 			</table>
+		</div>
+	</div>
+
+	<div id="realm-identities-subtab" class="subtab-panel">
+		<h3>Identities (<span id="realm-identities-count">0</span>)</h3>
+		<p class="hint">Standalone keypairs, separate from your peer identity and groups — a name plus a
+			key you can export, import, or push directly to another peer.</p>
+		<div class="table-scroll">
+			<table id="realm-identities-table">
+				<thead><tr><th>Name</th><th>ID</th><th>Export</th><th>QR</th><th></th></tr></thead>
+				<tbody id="realm-identities-tbody"></tbody>
+			</table>
+		</div>
+		<div class="row">
+			<md-outlined-text-field label="Identity name" id="realm-new-identity-name"></md-outlined-text-field>
+			<md-filled-tonal-button id="realm-add-identity-button">Generate New Identity</md-filled-tonal-button>
+			<md-filled-tonal-button id="realm-import-identity-button">Import Identity</md-filled-tonal-button>
+		</div>
+		<div id="realm-identity-import-form" class="hidden">
+			<div class="row">
+				<input type="file" id="realm-identity-import-file" accept="application/json">
+			</div>
+			<div class="row">
+				<textarea id="realm-identity-import-json" rows="6" placeholder="Paste exported identity JSON here"></textarea>
+			</div>
+			<div class="row">
+				<md-filled-tonal-button id="realm-identity-import-confirm-button">Import</md-filled-tonal-button>
+				<md-filled-tonal-button id="realm-identity-import-scan-button">Scan QR Code</md-filled-tonal-button>
+				<md-text-button id="realm-identity-import-cancel-button">Cancel</md-text-button>
+			</div>
+		</div>
+
+		<h3>Push Identity to a Peer</h3>
+		<p class="hint">Sends the full identity, including its private key, directly to another peer over Realm.
+			The peer imports it automatically if it has granted this peer (or one of its groups) the "Accept
+			pushed identities" permission (see the Permissions subtab).</p>
+		<div class="row">
+			<md-outlined-select id="realm-push-identity-select" label="Identity"></md-outlined-select>
+			<md-outlined-select id="realm-push-identity-peer-select" label="Peer"></md-outlined-select>
+			<md-filled-tonal-button id="realm-push-identity-button">Push</md-filled-tonal-button>
 		</div>
 	</div>
 

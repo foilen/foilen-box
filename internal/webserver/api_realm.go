@@ -26,6 +26,7 @@ type realmConfigResult struct {
 	EnableRelayService bool                          `json:"enableRelayService"`
 	PeerRetentionDays  int                           `json:"peerRetentionDays"`
 	Groups             []groupResult                 `json:"groups"`
+	Identities         []identityResult              `json:"identities"`
 	Scripts            []scriptResult                `json:"scripts"`
 	Services           []serviceResult               `json:"services"`
 
@@ -59,6 +60,12 @@ type groupResult struct {
 	PrivateKeyBase64 string `json:"privateKeyBase64"`
 }
 
+type identityResult struct {
+	Name             string `json:"name"`
+	ID               string `json:"id"`
+	PrivateKeyBase64 string `json:"privateKeyBase64"`
+}
+
 type permissionResult struct {
 	Action    string `json:"action"`
 	PeerID    string `json:"peerId"`
@@ -72,6 +79,14 @@ func realmConfigResponse(a *api, cfg realmmodel.Config) realmConfigResult {
 			Name:             g.Name,
 			ID:               g.KeyPair.ID,
 			PrivateKeyBase64: g.KeyPair.PrivateKeyBase64,
+		})
+	}
+	identities := make([]identityResult, 0, len(cfg.Identities))
+	for _, id := range cfg.Identities {
+		identities = append(identities, identityResult{
+			Name:             id.Name,
+			ID:               id.KeyPair.ID,
+			PrivateKeyBase64: id.KeyPair.PrivateKeyBase64,
 		})
 	}
 	permissions := make([]permissionResult, 0, len(cfg.Permissions))
@@ -116,6 +131,7 @@ func realmConfigResponse(a *api, cfg realmmodel.Config) realmConfigResult {
 		EnableRelayService: cfg.EnableRelayService,
 		PeerRetentionDays:  cfg.PeerRetentionDays,
 		Groups:             groups,
+		Identities:         identities,
 		Scripts:            scripts,
 		Services:           services,
 
@@ -273,6 +289,146 @@ func handleRealmDeleteGroup(a *api, params json.RawMessage) (any, error) {
 		return nil, err
 	}
 	return realmConfigResponse(a, cfg), nil
+}
+
+// identityExists reports whether an identity named name already exists in
+// the current Realm config.
+func (a *api) identityExists(name string) bool {
+	for _, id := range a.realmConfig.Load().Identities {
+		if id.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// createIdentity adds a new identity under kp, persisting it. Shared by
+// realm.addIdentity (a freshly generated keypair) and realm.importIdentity
+// (an imported one).
+func (a *api) createIdentity(name string, kp realmmodel.KeyPair) (realmmodel.Config, error) {
+	return a.updateRealmConfig(func(c *realmmodel.Config) {
+		c.Identities = append(c.Identities, realmmodel.Identity{Name: name, KeyPair: kp})
+	})
+}
+
+func handleRealmAddIdentity(a *api, params json.RawMessage) (any, error) {
+	var p struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+	if p.Name == "" {
+		return nil, fmt.Errorf("please enter an identity name")
+	}
+	if a.identityExists(p.Name) {
+		return nil, fmt.Errorf("an identity named %q already exists", p.Name)
+	}
+	kp, err := realmkeypair.Generate()
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := a.createIdentity(p.Name, kp)
+	if err != nil {
+		return nil, err
+	}
+	return realmConfigResponse(a, cfg), nil
+}
+
+func handleRealmImportIdentity(a *api, params json.RawMessage) (any, error) {
+	var p struct {
+		Name             string `json:"name"`
+		PrivateKeyBase64 string `json:"privateKeyBase64"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+	if p.Name == "" || p.PrivateKeyBase64 == "" {
+		return nil, fmt.Errorf("please enter both an identity name and the private key")
+	}
+	if a.identityExists(p.Name) {
+		return nil, fmt.Errorf("an identity named %q already exists", p.Name)
+	}
+	kp, err := realmkeypair.Import(p.PrivateKeyBase64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid private key: %w", err)
+	}
+	cfg, err := a.createIdentity(p.Name, kp)
+	if err != nil {
+		return nil, err
+	}
+	return realmConfigResponse(a, cfg), nil
+}
+
+func handleRealmDeleteIdentity(a *api, params json.RawMessage) (any, error) {
+	var p struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+	cfg, err := a.updateRealmConfig(func(c *realmmodel.Config) {
+		filtered := c.Identities[:0]
+		for _, id := range c.Identities {
+			if id.Name != p.Name {
+				filtered = append(filtered, id)
+			}
+		}
+		c.Identities = filtered
+	})
+	if err != nil {
+		return nil, err
+	}
+	return realmConfigResponse(a, cfg), nil
+}
+
+type exportIdentityResult struct {
+	Name             string `json:"name"`
+	PrivateKeyBase64 string `json:"privateKeyBase64"`
+}
+
+func handleRealmExportIdentity(a *api, params json.RawMessage) (any, error) {
+	var p struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+	cfg := a.realmConfig.Load()
+	for _, id := range cfg.Identities {
+		if id.Name == p.Name {
+			return exportIdentityResult{Name: id.Name, PrivateKeyBase64: id.KeyPair.PrivateKeyBase64}, nil
+		}
+	}
+	return nil, fmt.Errorf("no identity named %q", p.Name)
+}
+
+func handleRealmPushIdentity(a *api, params json.RawMessage) (any, error) {
+	var p struct {
+		Name   string `json:"name"`
+		PeerId string `json:"peerId"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+	if p.Name == "" || p.PeerId == "" {
+		return nil, fmt.Errorf("please select both an identity and a peer")
+	}
+	cfg := a.realmConfig.Load()
+	var kp *realmmodel.KeyPair
+	for i := range cfg.Identities {
+		if cfg.Identities[i].Name == p.Name {
+			kp = &cfg.Identities[i].KeyPair
+			break
+		}
+	}
+	if kp == nil {
+		return nil, fmt.Errorf("no identity named %q", p.Name)
+	}
+	if err := a.realmIdentity.Push(p.PeerId, p.Name, *kp); err != nil {
+		return nil, err
+	}
+	return map[string]any{"pushed": true}, nil
 }
 
 // scriptExists reports whether a script named name already exists in the

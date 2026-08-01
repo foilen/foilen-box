@@ -5,6 +5,7 @@ const ACTION_LABELS = {
 	"common/spec/get": "Fetch this machine's spec",
 	"common/scripts/run": "Run scripts on this machine",
 	"box/speedtest/run": "Run a speed test against this machine",
+	"common/identity/push": "Accept identities pushed to this machine",
 };
 
 export function actionLabel(action) {

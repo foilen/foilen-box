@@ -20,6 +20,10 @@ type Config struct {
 	PeerID      KeyPair `json:"peerId"`
 	Description string  `json:"description"`
 	Groups      []Group `json:"groups"`
+	// Identities are standalone keypairs this peer holds, independent of
+	// its own PeerID and of any Group — created, exported/imported, or
+	// received via a push from another peer.
+	Identities []Identity `json:"identities"`
 	// Scripts are fixed, owner-defined shell commands this peer offers to
 	// run on request from peers/groups granted ActionRunScript.
 	Scripts []Script `json:"scripts"`
