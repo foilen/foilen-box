@@ -467,9 +467,11 @@ func (f *Feature) groupFor(groupID string) (model.Group, error) {
 }
 
 // broadcast sends env to every peer currently subscribed to
-// group/storeName and still connected, fire-and-forget: a peer that's
-// offline or unreachable right now will simply pick this change up via its
-// next subscribe catch-up.
+// group/storeName, fire-and-forget: incomingSubs is already pruned of a peer
+// the moment it disconnects (see OnPeerDisconnected), so there's no need to
+// re-check Connected here — a peer that's actually gone will just fail
+// sendPush's stream open, which logs it instead of silently dropping the
+// event, and picks the change up via its next subscribe catch-up.
 func (f *Feature) broadcast(reg *realm.Registrar, group model.Group, storeName string, env model.MapEventEnvelope) {
 	h := reg.Host()
 	ctx := reg.Context()
@@ -481,10 +483,6 @@ func (f *Feature) broadcast(reg *realm.Registrar, group model.Group, storeName s
 		log.Printf("realm maps: broadcasting %s/%s key=%q to %d subscriber(s)", group.Name, storeName, env.Key, len(recipients))
 	}
 	for _, peerID := range recipients {
-		info, ok := reg.Peers().Get(peerID)
-		if !ok || !info.Connected {
-			continue
-		}
 		pid, err := peer.Decode(peerID)
 		if err != nil {
 			continue
