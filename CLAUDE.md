@@ -70,16 +70,16 @@ a pluggable **Feature**.
   confirmed members (including itself) alphabetically by peer ID and tries to stay connected to the
   `ringNeighborCount` (2) peers immediately before/after itself, wrapping around. Any other connected group
   peer outside every ring is disconnected unless a `PeerInUseHook` reports it's still in use.
-- **`Feature` interface** (`feature.go`): `Name()` (namespaces actions, e.g. `common/notifications`),
+- **`Feature` interface** (`feature.go`): `Name()` (namespaces actions, e.g. `common/scripts`),
   `Actions()` (permission actions this feature's incoming handlers check), `RegisterHandlers(reg
   *Registrar)` (registers libp2p stream handlers). Optional hooks: `PeerConnectedHook`, `PeriodicHook`,
   `PeerRemovedHook`, `PeerInUseHook`, `GroupConfirmedHook`.
 - **`Registrar`**: the narrow facade a feature gets instead of touching `Engine` internals —
   `SetStreamHandler`, `Host()`, `PrivKey()`, `Context()`, `Config()`, `IsAllowed(peerID, action)` (deny-by-
   default permission check), `Peers()`.
-- **Built-in features** (`realm/features/`): `notifications`, `maps` (realm map/location sharing), `scripts`
-  (remote script execution), `services` (proxying — implements `PeerRemovedHook`/`PeerInUseHook` to keep a
-  peer connected while actively proxying).
+- **Built-in features** (`realm/features/`): `maps` (realm map/location sharing), `scripts` (remote script
+  execution), `services` (proxying — implements `PeerRemovedHook`/`PeerInUseHook` to keep a peer connected
+  while actively proxying).
 - See `docs/features.md` for the full step-by-step guide to adding a new feature, including the wire-
   protocol conventions used by existing features (worth reading in full before adding one).
 

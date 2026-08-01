@@ -5,8 +5,8 @@ peer identity, group membership, discovery (mDNS/DHT), and a permission
 system, with everything a peer can actually *do* implemented as a pluggable
 **Feature**. Foilen Box (the `foilen-box` module) is just one consumer of
 this library — it happens to register every built-in feature
-(`common/notifications`, `common/spec`, `common/scripts`), but any
-application can register only the ones it needs.
+(`common/maps`, `common/scripts`, `common/services`), but any application
+can register only the ones it needs.
 
 This doc explains how to add a new feature.
 
@@ -16,12 +16,12 @@ Defined in `realm/feature.go`:
 
 ```go
 type Feature interface {
-	// Name namespaces this feature's actions, e.g. "common/notifications".
+	// Name namespaces this feature's actions, e.g. "common/scripts".
 	Name() string
 
 	// Actions lists the fully-qualified permission actions this feature's
 	// incoming handlers check, of the form Name()+"/"+verb (e.g.
-	// "common/notifications/receive"). Engine.AvailableActions aggregates
+	// "common/scripts/run"). Engine.AvailableActions aggregates
 	// these across every registered feature to build the dynamic
 	// permission catalog.
 	Actions() []model.PermissionAction
@@ -35,8 +35,8 @@ type Feature interface {
 
 A feature is an ordinary Go type (usually `*Feature` by convention) that:
 
-1. Owns whatever state/store it needs (e.g. a persisted list of received
-   notifications).
+1. Owns whatever state/store it needs (e.g. `maps`'s persisted key-value
+   stores).
 2. Implements one or more libp2p protocols for talking to the same feature
    on another peer.
 3. Declares the permission action(s) that gate its incoming handlers.
@@ -73,8 +73,9 @@ type PeerInUseHook interface {
 
 Use these for anything that needs to react to connectivity changes, run on
 a schedule, clean up per-peer state, or protect an actively-used connection
-from being closed (see `spec.Feature` for `PeriodicHook`, `services.Feature`
-for `PeerRemovedHook`/`PeerInUseHook`).
+from being closed (see `maps.Feature` for `PeerConnectedHook`/
+`GroupConfirmedHook`, `services.Feature` for `PeerRemovedHook`/
+`PeerInUseHook`).
 
 ## Connection shaping
 
@@ -222,8 +223,8 @@ Using a hypothetical `common/ping` feature (a synchronous request/response
    ```
 
    An application that only wants this feature registers nothing else —
-   there's no dependency on notifications, spec, or scripts unless you
-   register those features too.
+   there's no dependency on maps, scripts, or services unless you register
+   those features too.
 
 That's the whole contract. `Engine.AvailableActions()` will automatically
 include `common/ping/respond` once `pingFeature` is registered, so it shows
@@ -232,12 +233,12 @@ further wiring.
 
 ## Where the built-in features live
 
-`realm/features/notifications`, `realm/features/spec`, and
+`realm/features/maps`, `realm/features/spec`, and
 `realm/features/scripts` are all real, non-trivial examples to crib from —
 in particular:
 
-- `notifications` shows a signed wire payload and a `PeerConnectedHook`
-  that retries queued sends on reconnect.
+- `maps` shows a signed wire payload and a `PeerConnectedHook`/
+  `GroupConfirmedHook` pair that pulls missed state on reconnect.
 - `spec` shows a `TextProvider func() string` constructor argument, used to
   keep an application-specific concern (foilen-box's own
   `internal/spec.Report` machine-info dump) out of the library — a feature
@@ -250,9 +251,8 @@ in particular:
 ## How foilen-box wires features up
 
 See `internal/webserver/api.go`'s `newAPI`: it constructs one `realm.Engine`
-and registers `notifications.New(...)`, `spec.New(...)`, and
-`scripts.New()` against it, then stores each feature instance on the `api`
-struct so the WebSocket handlers in `internal/webserver/api_realm.go` can
-call their public methods directly (`a.realmNotifFeature.SendNotification(...)`,
-`a.realmSpecFeature.RequestSpec(...)`, `a.realmScripts.ListScripts(...)`,
-etc.) instead of going through `Engine`.
+and registers `maps.New(...)`, `spec.New(...)`, and `scripts.New()` against
+it, then stores each feature instance on the `api` struct so the WebSocket
+handlers in `internal/webserver/api_realm.go` can call their public methods
+directly (`a.realmMapsFeature.CreateMap(...)`, `a.realmSpecFeature.RequestSpec(...)`,
+`a.realmScripts.ListScripts(...)`, etc.) instead of going through `Engine`.

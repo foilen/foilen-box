@@ -36,7 +36,6 @@
 	<div id="realm-subtabs" class="subtab-nav">
 		<button class="subtab-button" data-subtab="realm-main">Main</button>
 		<button class="subtab-button" data-subtab="realm-permissions-subtab">Permissions</button>
-		<button class="subtab-button" data-subtab="realm-notification-subtab">Notification</button>
 		<button class="subtab-button" data-subtab="realm-specs-subtab">Specs</button>
 		<button class="subtab-button" data-subtab="realm-scripts-subtab">Scripts</button>
 		<button class="subtab-button" data-subtab="realm-services-subtab">Services</button>
@@ -216,39 +215,6 @@
 
 		<h4>Peers</h4>
 		<div id="realm-permissions-peers" class="permission-entity-list"></div>
-	</div>
-
-	<div id="realm-notification-subtab" class="subtab-panel">
-		<div id="realm-notification-form">
-			<div class="row">
-				<label>To:
-					<md-outlined-select id="realm-notification-to"></md-outlined-select>
-				</label>
-			</div>
-			<div class="row">
-				<md-outlined-text-field label="Title" id="realm-notification-title"></md-outlined-text-field>
-			</div>
-			<div class="row">
-				<textarea id="realm-notification-body" rows="3" placeholder="Message (optional)"></textarea>
-			</div>
-			<div class="row">
-				<label>Keep for:
-					<md-outlined-select id="realm-notification-ttl">
-						<md-select-option value="600"><div slot="headline">10 minutes</div></md-select-option>
-						<md-select-option value="3600"><div slot="headline">1 hour</div></md-select-option>
-						<md-select-option value="86400" selected><div slot="headline">24 hours</div></md-select-option>
-					</md-outlined-select>
-				</label>
-				<md-filled-tonal-button id="realm-notification-send-button">Send</md-filled-tonal-button>
-			</div>
-		</div>
-		<h4>Recent (<span id="realm-notifications-count">0</span>)</h4>
-		<div class="table-scroll">
-			<table id="realm-notifications-table">
-				<thead><tr><th>Direction</th><th>Peer</th><th>Title</th><th>Message</th><th>Sent</th><th>Status</th></tr></thead>
-				<tbody id="realm-notifications-tbody"></tbody>
-			</table>
-		</div>
 	</div>
 
 	<div id="realm-specs-subtab" class="subtab-panel">

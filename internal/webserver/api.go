@@ -15,7 +15,6 @@ import (
 	realm "foilen-realm"
 	realmconfig "foilen-realm/config"
 	realmmaps "foilen-realm/features/maps"
-	realmnotifications "foilen-realm/features/notifications"
 	realmscripts "foilen-realm/features/scripts"
 	realmservices "foilen-realm/features/services"
 	realmmodel "foilen-realm/model"
@@ -45,9 +44,7 @@ type api struct {
 	earlyAggregate     *earlyaggregate.Service
 	realmConfig        *realmconfig.Service
 	realmPeers         *realmpeers.Store
-	realmNotifications *realmnotifications.Store
 	realmEngine        *realm.Engine
-	realmNotifFeature  *realmnotifications.Feature
 	realmScripts       *realmscripts.Feature
 	realmServices      *realmservices.Feature
 	realmServicesStore *realmservices.Store
@@ -81,10 +78,6 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize realm peer store: %w", err)
 	}
-	realmNotificationStore, err := realmnotifications.NewStore(realmConfigSvc.Dir())
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize realm notification store: %w", err)
-	}
 	realmMapsStore, err := realmmaps.NewStore(realmConfigSvc.Dir())
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize realm maps store: %w", err)
@@ -97,14 +90,12 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 	realmEng := realm.New(realmConfigSvc.Dir(), realmPeerStore)
 	realmEng.SetHostnameOverride(hostnameOverride)
 	realmEng.SetAppVersion(appVersion())
-	notifFeature := realmnotifications.New(realmNotificationStore)
 	dataDir := realmConfigSvc.Dir()
 	scriptsFeature := realmscripts.New()
 	servicesFeature := realmservices.New(realmServicesStore)
 	mapsFeature := realmmaps.New(realmMapsStore)
 	announceFeature := newRealmAnnounce(mapsFeature, func() string { return appspec.Report(dataDir) }, func() appspec.Summary { return appspec.GetSummary(dataDir) }, func() string { return resolveHostname(hostnameOverride) })
 	speedTestFeature := boxspeedtest.New()
-	realmEng.Register(notifFeature)
 	realmEng.Register(scriptsFeature)
 	realmEng.Register(servicesFeature)
 	realmEng.Register(mapsFeature)
@@ -118,9 +109,7 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 		earlyAggregate:     earlyaggregate.New(earlyclient.New(), configService),
 		realmConfig:        realmConfigSvc,
 		realmPeers:         realmPeerStore,
-		realmNotifications: realmNotificationStore,
 		realmEngine:        realmEng,
-		realmNotifFeature:  notifFeature,
 		realmScripts:       scriptsFeature,
 		realmServices:      servicesFeature,
 		realmServicesStore: realmServicesStore,
@@ -149,9 +138,6 @@ func (a *api) shutdown() {
 	a.realmServices.StopAll()
 	if err := a.realmPeers.Flush(); err != nil {
 		log.Printf("realm: failed to flush peer store: %v", err)
-	}
-	if err := a.realmNotifications.Flush(); err != nil {
-		log.Printf("realm: failed to flush notification store: %v", err)
 	}
 	if err := a.realmServicesStore.Flush(); err != nil {
 		log.Printf("realm: failed to flush services store: %v", err)
@@ -258,9 +244,6 @@ var handlers = map[string]handlerFunc{
 	"realm.stopServiceProxy":  handleRealmStopServiceProxy,
 	"realm.listActiveProxies": handleRealmListActiveProxies,
 	"realm.connectService":    handleRealmConnectService,
-
-	"notification.send": handleNotificationSend,
-	"notification.list": handleNotificationList,
 
 	"realm.listMaps":       handleRealmListMaps,
 	"realm.getMap":         handleRealmGetMap,

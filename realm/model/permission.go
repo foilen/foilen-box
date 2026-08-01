@@ -4,8 +4,8 @@ package model
 // the right to invoke against this machine. Unlike a closed enum, the set of
 // valid actions isn't fixed by this package: each registered Feature
 // contributes its own actions, namespaced by its name (e.g.
-// "common/notifications/receive"). See Engine.AvailableActions for the
-// runtime catalog.
+// "common/scripts/run"). See Engine.AvailableActions for the runtime
+// catalog.
 type PermissionAction string
 
 // Permission grants a peer or group the right to invoke Action against this

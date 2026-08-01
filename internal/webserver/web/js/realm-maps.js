@@ -4,10 +4,9 @@ const MAPS_POLL_INTERVAL_MS = 5000;
 
 // initRealmMaps wires the Maps subtab: the map list (create/select/delete)
 // and the detail view for the currently-selected map's key-value pairs.
-// Map data isn't part of the full-config response (same situation as
-// Notifications), so it's fetched on its own via realm.listMaps rather than
-// from renderConfig; renderConfig is only used here to read cfg.groups for
-// the "create map" group picker.
+// Map data isn't part of the full-config response, so it's fetched on its
+// own via realm.listMaps rather than from renderConfig; renderConfig is
+// only used here to read cfg.groups for the "create map" group picker.
 export function initRealmMaps(api, output, renderConfig) {
 	const mapsBody = document.getElementById("realm-maps-tbody");
 	const mapsCount = document.getElementById("realm-maps-count");

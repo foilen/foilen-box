@@ -19,14 +19,6 @@ var (
 	server *webserver.Server
 )
 
-// NotificationSink is implemented on the Kotlin side (MainActivity) and
-// passed to StartServer; gomobile binds it to a Java/Kotlin interface so a
-// received Realm notification can be posted as a real Android system
-// notification, independent of whether the WebView UI is visible.
-type NotificationSink interface {
-	Notify(from, title, body string)
-}
-
 // RealmStateSink is implemented on the Kotlin side (MainActivity) and
 // passed to StartServer; gomobile binds it to a Java/Kotlin interface so the
 // Android foreground-service notification can be updated whenever the user
@@ -51,13 +43,13 @@ type BatteryProvider interface {
 // directory), and returns the base URL to load in a WebView. deviceName is
 // reported as the Realm config's hostname in place of os.Hostname(), which
 // always returns "localhost" on Android; pass "" to fall back to that
-// default. notifSink, stateSink, and batteryProvider may be nil; deviceName
-// is only applied on the first call. Calling it again while already running
-// still (re)applies any non-nil sink passed this time, so a caller that
-// started the server without sinks (e.g. RealmForegroundService starting the
-// engine on boot, before MainActivity exists) can be followed by one that
-// wires them up.
-func StartServer(filesDir string, deviceName string, notifSink NotificationSink, stateSink RealmStateSink, batteryProvider BatteryProvider) (string, error) {
+// default. stateSink and batteryProvider may be nil; deviceName is only
+// applied on the first call. Calling it again while already running still
+// (re)applies any non-nil sink passed this time, so a caller that started
+// the server without sinks (e.g. RealmForegroundService starting the engine
+// on boot, before MainActivity exists) can be followed by one that wires
+// them up.
+func StartServer(filesDir string, deviceName string, stateSink RealmStateSink, batteryProvider BatteryProvider) (string, error) {
 	mu.Lock()
 	defer mu.Unlock()
 
@@ -70,9 +62,6 @@ func StartServer(filesDir string, deviceName string, notifSink NotificationSink,
 			return "", err
 		}
 		server = s
-	}
-	if notifSink != nil {
-		server.SetNotificationSink(notifSink)
 	}
 	if stateSink != nil {
 		server.SetRealmStateSink(stateSink)

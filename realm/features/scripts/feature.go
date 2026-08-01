@@ -28,8 +28,8 @@ const (
 	// RunProtocolID is a direct request/response: no signature needed, the
 	// connection is already authenticated. CompletionProtocolID is a
 	// best-effort, fire-and-forget push back to the peer that triggered a
-	// run, sent at most once with no retry/queueing (unlike notifications,
-	// a run completion isn't guaranteed to ever be delivered).
+	// run, sent at most once with no retry/queueing — a run completion
+	// isn't guaranteed to ever be delivered.
 	RunProtocolID        = protocol.ID("/foilen-box/scripts-run/1.0.0")
 	CompletionProtocolID = protocol.ID("/foilen-box/scripts-completion/1.0.0")
 	ioTimeout            = 10 * time.Second
@@ -224,10 +224,9 @@ func (f *Feature) handleRunStream(reg *realm.Registrar) network.StreamHandler {
 }
 
 // sendCompletion makes a single best-effort attempt to push the outcome of
-// a run back to the peer that triggered it. Unlike trySendEnvelope for
-// notifications, there's no queue/retry: if the caller is offline right
-// now, the completion is simply dropped, per the no-guarantee behavior of
-// this feature.
+// a run back to the peer that triggered it. There's no queue/retry: if the
+// caller is offline right now, the completion is simply dropped, per the
+// no-guarantee behavior of this feature.
 func sendCompletion(ctx context.Context, h host.Host, to peer.ID, completion model.ScriptCompletion) {
 	streamCtx, cancel := context.WithTimeout(ctx, ioTimeout)
 	defer cancel()

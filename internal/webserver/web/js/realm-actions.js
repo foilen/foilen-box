@@ -3,7 +3,6 @@
 
 const ACTION_LABELS = {
 	"common/spec/get": "Fetch this machine's spec",
-	"common/notifications/receive": "Send this machine notifications",
 	"common/scripts/run": "Run scripts on this machine",
 	"box/speedtest/run": "Run a speed test against this machine",
 };

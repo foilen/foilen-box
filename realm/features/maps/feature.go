@@ -21,11 +21,11 @@ import (
 
 const (
 	// PushProtocolID carries one signed MapEventEnvelope per stream,
-	// fire-and-forget, same shape as notifications.ProtocolID. Sent to every
-	// connected, confirmed member of the scope group right after a local
-	// edit; a peer that misses it (offline, or simply never directly
-	// connected) still catches up via SyncProtocolID the next time it
-	// connects or its group membership is (re)confirmed.
+	// fire-and-forget. Sent to every connected, confirmed member of the
+	// scope group right after a local edit; a peer that misses it (offline,
+	// or simply never directly connected) still catches up via
+	// SyncProtocolID the next time it connects or its group membership is
+	// (re)confirmed.
 	PushProtocolID = protocol.ID("/foilen-box/maps-push/1.0.0")
 
 	// SyncProtocolID is a synchronous request/response, same shape as

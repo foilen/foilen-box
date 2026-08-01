@@ -1,6 +1,6 @@
 // Command foilenbox is the desktop app entry point: it starts the embedded
 // web UI/API server (internal/webserver) and puts a systray icon in the
-// notification area to open it in the default browser or quit.
+// system tray to open it in the default browser or quit.
 package main
 
 import (
@@ -21,8 +21,6 @@ func main() {
 		log.Fatalf("failed to start web server: %v", err)
 	}
 	log.Printf("Foilen Box UI available at %s", server.URL())
-
-	server.SetNotificationSink(desktopNotificationSink{})
 
 	run(server)
 }

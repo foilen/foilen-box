@@ -2,7 +2,6 @@ import { report } from "./util.js";
 import { initRealmGroups } from "./realm-groups.js";
 import { initRealmPermissions } from "./realm-permissions.js";
 import { initRealmPeers } from "./realm-peers.js";
-import { initRealmNotifications } from "./realm-notifications.js";
 import { initRealmSpecs } from "./realm-specs.js";
 import { initRealmScripts } from "./realm-scripts.js";
 import { initRealmServices } from "./realm-services.js";
@@ -153,7 +152,6 @@ export function initRealmTab(api, isAndroid) {
 	onSpeedtestConfigUpdate = speedtestModule.onConfigUpdate;
 	const mapsModule = initRealmMaps(api, output, renderConfig);
 	onMapsConfigUpdate = mapsModule.onConfigUpdate;
-	initRealmNotifications(api);
 	const specsModule = initRealmSpecs(api);
 	onSpecsConfigUpdate = specsModule.onConfigUpdate;
 	initRealmPeers(api, (peers) => {

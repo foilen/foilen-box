@@ -3,16 +3,13 @@ import { formatPeerLabel } from "./util.js";
 const PEERS_POLL_INTERVAL_MS = 5000;
 
 // initRealmPeers wires the Peers and Swarm tables on the Realm main
-// subtab, and keeps the peer <select> used by the notifications subtab
-// (owned there, populated here since the peer list is fetched here) up to
-// date. onPeersUpdate, if given, is called with the latest peers list on
+// subtab. onPeersUpdate, if given, is called with the latest peers list on
 // every refresh (used by the permissions subtab).
 export function initRealmPeers(api, onPeersUpdate) {
 	const peersBody = document.getElementById("realm-peers-tbody");
 	const peersCount = document.getElementById("realm-peers-count");
 	const swarmBody = document.getElementById("realm-swarm-tbody");
 	const swarmCount = document.getElementById("realm-swarm-count");
-	const notificationToSelect = document.getElementById("realm-notification-to");
 
 	const addressesOpenState = new Map();
 	const swarmAddressesOpenState = new Map();
@@ -45,27 +42,9 @@ export function initRealmPeers(api, onPeersUpdate) {
 		return cell;
 	}
 
-	function renderPeerOptions(select, peers) {
-		const previous = select.value;
-		select.innerHTML = "";
-		for (const peer of peers) {
-			const option = document.createElement("md-select-option");
-			option.value = peer.id;
-			const headline = document.createElement("div");
-			headline.slot = "headline";
-			headline.textContent = `${formatPeerLabel(peer)}${(peer.groupNames || []).length ? " (" + peer.groupNames.join(", ") + ")" : ""}`;
-			option.appendChild(headline);
-			select.appendChild(option);
-		}
-		if (previous && peers.some((peer) => peer.id === previous)) {
-			select.value = previous;
-		}
-	}
-
 	function renderPeers(peers) {
 		peersBody.innerHTML = "";
 		peersCount.textContent = peers.length;
-		renderPeerOptions(notificationToSelect, peers);
 		for (const peer of peers) {
 			const row = document.createElement("tr");
 			const cells = [

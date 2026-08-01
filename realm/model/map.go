@@ -48,8 +48,7 @@ type MapEvent struct {
 	OriginPeerID        string `json:"originPeerId"`
 }
 
-// SigningBytes returns the canonical bytes signed/verified for the event,
-// mirroring NotificationEnvelope.SigningBytes.
+// SigningBytes returns the canonical bytes signed/verified for the event.
 func (e MapEvent) SigningBytes() []byte {
 	deleted := "0"
 	if e.Deleted {

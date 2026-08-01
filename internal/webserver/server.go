@@ -16,8 +16,6 @@ import (
 	"strconv"
 
 	"foilen-box/internal/logging"
-
-	realmnotifications "foilen-realm/features/notifications"
 )
 
 //go:embed all:web
@@ -121,14 +119,6 @@ func resolveConfigDir(configDir string) (string, error) {
 // URL returns the base http://127.0.0.1:<port>/ address the UI is served on.
 func (s *Server) URL() string {
 	return fmt.Sprintf("http://%s/", s.listener.Addr().String())
-}
-
-// SetNotificationSink registers the platform-specific callback (desktop
-// tray notification, Android system notification) invoked whenever this
-// peer receives a verified Realm notification, independent of whether the
-// web UI is open.
-func (s *Server) SetNotificationSink(sink realmnotifications.Sink) {
-	s.api.realmNotifFeature.SetSink(sink)
 }
 
 // RealmStateSink is the platform-specific callback (Android) invoked

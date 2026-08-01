@@ -1,8 +1,6 @@
 package com.foilen.box.android
 
 import android.Manifest
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
@@ -23,14 +21,10 @@ import androidx.activity.result.ActivityResult
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import mobile.BatteryProvider
 import mobile.Mobile
-import mobile.NotificationSink
 import mobile.RealmStateSink
-import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Hosts the same local web UI/API server the desktop build runs
@@ -41,12 +35,6 @@ import java.util.concurrent.atomic.AtomicInteger
  * onGeolocationPermissionsShowPrompt answers the JS-side request, so no
  * native location bridge/JNI code is needed on this side.
  *
- * Also implements mobile.NotificationSink so a verified Realm notification
- * received by the Go engine (even while the WebView tab isn't showing the
- * Notifications section) is posted as a real Android system notification.
- * This only fires while this process is alive (app open or backgrounded,
- * not force-killed) — there is no Firebase Cloud Messaging wake-up path.
- *
  * Also implements mobile.RealmStateSink so RealmForegroundService's
  * notification can be dropped (and restored) when the user toggles Realm
  * networking off/on from the web UI's Realm settings.
@@ -56,12 +44,11 @@ import java.util.concurrent.atomic.AtomicInteger
  * /sys/class/power_supply on Android, since that's commonly blocked by
  * SELinux for regular (non-system) apps, so BatteryManager is used instead.
  */
-class MainActivity : ComponentActivity(), NotificationSink, RealmStateSink, BatteryProvider {
+class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider {
 
 	private lateinit var webView: WebView
 	private var filePickerCallback: ValueCallback<Array<Uri>>? = null
 	private lateinit var filePickerLauncher: ActivityResultLauncher<Intent>
-	private val notificationIdCounter = AtomicInteger(0)
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
@@ -129,7 +116,8 @@ class MainActivity : ComponentActivity(), NotificationSink, RealmStateSink, Batt
 			ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_REQUEST)
 		}
 
-		createNotificationChannel()
+		// Needed for RealmForegroundService's "keeping connections alive"
+		// notification, required on Android 13+ to run a foreground service.
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasNotificationPermission()) {
 			ActivityCompat.requestPermissions(
 				this,
@@ -152,7 +140,7 @@ class MainActivity : ComponentActivity(), NotificationSink, RealmStateSink, Batt
 		// the server URL and reload if it no longer matches what's loaded.
 		Thread {
 			try {
-				val url = Mobile.startServer(filesDir.absolutePath, deviceName(), this, this, this)
+				val url = Mobile.startServer(filesDir.absolutePath, deviceName(), this, this)
 				val currentUrl = webView.url
 				if (currentUrl == null || !currentUrl.startsWith(url)) {
 					runOnUiThread { webView.loadUrl("$url?platform=android") }
@@ -179,7 +167,7 @@ class MainActivity : ComponentActivity(), NotificationSink, RealmStateSink, Batt
 	private fun startServerAndLoad() {
 		Thread {
 			try {
-				val url = Mobile.startServer(filesDir.absolutePath, deviceName(), this, this, this)
+				val url = Mobile.startServer(filesDir.absolutePath, deviceName(), this, this)
 				runOnUiThread { webView.loadUrl("$url?platform=android") }
 			} catch (e: Exception) {
 				Log.e(TAG, "failed to start server", e)
@@ -197,37 +185,6 @@ class MainActivity : ComponentActivity(), NotificationSink, RealmStateSink, Batt
 	private fun hasNotificationPermission(): Boolean =
 		ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
 			PackageManager.PERMISSION_GRANTED
-
-	private fun createNotificationChannel() {
-		val channel = NotificationChannel(
-			NOTIFICATION_CHANNEL_ID,
-			"Realm notifications",
-			NotificationManager.IMPORTANCE_HIGH,
-		).apply {
-			description = "Notifications sent to you by other Realm peers"
-		}
-		getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
-	}
-
-	// Called from a background Go goroutine (the engine's libp2p stream
-	// handler) whenever a verified Realm notification is received, so this
-	// may run on any thread — NotificationManagerCompat.notify() is safe to
-	// call off the main thread.
-	override fun notify(from: String, title: String, body: String) {
-		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasNotificationPermission()) {
-			return
-		}
-		val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-			.setSmallIcon(android.R.drawable.ic_dialog_info)
-			.setContentTitle(title)
-			.setContentText(body)
-			.setStyle(NotificationCompat.BigTextStyle().bigText(body))
-			.setSubText(from)
-			.setPriority(NotificationCompat.PRIORITY_HIGH)
-			.setAutoCancel(true)
-			.build()
-		NotificationManagerCompat.from(this).notify(notificationIdCounter.incrementAndGet(), notification)
-	}
 
 	// Called from a background Go goroutine whenever the user toggles Realm
 	// networking on/off (realm.setEnabled). Forwarded to
@@ -264,6 +221,5 @@ class MainActivity : ComponentActivity(), NotificationSink, RealmStateSink, Batt
 		private const val LOCATION_PERMISSION_REQUEST = 1
 		private const val CAMERA_PERMISSION_REQUEST = 2
 		private const val NOTIFICATION_PERMISSION_REQUEST = 3
-		private const val NOTIFICATION_CHANNEL_ID = "realm_notifications"
 	}
 }

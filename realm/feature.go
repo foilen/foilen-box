@@ -19,15 +19,15 @@ import (
 // constructing it and passing it to Engine.Register. Each feature owns its
 // own libp2p protocol(s), permission actions, and any state/store it needs;
 // the application calls whatever public methods the concrete feature type
-// exposes directly (e.g. a notifications.Feature's SendNotification) —
-// Engine itself only knows about the Feature interface below.
+// exposes directly (e.g. a scripts.Feature's RunOnPeer) — Engine itself
+// only knows about the Feature interface below.
 type Feature interface {
-	// Name namespaces this feature's actions, e.g. "common/notifications".
+	// Name namespaces this feature's actions, e.g. "common/scripts".
 	Name() string
 
 	// Actions lists the fully-qualified permission actions this feature's
 	// incoming handlers check, of the form Name()+"/"+verb (e.g.
-	// "common/notifications/receive"). Engine.AvailableActions aggregates
+	// "common/scripts/run"). Engine.AvailableActions aggregates
 	// these across every registered feature to build the dynamic
 	// permission catalog.
 	Actions() []model.PermissionAction
@@ -55,7 +55,7 @@ type PeriodicHook interface {
 // calls OnPeerRemoved whenever a known peer is dropped from the peer store
 // (currently: pruned for being unseen past the configured retention
 // window), so the feature can discard whatever per-peer state it keeps
-// (cached specs, notifications, run history, ...).
+// (cached specs, script run history, ...).
 type PeerRemovedHook interface {
 	OnPeerRemoved(id string)
 }

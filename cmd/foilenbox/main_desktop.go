@@ -2,14 +2,12 @@ package main
 
 import (
 	_ "embed"
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"runtime"
 	"syscall"
 
-	"github.com/gen2brain/beeep"
 	"github.com/getlantern/systray"
 
 	"foilen-box/internal/browseropen"
@@ -18,16 +16,6 @@ import (
 
 //go:embed systray.png
 var systrayIcon []byte
-
-// desktopNotificationSink pops a native OS notification for every Realm
-// notification received, independent of whether the web UI is open.
-type desktopNotificationSink struct{}
-
-func (desktopNotificationSink) Notify(from, title, body string) {
-	if err := beeep.Notify(title, fmt.Sprintf("%s\n\nfrom %s", body, from), ""); err != nil {
-		log.Printf("failed to show desktop notification: %v", err)
-	}
-}
 
 func run(server *webserver.Server) {
 	if !hasDisplay() {
