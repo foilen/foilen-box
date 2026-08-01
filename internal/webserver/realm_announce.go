@@ -242,10 +242,14 @@ func retractServiceNow(mapsFeature *realmmaps.Feature, cfg realmmodel.Config, na
 
 // consumePeerInfo reads every configured group's "common" map and upserts
 // whatever peers/{peerId} entries it finds into the local known-peers
-// store, replacing the old peer-share gossip protocol: a valid map entry is
-// itself signed with the group's own private key, so (unlike third-hand
-// gossip) it's first-hand, trustworthy proof of both membership in that
-// group and of the reachability info it carries.
+// store, replacing the old peer-share gossip protocol. A valid map entry
+// proves whoever wrote it holds the group's private key, but not that the
+// peers/{peerId} key it was filed under truthfully names its author — so,
+// like handleFoundPeer's mDNS/DHT discovery (see realm/peers_helper.go),
+// this only ever records reachability info. GroupNames is left untouched
+// (existing.GroupNames, unmodified): membership is only ever granted by a
+// direct, signed group-challenge with that peer, see
+// realm/peer_identify.go/challengeGroup.
 func (a *realmAnnounce) consumePeerInfo(reg *realm.Registrar, cfg realmmodel.Config) {
 	peersStore := reg.Peers()
 	if peersStore == nil {
@@ -272,16 +276,12 @@ func (a *realmAnnounce) consumePeerInfo(reg *realm.Registrar, cfg realmmodel.Con
 				lastSeen = existing.LastSeen
 			}
 			connected := known && existing.Connected
-			groupNames := existing.GroupNames
-			if !containsString(groupNames, group.Name) {
-				groupNames = append(append([]string{}, groupNames...), group.Name)
-			}
 
 			peersStore.Upsert(realmmodel.PeerInfo{
 				ID:                  peerID,
 				LastSeen:            lastSeen,
 				Addresses:           info.Addresses,
-				GroupNames:          groupNames,
+				GroupNames:          existing.GroupNames,
 				Connected:           connected,
 				Hostname:            info.Hostname,
 				Description:         info.Description,
@@ -332,13 +332,4 @@ func ownAddresses(reg *realm.Registrar) []string {
 // they're talking to.
 func appVersion() string {
 	return "FoilenBox - " + displayVersion()
-}
-
-func containsString(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }
