@@ -25,7 +25,6 @@ var knownPorts = []knownPort{
 	{80, "http", model.ServiceTypeHTTP},
 	{443, "https", model.ServiceTypeHTTPS},
 	{32400, "plex", model.ServiceTypeHTTP},
-	{8384, "syncthing", model.ServiceTypeHTTP},
 	{22, "ssh", model.ServiceTypeSSH},
 	{3389, "rdp", model.ServiceTypeRDP},
 	{5900, "vnc", model.ServiceTypeVNC},
