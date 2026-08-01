@@ -79,6 +79,15 @@ type PeerInUseHook interface {
 	IsPeerInUse(id peer.ID) bool
 }
 
+// PeerDisconnectedHook is an optional Feature interface: if implemented,
+// Engine calls OnPeerDisconnected once a peer's last live Conn actually
+// closes (not on every closed Conn when others remain, and not on a later
+// stale-peer prune — see onDisconnected), so a feature can discard whatever
+// purely-in-memory, per-connection state it keeps for that peer.
+type PeerDisconnectedHook interface {
+	OnPeerDisconnected(id peer.ID)
+}
+
 // Registrar is the narrow facade a Feature is given instead of reaching into
 // Engine's internals directly.
 type Registrar struct{ e *Engine }

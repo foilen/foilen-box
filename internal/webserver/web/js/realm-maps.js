@@ -12,6 +12,7 @@ export function initRealmMaps(api, output, renderConfig) {
 	const mapsCount = document.getElementById("realm-maps-count");
 	const groupSelect = document.getElementById("realm-new-map-group");
 	const storeNameInput = document.getElementById("realm-new-map-store-name");
+	const autoDeleteHoursInput = document.getElementById("realm-new-map-auto-delete-hours");
 	const createButton = document.getElementById("realm-create-map-button");
 
 	const detail = document.getElementById("realm-map-detail");
@@ -23,7 +24,7 @@ export function initRealmMaps(api, output, renderConfig) {
 	const closeDetailButton = document.getElementById("realm-map-close-detail-button");
 
 	let groups = [];
-	let selected = null; // { scopeId, storeName } | null
+	let selected = null; // { groupId, storeName } | null
 
 	function renderGroupOptions() {
 		groupSelect.innerHTML = "";
@@ -41,10 +42,11 @@ export function initRealmMaps(api, output, renderConfig) {
 		for (const m of maps) {
 			const row = document.createElement("tr");
 			const cells = [
-				["Group", formatGroupLabel({ id: m.scopeId, name: m.groupName })],
+				["Group", formatGroupLabel({ id: m.groupId, name: m.groupName })],
 				["Store Name", m.storeName],
 				["Entries", m.entryCount],
 				["Updated", m.updatedAtUnixMillis ? new Date(m.updatedAtUnixMillis).toLocaleString() : "never"],
+				["Auto-delete (hours)", m.autoDeleteEntriesHours || "never"],
 			];
 			for (const [label, value] of cells) {
 				const cell = document.createElement("td");
@@ -58,8 +60,8 @@ export function initRealmMaps(api, output, renderConfig) {
 			selectButton.textContent = "Open";
 			selectButton.addEventListener("click", () =>
 				report(output, async () => {
-					console.log("[action] open map", { scopeId: m.scopeId, storeName: m.storeName });
-					await openMap(m.scopeId, m.storeName);
+					console.log("[action] open map", { groupId: m.groupId, storeName: m.storeName });
+					await openMap(m.groupId, m.storeName);
 				})
 			);
 			actionsCell.appendChild(selectButton);
@@ -68,11 +70,11 @@ export function initRealmMaps(api, output, renderConfig) {
 			deleteButton.textContent = "Delete";
 			deleteButton.addEventListener("click", () =>
 				report(output, async () => {
-					console.log("[action] delete map", { scopeId: m.scopeId, storeName: m.storeName });
+					console.log("[action] delete map", { groupId: m.groupId, storeName: m.storeName });
 					if (!confirm(`Delete map "${m.storeName}"?`)) return;
-					const result = await api.call("realm.deleteMap", { scopeId: m.scopeId, storeName: m.storeName });
+					const result = await api.call("realm.deleteMap", { groupId: m.groupId, storeName: m.storeName });
 					renderMaps(result.maps);
-					if (selected && selected.scopeId === m.scopeId && selected.storeName === m.storeName) {
+					if (selected && selected.groupId === m.groupId && selected.storeName === m.storeName) {
 						closeDetail();
 					}
 				})
@@ -115,9 +117,9 @@ export function initRealmMaps(api, output, renderConfig) {
 			deleteButton.textContent = "Delete";
 			deleteButton.addEventListener("click", () =>
 				report(output, async () => {
-					console.log("[action] delete map value", { scopeId: map.scopeId, storeName: map.storeName, key });
+					console.log("[action] delete map value", { groupId: map.groupId, storeName: map.storeName, key });
 					const result = await api.call("realm.deleteMapValue", {
-						scopeId: map.scopeId,
+						groupId: map.groupId,
 						storeName: map.storeName,
 						key,
 					});
@@ -131,9 +133,9 @@ export function initRealmMaps(api, output, renderConfig) {
 		}
 	}
 
-	async function openMap(scopeId, storeName) {
-		selected = { scopeId, storeName };
-		const map = await api.call("realm.getMap", { scopeId, storeName });
+	async function openMap(groupId, storeName) {
+		selected = { groupId, storeName };
+		const map = await api.call("realm.getMap", { groupId, storeName });
 		renderDetail(map);
 		detail.classList.remove("hidden");
 	}
@@ -147,17 +149,19 @@ export function initRealmMaps(api, output, renderConfig) {
 		const result = await api.call("realm.listMaps");
 		renderMaps(result.maps || []);
 		if (selected) {
-			const map = await api.call("realm.getMap", { scopeId: selected.scopeId, storeName: selected.storeName });
+			const map = await api.call("realm.getMap", { groupId: selected.groupId, storeName: selected.storeName });
 			renderDetail(map);
 		}
 	}
 
 	createButton.addEventListener("click", () =>
 		report(output, async () => {
-			const scopeId = groupSelect.value;
+			const groupId = groupSelect.value;
 			const storeName = storeNameInput.value.trim();
-			console.log("[action] create map", { scopeId, storeName });
-			if (!scopeId) {
+			const autoDeleteEntriesHoursRaw = autoDeleteHoursInput.value.trim();
+			const autoDeleteEntriesHours = autoDeleteEntriesHoursRaw ? Number(autoDeleteEntriesHoursRaw) : 0;
+			console.log("[action] create map", { groupId, storeName, autoDeleteEntriesHours });
+			if (!groupId) {
 				output.textContent = "No group selected — create a group first.";
 				return;
 			}
@@ -165,9 +169,10 @@ export function initRealmMaps(api, output, renderConfig) {
 				output.textContent = "Please enter a store name.";
 				return;
 			}
-			const result = await api.call("realm.createMap", { scopeId, storeName });
+			const result = await api.call("realm.createMap", { groupId, storeName, autoDeleteEntriesHours });
 			renderMaps(result.maps);
 			storeNameInput.value = "";
+			autoDeleteHoursInput.value = "";
 			output.textContent = `Map "${storeName}" created.`;
 		})
 	);

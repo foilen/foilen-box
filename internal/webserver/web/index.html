@@ -350,7 +350,7 @@
 			group's private key automatically receives and stays in sync with its maps.</p>
 		<div class="table-scroll">
 			<table id="realm-maps-table">
-				<thead><tr><th>Group</th><th>Store Name</th><th>Entries</th><th>Updated</th><th></th></tr></thead>
+				<thead><tr><th>Group</th><th>Store Name</th><th>Entries</th><th>Updated</th><th>Auto-delete (hours)</th><th></th></tr></thead>
 				<tbody id="realm-maps-tbody"></tbody>
 			</table>
 		</div>
@@ -359,6 +359,7 @@
 				<md-outlined-select id="realm-new-map-group"></md-outlined-select>
 			</label>
 			<md-outlined-text-field label="Store name" id="realm-new-map-store-name"></md-outlined-text-field>
+			<md-outlined-text-field label="Auto-delete entries (hours, optional)" type="number" id="realm-new-map-auto-delete-hours"></md-outlined-text-field>
 			<md-filled-tonal-button id="realm-create-map-button">Create Map</md-filled-tonal-button>
 		</div>
 

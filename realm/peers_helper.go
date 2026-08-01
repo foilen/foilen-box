@@ -64,6 +64,10 @@ func (e *Engine) onDisconnected(net network.Network, conn network.Conn) {
 		log.Printf("realm engine: disconnected from peer %s (%s, groups: %v)", remote, info.Hostname, info.GroupNames)
 	}
 
+	for _, h := range e.peerDisconnectedHooks {
+		go h.OnPeerDisconnected(remote)
+	}
+
 	if e.isRingNeighbor(remote.String()) {
 		e.mu.Lock()
 		ctx := e.ctx

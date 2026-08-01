@@ -56,12 +56,13 @@ type Engine struct {
 	hostnameOverride string
 	appVersion       string
 
-	features            []Feature
-	peerConnectedHooks  []PeerConnectedHook
-	periodicHooks       []PeriodicHook
-	peerRemovedHooks    []PeerRemovedHook
-	peerInUseHooks      []PeerInUseHook
-	groupConfirmedHooks []GroupConfirmedHook
+	features              []Feature
+	peerConnectedHooks    []PeerConnectedHook
+	periodicHooks         []PeriodicHook
+	peerRemovedHooks      []PeerRemovedHook
+	peerInUseHooks        []PeerInUseHook
+	groupConfirmedHooks   []GroupConfirmedHook
+	peerDisconnectedHooks []PeerDisconnectedHook
 
 	mu               sync.Mutex
 	running          bool
@@ -140,6 +141,9 @@ func (e *Engine) Register(f Feature) {
 	}
 	if h, ok := f.(GroupConfirmedHook); ok {
 		e.groupConfirmedHooks = append(e.groupConfirmedHooks, h)
+	}
+	if h, ok := f.(PeerDisconnectedHook); ok {
+		e.peerDisconnectedHooks = append(e.peerDisconnectedHooks, h)
 	}
 }
 
@@ -558,21 +562,33 @@ func (e *Engine) Start(cfg model.Config) error {
 // running.
 func (e *Engine) Stop() {
 	e.mu.Lock()
-	defer e.mu.Unlock()
 	if !e.running {
+		e.mu.Unlock()
 		return
 	}
 
 	e.cancel()
 	e.stopAllMdnsLocked()
 	e.stopDHTLocked()
-	if err := e.host.Close(); err != nil {
-		log.Printf("realm engine: failed to close host: %v", err)
-	}
+	h := e.host
 	e.host = nil
 	e.priv = nil
 	e.ctx = nil
 	e.running = false
+	e.mu.Unlock()
+
+	// h.Close() synchronously drains every open connection and blocks
+	// until each one's Disconnected notification handler returns (see
+	// swarm.Swarm.close) — and onDisconnected/isRingNeighbor need to
+	// acquire e.mu themselves. Closing after releasing e.mu (with
+	// e.running/e.host/e.ctx already updated above, so those handlers see
+	// a stopped engine and skip any reconnect attempt) avoids deadlocking
+	// against our own lock.
+	if h != nil {
+		if err := h.Close(); err != nil {
+			log.Printf("realm engine: failed to close host: %v", err)
+		}
+	}
 
 	e.relayMu.Lock()
 	e.relayReservation = nil

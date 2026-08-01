@@ -5,6 +5,7 @@ package maps
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"os"
 	"path/filepath"
@@ -20,17 +21,24 @@ const subDirName = "realm-maps"
 var unsafeChars = regexp.MustCompile(`[^A-Za-z0-9._-]`)
 
 // mapID identifies one RealmMap on disk: the pair's file names are
-// <mapID>.state.json and <mapID>.events.json. scopeId is already a
+// <mapID>.state.json and <mapID>.events.json. groupID is already a
 // filesystem-safe libp2p id; storeName is arbitrary user input, so it's
 // sanitized.
-func mapID(scopeID, storeName string) string {
-	return scopeID + "__" + unsafeChars.ReplaceAllString(storeName, "_")
+func mapID(groupID, storeName string) string {
+	return groupID + "__" + unsafeChars.ReplaceAllString(storeName, "_")
+}
+
+// listenerEntry pairs a change-hook callback with a stable id so Subscribe's
+// returned unsubscribe func can remove exactly the right one regardless of
+// what else has (un)subscribed since.
+type listenerEntry struct {
+	id int
+	fn func(model.ChangeEvent)
 }
 
 // Store caches every known RealmMap's current state and event log in
 // memory, backed by one file pair per map on disk
-// ($dir/realm-maps/<mapID>.state.json + <mapID>.events.json), following
-// the same one-file-per-entity convention as realm/features/spec.Store.
+// ($dir/realm-maps/<mapID>.state.json + <mapID>.events.json).
 type Store struct {
 	dir string
 
@@ -38,25 +46,29 @@ type Store struct {
 	states map[string]model.RealmMap   // by mapID
 	events map[string][]model.MapEvent // by mapID, one entry per key
 
-	// peerCursors tracks, per scopeID and then per remote peer, the newest
-	// UpdatedAtUnixMillis we've ever received from that specific peer while
-	// pulling (see Feature.pullFrom). It is deliberately not a single
-	// scope-wide watermark: if peer B has an old event we never got (e.g. a
-	// push to us failed while we were offline), and we've since received
-	// something newer from peer C, a shared watermark would sit above B's
-	// event forever and we'd never ask B for it again. A per-peer cursor
-	// means every peer is asked "since the last thing I got from *you*."
-	peerCursors map[string]map[string]int64 // scopeID -> peerID -> unixMillis
+	// peerCursors tracks, per groupID, then per storeName, then per remote
+	// peer, the newest UpdatedAtUnixMillis we've ever received from that
+	// specific peer for that specific store (see Feature.subscribeToPeer).
+	// It is deliberately not a single group-or-store-wide watermark: if peer
+	// B has an old event we never got (e.g. a push to us failed while we
+	// were offline), and we've since received something newer from peer C,
+	// a shared watermark would sit above B's event forever and we'd never
+	// ask B for it again. A per-peer, per-store cursor means every peer is
+	// asked "since the last thing I got from *you* for *this store*."
+	peerCursors map[string]map[string]map[string]int64 // groupID -> storeName -> peerID -> unixMillis
+
+	listeners      []listenerEntry
+	nextListenerID int
 }
 
-// New creates the realm-maps directory if needed, loads any existing map
-// files into memory, and returns a Store.
+// NewStore creates the realm-maps directory if needed, loads any existing
+// map files into memory, and returns a Store.
 func NewStore(dir string) (*Store, error) {
 	mapsDir := filepath.Join(dir, subDirName)
 	if err := os.MkdirAll(mapsDir, 0o755); err != nil {
 		return nil, err
 	}
-	s := &Store{dir: mapsDir, states: map[string]model.RealmMap{}, events: map[string][]model.MapEvent{}, peerCursors: map[string]map[string]int64{}}
+	s := &Store{dir: mapsDir, states: map[string]model.RealmMap{}, events: map[string][]model.MapEvent{}, peerCursors: map[string]map[string]map[string]int64{}}
 
 	entries, err := os.ReadDir(mapsDir)
 	if err != nil {
@@ -91,25 +103,31 @@ func NewStore(dir string) (*Store, error) {
 			}
 			s.events[id] = evs
 		case len(name) > len(".peercursors.json") && name[len(name)-len(".peercursors.json"):] == ".peercursors.json":
-			scopeID := name[:len(name)-len(".peercursors.json")]
+			groupID := name[:len(name)-len(".peercursors.json")]
 			data, err := os.ReadFile(filepath.Join(mapsDir, name))
 			if err != nil {
 				continue
 			}
-			var cursors map[string]int64
+			var cursors map[string]map[string]int64
 			if err := json.Unmarshal(data, &cursors); err != nil {
+				// Old (pre per-store-cursor) format was a flat
+				// map[string]int64, which won't unmarshal into the nested
+				// shape above — skip it, same as any other unreadable file;
+				// worst case is a one-time full resync per store.
 				continue
 			}
-			s.peerCursors[scopeID] = cursors
+			s.peerCursors[groupID] = cursors
 		}
 	}
 	return s, nil
 }
 
-// ListSummaries returns one summary per known RealmMap that has at least
-// one (non-tombstoned) entry, restricted to scopes present in cfgGroups
-// (groups we're no longer configured with are hidden, though their files
-// are left on disk), sorted by GroupName then StoreName.
+// ListSummaries returns one summary per known RealmMap, restricted to
+// groups present in cfgGroups (groups we're no longer configured with are
+// hidden, though their files are left on disk), sorted by GroupName then
+// StoreName. A map whose every entry has been individually tombstoned via
+// DeleteValue still appears here with EntryCount 0 (it still exists); only
+// Store.DeleteMap actually removes a map from this list.
 func (s *Store) ListSummaries(cfgGroups []model.Group) []model.RealmMapSummary {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -121,7 +139,7 @@ func (s *Store) ListSummaries(cfgGroups []model.Group) []model.RealmMapSummary {
 
 	result := make([]model.RealmMapSummary, 0, len(s.states))
 	for _, rm := range s.states {
-		groupName, ok := groupNames[rm.ScopeID]
+		groupName, ok := groupNames[rm.GroupID]
 		if !ok {
 			continue
 		}
@@ -137,7 +155,7 @@ func (s *Store) ListSummaries(cfgGroups []model.Group) []model.RealmMapSummary {
 			}
 		}
 		result = append(result, model.RealmMapSummary{
-			ScopeID:             rm.ScopeID,
+			GroupID:             rm.GroupID,
 			GroupName:           groupName,
 			StoreName:           rm.StoreName,
 			EntryCount:          count,
@@ -153,14 +171,14 @@ func (s *Store) ListSummaries(cfgGroups []model.Group) []model.RealmMapSummary {
 	return result
 }
 
-// GetMap returns the current (non-tombstoned) entries of scopeId/storeName,
+// GetMap returns the current (non-tombstoned) entries of groupID/storeName,
 // or a zero-entry RealmMap if it doesn't exist locally yet.
-func (s *Store) GetMap(scopeID, storeName string) model.RealmMap {
+func (s *Store) GetMap(groupID, storeName string) model.RealmMap {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	rm, ok := s.states[mapID(scopeID, storeName)]
-	result := model.RealmMap{ScopeID: scopeID, StoreName: storeName, Entries: map[string]model.MapEntry{}}
+	rm, ok := s.states[mapID(groupID, storeName)]
+	result := model.RealmMap{GroupID: groupID, StoreName: storeName, Entries: map[string]model.MapEntry{}}
 	if !ok {
 		return result
 	}
@@ -173,36 +191,81 @@ func (s *Store) GetMap(scopeID, storeName string) model.RealmMap {
 }
 
 // CreateMap ensures an (empty, if new) RealmMap exists locally for
-// scopeId/storeName. Local-only convenience for the UI: an empty map has
+// groupID/storeName. Local-only convenience for the UI: an empty map has
 // no events to sync, so it isn't visible to other members until its first
 // key is set (see model.RealmMap doc).
-func (s *Store) CreateMap(scopeID, storeName string) error {
-	id := mapID(scopeID, storeName)
+func (s *Store) CreateMap(groupID, storeName string) error {
+	id := mapID(groupID, storeName)
 
 	s.mu.Lock()
 	if _, ok := s.states[id]; ok {
 		s.mu.Unlock()
 		return nil
 	}
-	s.states[id] = model.RealmMap{ScopeID: scopeID, StoreName: storeName, Entries: map[string]model.MapEntry{}}
+	s.states[id] = model.RealmMap{GroupID: groupID, StoreName: storeName, Entries: map[string]model.MapEntry{}}
 	s.events[id] = nil
 	s.mu.Unlock()
 
 	return s.persist(id)
 }
 
-// ApplyEvent merges one mutation (last-write-wins by UpdatedAtUnixMillis) into
-// scopeId/storeName's key, creating the map locally if it didn't already
-// exist. Returns whether it actually changed anything, so callers (the
-// feature's push/sync handlers) can skip re-broadcasting stale/duplicate
-// events.
-func (s *Store) ApplyEvent(scopeID, storeName, key string, entry model.MapEntry) (bool, error) {
-	id := mapID(scopeID, storeName)
+// DeleteMap actually removes groupID/storeName: its in-memory state and
+// event log, and both on-disk files. Unlike tombstoning individual entries
+// (DeleteValue/ApplyEvent), this makes the map disappear from ListSummaries
+// entirely rather than lingering with EntryCount 0.
+func (s *Store) DeleteMap(groupID, storeName string) error {
+	id := mapID(groupID, storeName)
+
+	s.mu.Lock()
+	delete(s.states, id)
+	delete(s.events, id)
+	s.mu.Unlock()
+
+	var firstErr error
+	for _, suffix := range []string{".state.json", ".events.json"} {
+		if err := os.Remove(filepath.Join(s.dir, id+suffix)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	return firstErr
+}
+
+// Subscribe registers fn to be called synchronously, after each ApplyEvent
+// that produces an observable change, with the corresponding ChangeEvent.
+// Call the returned unsubscribe func to stop receiving them.
+func (s *Store) Subscribe(fn func(model.ChangeEvent)) (unsubscribe func()) {
+	s.mu.Lock()
+	id := s.nextListenerID
+	s.nextListenerID++
+	s.listeners = append(s.listeners, listenerEntry{id: id, fn: fn})
+	s.mu.Unlock()
+
+	return func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		for i, l := range s.listeners {
+			if l.id == id {
+				s.listeners = append(s.listeners[:i], s.listeners[i+1:]...)
+				break
+			}
+		}
+	}
+}
+
+// ApplyEvent merges one mutation (last-write-wins by UpdatedAtUnixMillis)
+// into groupID/storeName's key, creating the map locally if it didn't
+// already exist. Returns whether it actually changed anything, so callers
+// (the feature's push/subscribe handlers) can skip re-broadcasting
+// stale/duplicate events.
+func (s *Store) ApplyEvent(groupID, storeName, key string, entry model.MapEntry) (bool, error) {
+	id := mapID(groupID, storeName)
 
 	s.mu.Lock()
 	rm, ok := s.states[id]
 	if !ok {
-		rm = model.RealmMap{ScopeID: scopeID, StoreName: storeName, Entries: map[string]model.MapEntry{}}
+		rm = model.RealmMap{GroupID: groupID, StoreName: storeName, Entries: map[string]model.MapEntry{}}
 	}
 	// Reject only strictly-older events: two same-millisecond mutations
 	// (e.g. a local "set" immediately followed by a "delete") must still
@@ -220,91 +283,119 @@ func (s *Store) ApplyEvent(scopeID, storeName, key string, entry model.MapEntry)
 	replaced := false
 	for i := range evs {
 		if evs[i].Key == key {
-			evs[i] = model.MapEvent{ScopeID: scopeID, StoreName: storeName, Key: key, Value: entry.Value, Deleted: entry.Deleted, UpdatedAtUnixMillis: entry.UpdatedAtUnixMillis, OriginPeerID: entry.OriginPeerID}
+			evs[i] = model.MapEvent{GroupID: groupID, StoreName: storeName, Key: key, Value: entry.Value, Deleted: entry.Deleted, UpdatedAtUnixMillis: entry.UpdatedAtUnixMillis, OriginPeerID: entry.OriginPeerID}
 			replaced = true
 			break
 		}
 	}
 	if !replaced {
-		evs = append(evs, model.MapEvent{ScopeID: scopeID, StoreName: storeName, Key: key, Value: entry.Value, Deleted: entry.Deleted, UpdatedAtUnixMillis: entry.UpdatedAtUnixMillis, OriginPeerID: entry.OriginPeerID})
+		evs = append(evs, model.MapEvent{GroupID: groupID, StoreName: storeName, Key: key, Value: entry.Value, Deleted: entry.Deleted, UpdatedAtUnixMillis: entry.UpdatedAtUnixMillis, OriginPeerID: entry.OriginPeerID})
 	}
 	s.events[id] = evs
+
+	// wasLive/isLive determine whether this is an observable change (and of
+	// which kind) from a listener's point of view: a delete applied against
+	// a key that was already tombstoned or never existed changes nothing
+	// visible, so no event fires for it.
+	wasLive := hadKey && !existing.Deleted
+	isLive := !entry.Deleted
+	var change *model.ChangeEvent
+	if wasLive || isLive {
+		ce := model.ChangeEvent{GroupID: groupID, StoreName: storeName, Key: key}
+		switch {
+		case wasLive && !isLive:
+			ce.Type = model.EntryDeleted
+			ce.Old = &existing
+		case !wasLive && isLive:
+			ce.Type = model.EntryAdded
+			ce.New = &entry
+		default: // wasLive && isLive
+			ce.Type = model.EntryUpdated
+			ce.Old = &existing
+			ce.New = &entry
+		}
+		change = &ce
+	}
+
+	listenersSnapshot := make([]func(model.ChangeEvent), len(s.listeners))
+	for i, l := range s.listeners {
+		listenersSnapshot[i] = l.fn
+	}
 	s.mu.Unlock()
 
 	if err := s.persist(id); err != nil {
 		return true, err
 	}
+
+	if change != nil {
+		for _, fn := range listenersSnapshot {
+			fn(*change)
+		}
+	}
+
 	return true, nil
 }
 
-// MaxUpdatedAt returns the max UpdatedAtUnixMillis across every event under any
-// storeName for scopeId, or 0 if we have nothing for that scope yet. Used
-// as the "since" cursor when pulling from a peer: "give me whatever
-// changed after the newest thing I already know about."
-func (s *Store) MaxUpdatedAt(scopeID string) int64 {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// EventsSinceForStore returns every event for groupID/storeName with
+// UpdatedAtUnixMillis > sinceUnix, unsigned — the feature layer signs each
+// one before sending, since only it holds the group's private key.
+func (s *Store) EventsSinceForStore(groupID, storeName string, sinceUnix int64) []model.MapEvent {
+	id := mapID(groupID, storeName)
 
-	var max int64
-	for _, evs := range s.events {
-		for _, e := range evs {
-			if e.ScopeID == scopeID && e.UpdatedAtUnixMillis > max {
-				max = e.UpdatedAtUnixMillis
-			}
-		}
-	}
-	return max
-}
-
-// EventsSince returns every event (any storeName) under scopeId with
-// UpdatedAtUnixMillis > sinceUnix, unsigned — the feature layer signs each one
-// before sending, since only it holds the scope group's private key.
-func (s *Store) EventsSince(scopeID string, sinceUnix int64) []model.MapEvent {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	var result []model.MapEvent
-	for _, evs := range s.events {
-		for _, e := range evs {
-			if e.ScopeID == scopeID && e.UpdatedAtUnixMillis > sinceUnix {
-				result = append(result, e)
-			}
+	for _, e := range s.events[id] {
+		if e.UpdatedAtUnixMillis > sinceUnix {
+			result = append(result, e)
 		}
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].UpdatedAtUnixMillis < result[j].UpdatedAtUnixMillis })
 	return result
 }
 
-// LastFromPeer returns the newest UpdatedAtUnixMillis we've ever received
-// from peerID while syncing scopeID, or 0 if we've never pulled anything
-// from them yet. Used as the per-peer "since" cursor in Feature.pullFrom.
-func (s *Store) LastFromPeer(scopeID, peerID string) int64 {
+// LastFromPeerForStore returns the newest UpdatedAtUnixMillis we've ever
+// received from peerID for groupID/storeName, or 0 if we've never pulled
+// anything from them for that store yet. Used as the per-peer "since"
+// cursor in Feature.subscribeToPeer.
+func (s *Store) LastFromPeerForStore(groupID, storeName, peerID string) int64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.peerCursors[scopeID][peerID]
+	return s.peerCursors[groupID][storeName][peerID]
 }
 
-// RecordFromPeer advances scopeID's cursor for peerID to ts, if ts is newer
-// than what's already recorded, and persists it.
-func (s *Store) RecordFromPeer(scopeID, peerID string, ts int64) error {
+// RecordFromPeerForStore advances groupID/storeName's cursor for peerID to
+// ts, if ts is newer than what's already recorded, and persists it.
+func (s *Store) RecordFromPeerForStore(groupID, storeName, peerID string, ts int64) error {
 	s.mu.Lock()
-	cursors := s.peerCursors[scopeID]
+	byStore := s.peerCursors[groupID]
+	if byStore == nil {
+		byStore = map[string]map[string]int64{}
+		s.peerCursors[groupID] = byStore
+	}
+	cursors := byStore[storeName]
 	if cursors == nil {
 		cursors = map[string]int64{}
-		s.peerCursors[scopeID] = cursors
+		byStore[storeName] = cursors
 	}
 	if ts <= cursors[peerID] {
 		s.mu.Unlock()
 		return nil
 	}
 	cursors[peerID] = ts
-	snapshot := make(map[string]int64, len(cursors))
-	for k, v := range cursors {
-		snapshot[k] = v
+
+	snapshot := make(map[string]map[string]int64, len(byStore))
+	for st, m := range byStore {
+		inner := make(map[string]int64, len(m))
+		for k, v := range m {
+			inner[k] = v
+		}
+		snapshot[st] = inner
 	}
 	s.mu.Unlock()
 
-	return s.writeJSON(scopeID+".peercursors.json", snapshot)
+	return s.writeJSON(groupID+".peercursors.json", snapshot)
 }
 
 // persist rewrites both files for id from the in-memory cache.

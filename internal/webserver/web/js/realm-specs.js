@@ -55,7 +55,7 @@ export function initRealmSpecs(api) {
 	async function refreshSpecs() {
 		const specsByPeer = new Map();
 		for (const group of groups) {
-			const map = await api.call("realm.getMap", { scopeId: group.id, storeName: SPECS_STORE_NAME });
+			const map = await api.call("realm.getMap", { groupId: group.id, storeName: SPECS_STORE_NAME });
 			for (const [key, entry] of Object.entries(map.entries || {})) {
 				if (!key.startsWith(SPECS_KEY_PREFIX)) continue;
 				const peerId = key.slice(SPECS_KEY_PREFIX.length);

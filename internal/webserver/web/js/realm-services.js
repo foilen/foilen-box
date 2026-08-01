@@ -252,7 +252,7 @@ export function initRealmServices(api, output, renderConfig) {
 	async function refreshPeerServices() {
 		const result = [];
 		for (const group of groups) {
-			const map = await api.call("realm.getMap", { scopeId: group.id, storeName: SERVICES_STORE_NAME });
+			const map = await api.call("realm.getMap", { groupId: group.id, storeName: SERVICES_STORE_NAME });
 			for (const [key, entry] of Object.entries(map.entries || {})) {
 				if (!key.startsWith(SERVICES_KEY_PREFIX)) continue;
 				const rest = key.slice(SERVICES_KEY_PREFIX.length);

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -21,55 +22,110 @@ import (
 
 const (
 	// PushProtocolID carries one signed MapEventEnvelope per stream,
-	// fire-and-forget. Sent to every connected, confirmed member of the
-	// scope group right after a local edit; a peer that misses it (offline,
-	// or simply never directly connected) still catches up via
-	// SyncProtocolID the next time it connects or its group membership is
-	// (re)confirmed.
+	// fire-and-forget. Sent to every peer currently subscribed to that
+	// specific group/store (see broadcast); a peer that misses it (offline,
+	// or never subscribed) catches up via SubscribeProtocolID's catch-up
+	// events the next time it (re)subscribes.
 	PushProtocolID = protocol.ID("/foilen-box/maps-push/1.0.0")
 
-	// SyncProtocolID is a synchronous request/response, same shape as
-	// services.ListProtocolID: "give me every event for this scope newer
-	// than sinceUnix."
-	SyncProtocolID = protocol.ID("/foilen-box/maps-sync/1.0.0")
+	// SubscribeProtocolID is a synchronous request/response: "I want
+	// pushes for these stores under this group from now on, and give me
+	// every event newer than the per-store cursor I already have."
+	SubscribeProtocolID = protocol.ID("/foilen-box/maps-subscribe/1.0.0")
+
+	// UnsubscribeProtocolID is fire-and-forget: "stop pushing me these
+	// stores under this group."
+	UnsubscribeProtocolID = protocol.ID("/foilen-box/maps-unsubscribe/1.0.0")
+
+	// SystemConfigStoreName is the reserved store holding one RealmMapConfig
+	// entry (JSON-encoded) per map name, keyed by that map's storeName. Like
+	// any other store, it isn't special-cased for read/write access — it's
+	// just the one every peer watches to know which other stores to
+	// subscribe to (see reconcileDesiredStores) and what settings (e.g.
+	// AutoDeleteEntriesHours) apply to them.
+	SystemConfigStoreName = "_realmMaps"
 
 	ioTimeout = 10 * time.Second
 	maxBytes  = 256 * 1024
 
 	// FeatureName namespaces this feature, even though it declares no
-	// Permission actions: a valid event signature (made with the scope
-	// group's own private key, which every member already holds) is itself
-	// the write authorization, and subscription/read access is simply
-	// "confirmed member of the scope group" (see OnPeerConnected/
-	// OnGroupConfirmed) — there's nothing left for a Permission to gate.
+	// Permission actions: a valid event signature (made with the group's
+	// own private key, which every member already holds) is itself the
+	// write authorization, and subscribe access is simply "confirmed member
+	// of the group" (see handleSubscribeStream) — there's nothing left for
+	// a Permission to gate.
 	FeatureName = "common/maps"
 )
 
-// syncRequest asks for every event under ScopeID newer than SinceUnix.
-type syncRequest struct {
-	ScopeID   string `json:"scopeId"`
+// storeCursor is one entry of a subscribeRequest: "give me events for
+// StoreName newer than SinceUnix."
+type storeCursor struct {
+	StoreName string `json:"storeName"`
 	SinceUnix int64  `json:"sinceUnix"`
 }
 
-type syncResponse struct {
+// subscribeRequest asks to subscribe to (and catch up on) each of Stores
+// under GroupID.
+type subscribeRequest struct {
+	GroupID string        `json:"groupId"`
+	Stores  []storeCursor `json:"stores"`
+}
+
+type subscribeResponse struct {
 	Events []model.MapEventEnvelope `json:"events"`
 }
 
-// Feature implements realm.Feature, realm.PeerConnectedHook, and
-// realm.GroupConfirmedHook: both trigger the same "pull anything I might be
-// missing" sync against the peer, which is what makes "peers we share a
-// group with" and "maps of that group" converge without any explicit
-// subscribe/unsubscribe bookkeeping.
+// unsubscribeRequest asks to stop receiving pushes for StoreNames under
+// GroupID.
+type unsubscribeRequest struct {
+	GroupID    string   `json:"groupId"`
+	StoreNames []string `json:"storeNames"`
+}
+
+// groupSubs is one group's worth of outgoing subscription bookkeeping: what
+// we want from peers, and who we've already asked.
+type groupSubs struct {
+	initializedPeers map[string]bool            // peerID -> done initial (common + _realmMaps) subscribe
+	desiredStores    map[string]bool            // mirrors live keys of local _realmMaps for this group
+	subscribedPeers  map[string]map[string]bool // storeName -> peerID -> bool (peers we've asked for this store)
+}
+
+// Feature implements realm.Feature, realm.PeerConnectedHook,
+// realm.GroupConfirmedHook, realm.PeerDisconnectedHook, and
+// realm.PeriodicHook. Unlike the old blanket-sync design, a peer only
+// receives pushes for the stores it has explicitly subscribed to (see
+// incomingSubs/broadcast); onPeerAvailable and reconcileDesiredStores keep
+// our own outgoing subscriptions in sync with the local _realmMaps map.
 type Feature struct {
 	store *Store
 
 	mu  sync.Mutex
 	reg *realm.Registrar
+
+	// incomingSubs: who (peerID) is subscribed to which storeName under
+	// which group — consulted by broadcast() to decide who to push to.
+	incomingSubs map[string]map[string]map[string]bool // groupID -> storeName -> peerID -> bool
+
+	// groupStates: outgoing per-group subscription state, see groupSubs.
+	groupStates map[string]*groupSubs // groupID -> ...
+
+	changeListenerInstalled bool
+
+	// sweepMinute is the minute-of-hour (fixed at process startup) this
+	// instance runs its auto-delete sweep at, so peers sharing a group
+	// don't all sweep on the same tick (see RunPeriodic).
+	sweepMinute   int
+	lastSweptHour time.Time
 }
 
 // New builds the maps Feature backed by store (see NewStore).
 func New(store *Store) *Feature {
-	return &Feature{store: store}
+	return &Feature{
+		store:        store,
+		incomingSubs: map[string]map[string]map[string]bool{},
+		groupStates:  map[string]*groupSubs{},
+		sweepMinute:  rand.Intn(60),
+	}
 }
 
 func (f *Feature) registrar() *realm.Registrar {
@@ -85,13 +141,38 @@ func (f *Feature) Actions() []model.PermissionAction { return nil }
 func (f *Feature) RegisterHandlers(reg *realm.Registrar) {
 	f.mu.Lock()
 	f.reg = reg
+	alreadyInstalled := f.changeListenerInstalled
+	f.changeListenerInstalled = true
 	f.mu.Unlock()
+
 	reg.SetStreamHandler(PushProtocolID, f.handlePushStream(reg))
-	reg.SetStreamHandler(SyncProtocolID, f.handleSyncStream(reg))
+	reg.SetStreamHandler(SubscribeProtocolID, f.handleSubscribeStream(reg))
+	reg.SetStreamHandler(UnsubscribeProtocolID, f.handleUnsubscribeStream(reg))
+
+	// Only install once: RegisterHandlers is called again whenever the
+	// engine's host is recreated, and Store.Subscribe has no dedup of its
+	// own — a second install would fire reconcileDesiredStores twice per
+	// _realmMaps change.
+	if !alreadyInstalled {
+		f.store.Subscribe(f.onStoreChange)
+	}
 }
 
-// OnPeerConnected pulls, for every group id shared knows it belongs to,
-// anything we might be missing, per realm.PeerConnectedHook.
+// onStoreChange is the internal Store.Subscribe listener that keeps our
+// outgoing subscriptions in sync with each group's _realmMaps content.
+func (f *Feature) onStoreChange(ev model.ChangeEvent) {
+	if ev.StoreName != SystemConfigStoreName {
+		return
+	}
+	reg := f.registrar()
+	if reg == nil {
+		return
+	}
+	f.reconcileDesiredStores(reg, ev.GroupID)
+}
+
+// OnPeerConnected converges with OnGroupConfirmed below via onPeerAvailable,
+// for every group id shared knows it belongs to, per realm.PeerConnectedHook.
 func (f *Feature) OnPeerConnected(reg *realm.Registrar, id peer.ID) {
 	info, ok := reg.Peers().Get(id.String())
 	if !ok {
@@ -100,75 +181,256 @@ func (f *Feature) OnPeerConnected(reg *realm.Registrar, id peer.ID) {
 	cfg := reg.Config()
 	for _, groupName := range info.GroupNames {
 		if group, ok := findGroupByName(cfg.Groups, groupName); ok {
-			go f.pullFrom(reg, id, group)
+			go f.onPeerAvailable(reg, id, group)
 		}
 	}
 }
 
-// OnGroupConfirmed pulls maps.group's state from id the moment its
-// membership is cryptographically confirmed, per realm.GroupConfirmedHook —
-// covers the case where the challenge completes after OnPeerConnected
-// already ran and found no confirmed groups yet.
+// OnGroupConfirmed converges with OnPeerConnected above via onPeerAvailable
+// the moment id's membership in group is cryptographically confirmed, per
+// realm.GroupConfirmedHook — covers the case where the challenge completes
+// after OnPeerConnected already ran and found no confirmed groups yet.
 func (f *Feature) OnGroupConfirmed(reg *realm.Registrar, id peer.ID, group model.Group) {
-	f.pullFrom(reg, id, group)
+	f.onPeerAvailable(reg, id, group)
+}
+
+// onPeerAvailable runs once per (peer, group): does the initial subscribe to
+// the system stores ("common" plus SystemConfigStoreName), then reconciles
+// our desired stores against the now-fetched _realmMaps content, which
+// naturally also subscribes to whatever application stores that group
+// already has.
+func (f *Feature) onPeerAvailable(reg *realm.Registrar, id peer.ID, group model.Group) {
+	groupID := group.KeyPair.ID
+	peerID := id.String()
+	gs := f.groupSubsFor(groupID)
+
+	f.mu.Lock()
+	if gs.initializedPeers[peerID] {
+		f.mu.Unlock()
+		return
+	}
+	gs.initializedPeers[peerID] = true
+	f.mu.Unlock()
+
+	initial := f.claimStoresToSubscribe(gs, peerID, []string{"common", SystemConfigStoreName})
+	if len(initial) > 0 {
+		f.subscribeToPeer(reg, id, group, initial)
+	}
+
+	f.reconcileDesiredStores(reg, groupID)
+}
+
+// reconcileDesiredStores diffs the group's local _realmMaps live keys
+// against what we last knew, subscribes every already-initialized,
+// connected peer to newly-added stores, and unsubscribes+purges removed
+// ones. Called both after a peer's initial subscribe (onPeerAvailable) and
+// whenever _realmMaps itself changes (onStoreChange).
+func (f *Feature) reconcileDesiredStores(reg *realm.Registrar, groupID string) {
+	group, ok := findGroupByID(reg.Config().Groups, groupID)
+	if !ok {
+		return
+	}
+
+	cfgMap := f.store.GetMap(groupID, SystemConfigStoreName)
+	desired := make(map[string]bool, len(cfgMap.Entries))
+	for name := range cfgMap.Entries {
+		desired[name] = true
+	}
+
+	gs := f.groupSubsFor(groupID)
+
+	f.mu.Lock()
+	var added, removed []string
+	for name := range desired {
+		if !gs.desiredStores[name] {
+			added = append(added, name)
+		}
+	}
+	for name := range gs.desiredStores {
+		if !desired[name] {
+			removed = append(removed, name)
+		}
+	}
+	gs.desiredStores = desired
+	initializedPeers := make([]string, 0, len(gs.initializedPeers))
+	for pid := range gs.initializedPeers {
+		initializedPeers = append(initializedPeers, pid)
+	}
+	f.mu.Unlock()
+
+	if len(added) > 0 {
+		for _, pidStr := range initializedPeers {
+			info, ok := reg.Peers().Get(pidStr)
+			if !ok || !info.Connected {
+				continue
+			}
+			pid, err := peer.Decode(pidStr)
+			if err != nil {
+				continue
+			}
+			toAsk := f.claimStoresToSubscribe(gs, pidStr, added)
+			if len(toAsk) > 0 {
+				go f.subscribeToPeer(reg, pid, group, toAsk)
+			}
+		}
+	}
+
+	if len(removed) > 0 {
+		for _, pidStr := range initializedPeers {
+			info, ok := reg.Peers().Get(pidStr)
+			if !ok || !info.Connected {
+				continue
+			}
+			pid, err := peer.Decode(pidStr)
+			if err != nil {
+				continue
+			}
+			f.sendUnsubscribe(reg, pid, groupID, removed)
+		}
+
+		f.mu.Lock()
+		for _, storeName := range removed {
+			delete(gs.subscribedPeers, storeName)
+		}
+		f.mu.Unlock()
+
+		for _, storeName := range removed {
+			if err := f.store.DeleteMap(groupID, storeName); err != nil {
+				log.Printf("realm maps: failed to purge removed store %q for group %q: %v", storeName, groupID, err)
+			}
+		}
+	}
+}
+
+// groupSubsFor returns (creating if necessary) groupID's bookkeeping.
+func (f *Feature) groupSubsFor(groupID string) *groupSubs {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.groupStatesLocked(groupID)
+}
+
+// groupStatesLocked assumes f.mu is already held.
+func (f *Feature) groupStatesLocked(groupID string) *groupSubs {
+	gs, ok := f.groupStates[groupID]
+	if !ok {
+		gs = &groupSubs{
+			initializedPeers: map[string]bool{},
+			desiredStores:    map[string]bool{},
+			subscribedPeers:  map[string]map[string]bool{},
+		}
+		f.groupStates[groupID] = gs
+	}
+	return gs
+}
+
+// claimStoresToSubscribe filters storeNames down to the ones gs doesn't
+// already record as asked of peerID, marking them asked as it goes (so a
+// concurrent caller won't also claim them) and returning only the ones the
+// caller should actually go request.
+func (f *Feature) claimStoresToSubscribe(gs *groupSubs, peerID string, storeNames []string) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var toAsk []string
+	for _, name := range storeNames {
+		peers := gs.subscribedPeers[name]
+		if peers == nil {
+			peers = map[string]bool{}
+			gs.subscribedPeers[name] = peers
+		}
+		if peers[peerID] {
+			continue
+		}
+		peers[peerID] = true
+		toAsk = append(toAsk, name)
+	}
+	return toAsk
 }
 
 // ListSummaries returns every locally-known map for a currently-configured
-// group, for the UI's map list.
+// group, for the UI's map list, with each summary's AutoDeleteEntriesHours
+// filled in from that group's _realmMaps config (0 if missing/unparseable).
 func (f *Feature) ListSummaries() []model.RealmMapSummary {
 	reg := f.registrar()
 	if reg == nil {
 		return nil
 	}
-	return f.store.ListSummaries(reg.Config().Groups)
+	summaries := f.store.ListSummaries(reg.Config().Groups)
+
+	configByGroup := map[string]model.RealmMap{}
+	for i := range summaries {
+		groupID := summaries[i].GroupID
+		cfgMap, ok := configByGroup[groupID]
+		if !ok {
+			cfgMap = f.store.GetMap(groupID, SystemConfigStoreName)
+			configByGroup[groupID] = cfgMap
+		}
+		entry, ok := cfgMap.Entries[summaries[i].StoreName]
+		if !ok {
+			continue
+		}
+		var cfg model.RealmMapConfig
+		if err := json.Unmarshal([]byte(entry.Value), &cfg); err != nil {
+			continue
+		}
+		summaries[i].AutoDeleteEntriesHours = cfg.AutoDeleteEntriesHours
+	}
+	return summaries
 }
 
-// GetMap returns scopeId/storeName's current entries.
-func (f *Feature) GetMap(scopeID, storeName string) model.RealmMap {
-	return f.store.GetMap(scopeID, storeName)
+// GetMap returns groupID/storeName's current entries.
+func (f *Feature) GetMap(groupID, storeName string) model.RealmMap {
+	return f.store.GetMap(groupID, storeName)
 }
 
 // CreateMap ensures an (initially empty) map exists locally for
-// scopeId/storeName, so it shows up in ListSummaries before any key is set.
-func (f *Feature) CreateMap(scopeID, storeName string) error {
-	if _, err := f.groupFor(scopeID); err != nil {
+// groupID/storeName, so it shows up in ListSummaries before any key is set,
+// and writes config into _realmMaps — which is what makes the store show up
+// as a live key other peers watching this group will subscribe to.
+// Re-creating an existing map updates its config.
+func (f *Feature) CreateMap(groupID, storeName string, config model.RealmMapConfig) error {
+	if _, err := f.groupFor(groupID); err != nil {
 		return err
 	}
-	return f.store.CreateMap(scopeID, storeName)
-}
-
-// SetValue writes key=value into scopeId/storeName, applies it locally, and
-// broadcasts it (signed) to every currently-connected, confirmed member of
-// the scope group.
-func (f *Feature) SetValue(scopeID, storeName, key, value string) error {
-	return f.mutate(scopeID, storeName, key, model.MapEntry{Value: value})
-}
-
-// DeleteValue tombstones key inside scopeId/storeName and broadcasts the
-// deletion, same as SetValue.
-func (f *Feature) DeleteValue(scopeID, storeName, key string) error {
-	return f.mutate(scopeID, storeName, key, model.MapEntry{Deleted: true})
-}
-
-// DeleteMap tombstones every current key in scopeId/storeName (broadcasting
-// each deletion like any edit); once every entry is deleted the map drops
-// out of ListSummaries on its own (see Store.ListSummaries).
-func (f *Feature) DeleteMap(scopeID, storeName string) error {
-	rm := f.store.GetMap(scopeID, storeName)
-	for key := range rm.Entries {
-		if err := f.DeleteValue(scopeID, storeName, key); err != nil {
-			return err
-		}
+	if err := f.store.CreateMap(groupID, storeName); err != nil {
+		return err
 	}
-	return nil
+	data, err := json.Marshal(config)
+	if err != nil {
+		return err
+	}
+	return f.SetValue(groupID, SystemConfigStoreName, storeName, string(data))
 }
 
-func (f *Feature) mutate(scopeID, storeName, key string, entry model.MapEntry) error {
+// SetValue writes key=value into groupID/storeName, applies it locally, and
+// broadcasts it (signed) to every peer currently subscribed to that store.
+func (f *Feature) SetValue(groupID, storeName, key, value string) error {
+	return f.mutate(groupID, storeName, key, model.MapEntry{Value: value})
+}
+
+// DeleteValue tombstones key inside groupID/storeName and broadcasts the
+// deletion, same as SetValue.
+func (f *Feature) DeleteValue(groupID, storeName, key string) error {
+	return f.mutate(groupID, storeName, key, model.MapEntry{Deleted: true})
+}
+
+// DeleteMap removes storeName from groupID entirely: it deletes the map's
+// entry from _realmMaps (which broadcasts normally, so every subscribed
+// peer sees the key disappear and self-reconciles via reconcileDesiredStores)
+// and also purges it locally right away, rather than waiting on our own
+// reconcile pass to get to it.
+func (f *Feature) DeleteMap(groupID, storeName string) error {
+	if err := f.DeleteValue(groupID, SystemConfigStoreName, storeName); err != nil {
+		return err
+	}
+	return f.store.DeleteMap(groupID, storeName)
+}
+
+func (f *Feature) mutate(groupID, storeName, key string, entry model.MapEntry) error {
 	reg := f.registrar()
 	if reg == nil {
 		return fmt.Errorf("realm maps: not registered on an engine")
 	}
-	group, err := f.groupFor(scopeID)
+	group, err := f.groupFor(groupID)
 	if err != nil {
 		return err
 	}
@@ -176,57 +438,49 @@ func (f *Feature) mutate(scopeID, storeName, key string, entry model.MapEntry) e
 	entry.UpdatedAtUnixMillis = time.Now().UnixMilli()
 	entry.OriginPeerID = reg.Config().PeerID.ID
 
-	if _, err := f.store.ApplyEvent(scopeID, storeName, key, entry); err != nil {
+	if _, err := f.store.ApplyEvent(groupID, storeName, key, entry); err != nil {
 		return err
 	}
 
-	ev := model.MapEvent{ScopeID: scopeID, StoreName: storeName, Key: key, Value: entry.Value, Deleted: entry.Deleted, UpdatedAtUnixMillis: entry.UpdatedAtUnixMillis, OriginPeerID: entry.OriginPeerID}
+	ev := model.MapEvent{GroupID: groupID, StoreName: storeName, Key: key, Value: entry.Value, Deleted: entry.Deleted, UpdatedAtUnixMillis: entry.UpdatedAtUnixMillis, OriginPeerID: entry.OriginPeerID}
 	env, err := signEvent(group, ev)
 	if err != nil {
 		return err
 	}
-	f.broadcast(reg, group, env)
+	f.broadcast(reg, group, storeName, env)
 	return nil
 }
 
 // groupFor returns the locally-configured group whose public id is
-// scopeID, or an error if we don't hold that group's key.
-func (f *Feature) groupFor(scopeID string) (model.Group, error) {
+// groupID, or an error if we don't hold that group's key.
+func (f *Feature) groupFor(groupID string) (model.Group, error) {
 	reg := f.registrar()
 	if reg == nil {
 		return model.Group{}, fmt.Errorf("realm maps: not registered on an engine")
 	}
-	group, ok := findGroupByID(reg.Config().Groups, scopeID)
+	group, ok := findGroupByID(reg.Config().Groups, groupID)
 	if !ok {
-		return model.Group{}, fmt.Errorf("realm maps: no locally-configured group for scope %q", scopeID)
+		return model.Group{}, fmt.Errorf("realm maps: no locally-configured group for %q", groupID)
 	}
 	return group, nil
 }
 
-// broadcast sends env to every peer currently connected and confirmed as a
-// member of group, fire-and-forget: a peer that's offline or unreachable
-// right now will simply pick this change up via its own next sync pull.
-func (f *Feature) broadcast(reg *realm.Registrar, group model.Group, env model.MapEventEnvelope) {
+// broadcast sends env to every peer currently subscribed to
+// group/storeName and still connected, fire-and-forget: a peer that's
+// offline or unreachable right now will simply pick this change up via its
+// next subscribe catch-up.
+func (f *Feature) broadcast(reg *realm.Registrar, group model.Group, storeName string, env model.MapEventEnvelope) {
 	h := reg.Host()
 	ctx := reg.Context()
 	if h == nil || ctx == nil {
 		return
 	}
-	for _, info := range reg.Peers().List() {
-		if !info.Connected {
+	for _, peerID := range f.incomingSubscribers(group.KeyPair.ID, storeName) {
+		info, ok := reg.Peers().Get(peerID)
+		if !ok || !info.Connected {
 			continue
 		}
-		hasGroup := false
-		for _, gn := range info.GroupNames {
-			if gn == group.Name {
-				hasGroup = true
-				break
-			}
-		}
-		if !hasGroup {
-			continue
-		}
-		pid, err := peer.Decode(info.ID)
+		pid, err := peer.Decode(peerID)
 		if err != nil {
 			continue
 		}
@@ -249,10 +503,13 @@ func sendPush(ctx context.Context, h host.Host, pid peer.ID, env model.MapEventE
 	}
 }
 
-// pullFrom asks id for every event under group's scope newer than the
-// newest one we already have, verifies and applies each. Used both from
-// OnPeerConnected and OnGroupConfirmed.
-func (f *Feature) pullFrom(reg *realm.Registrar, id peer.ID, group model.Group) {
+// subscribeToPeer asks id to subscribe us to storeNames under group,
+// catching us up with everything newer than each store's per-peer cursor,
+// verifies and applies each returned event, and advances the cursors.
+func (f *Feature) subscribeToPeer(reg *realm.Registrar, id peer.ID, group model.Group, storeNames []string) {
+	if len(storeNames) == 0 {
+		return
+	}
 	h := reg.Host()
 	ctx := reg.Context()
 	if h == nil || ctx == nil {
@@ -263,38 +520,66 @@ func (f *Feature) pullFrom(reg *realm.Registrar, id peer.ID, group model.Group) 
 	}
 
 	streamCtx, cancel := context.WithTimeout(ctx, ioTimeout)
-	s, err := h.NewStream(streamCtx, id, SyncProtocolID)
+	s, err := h.NewStream(streamCtx, id, SubscribeProtocolID)
 	cancel()
 	if err != nil {
-		log.Printf("realm maps: peer %s unreachable for sync: %v", id, err)
+		log.Printf("realm maps: peer %s unreachable for subscribe: %v", id, err)
 		return
 	}
 	defer s.Close()
 	_ = s.SetDeadline(time.Now().Add(ioTimeout))
 
+	groupID := group.KeyPair.ID
 	peerID := id.String()
-	req := syncRequest{ScopeID: group.KeyPair.ID, SinceUnix: f.store.LastFromPeer(group.KeyPair.ID, peerID)}
+	req := subscribeRequest{GroupID: groupID, Stores: make([]storeCursor, 0, len(storeNames))}
+	for _, name := range storeNames {
+		req.Stores = append(req.Stores, storeCursor{StoreName: name, SinceUnix: f.store.LastFromPeerForStore(groupID, name, peerID)})
+	}
 	if err := json.NewEncoder(s).Encode(req); err != nil {
-		log.Printf("realm maps: failed to send sync request to %s: %v", id, err)
+		log.Printf("realm maps: failed to send subscribe request to %s: %v", id, err)
 		return
 	}
 
-	var resp syncResponse
+	var resp subscribeResponse
 	if err := json.NewDecoder(io.LimitReader(s, maxBytes)).Decode(&resp); err != nil {
-		log.Printf("realm maps: failed to read sync response from %s: %v", id, err)
+		log.Printf("realm maps: failed to read subscribe response from %s: %v", id, err)
 		return
 	}
-	var maxTs int64
+
+	maxTsByStore := make(map[string]int64, len(storeNames))
 	for _, env := range resp.Events {
 		f.applyVerified(group, env)
-		if env.UpdatedAtUnixMillis > maxTs {
-			maxTs = env.UpdatedAtUnixMillis
+		if env.UpdatedAtUnixMillis > maxTsByStore[env.StoreName] {
+			maxTsByStore[env.StoreName] = env.UpdatedAtUnixMillis
 		}
 	}
-	if maxTs > 0 {
-		if err := f.store.RecordFromPeer(group.KeyPair.ID, peerID, maxTs); err != nil {
-			log.Printf("realm maps: failed to persist sync cursor for peer %s: %v", id, err)
+	for storeName, ts := range maxTsByStore {
+		if err := f.store.RecordFromPeerForStore(groupID, storeName, peerID, ts); err != nil {
+			log.Printf("realm maps: failed to persist subscribe cursor for peer %s/%s: %v", id, storeName, err)
 		}
+	}
+}
+
+// sendUnsubscribe tells id to stop pushing us storeNames under groupID,
+// fire-and-forget.
+func (f *Feature) sendUnsubscribe(reg *realm.Registrar, id peer.ID, groupID string, storeNames []string) {
+	h := reg.Host()
+	ctx := reg.Context()
+	if h == nil || ctx == nil {
+		return
+	}
+	streamCtx, cancel := context.WithTimeout(ctx, ioTimeout)
+	s, err := h.NewStream(streamCtx, id, UnsubscribeProtocolID)
+	cancel()
+	if err != nil {
+		log.Printf("realm maps: peer %s unreachable for unsubscribe: %v", id, err)
+		return
+	}
+	defer s.Close()
+	_ = s.SetDeadline(time.Now().Add(ioTimeout))
+	req := unsubscribeRequest{GroupID: groupID, StoreNames: storeNames}
+	if err := json.NewEncoder(s).Encode(req); err != nil {
+		log.Printf("realm maps: failed to send unsubscribe request to %s: %v", id, err)
 	}
 }
 
@@ -302,12 +587,12 @@ func (f *Feature) pullFrom(reg *realm.Registrar, id peer.ID, group model.Group) 
 // merges it into the store.
 func (f *Feature) applyVerified(group model.Group, env model.MapEventEnvelope) {
 	if !verifyEvent(group, env) {
-		log.Printf("realm maps: dropping event for scope %q with invalid signature", env.ScopeID)
+		log.Printf("realm maps: dropping event for group %q with invalid signature", env.GroupID)
 		return
 	}
 	entry := model.MapEntry{Value: env.Value, Deleted: env.Deleted, UpdatedAtUnixMillis: env.UpdatedAtUnixMillis, OriginPeerID: env.OriginPeerID}
-	if _, err := f.store.ApplyEvent(env.ScopeID, env.StoreName, env.Key, entry); err != nil {
-		log.Printf("realm maps: failed to persist event for scope %q: %v", env.ScopeID, err)
+	if _, err := f.store.ApplyEvent(env.GroupID, env.StoreName, env.Key, entry); err != nil {
+		log.Printf("realm maps: failed to persist event for group %q: %v", env.GroupID, err)
 	}
 }
 
@@ -323,55 +608,193 @@ func (f *Feature) handlePushStream(reg *realm.Registrar) network.StreamHandler {
 			log.Printf("realm maps: failed to decode incoming push: %v", err)
 			return
 		}
-		group, ok := findGroupByID(reg.Config().Groups, env.ScopeID)
+		group, ok := findGroupByID(reg.Config().Groups, env.GroupID)
 		if !ok {
-			// We're not a member of this scope's group (or don't hold its
-			// key) — can't verify, so we can't trust it either.
+			// We're not a member of this group (or don't hold its key) —
+			// can't verify, so we can't trust it either.
 			return
 		}
 		f.applyVerified(group, env)
 	}
 }
 
-// handleSyncStream is the libp2p stream handler for SyncProtocolID: answers
-// with every event we hold for the requested scope newer than SinceUnix, if
-// we're a member of that scope's group (if not, we have nothing to verify
-// against anyway, so nothing meaningful to answer with).
-func (f *Feature) handleSyncStream(reg *realm.Registrar) network.StreamHandler {
+// handleSubscribeStream is the libp2p stream handler for
+// SubscribeProtocolID: registers the requester as an incoming subscriber
+// for each requested store (so future broadcasts reach it) and answers with
+// catch-up events for each, but only if the requester is a confirmed member
+// of the requested group — otherwise (or if we don't hold that group
+// ourselves) we can't verify anything, so we register nothing and answer
+// empty.
+func (f *Feature) handleSubscribeStream(reg *realm.Registrar) network.StreamHandler {
 	return func(s network.Stream) {
 		defer s.Close()
 		_ = s.SetDeadline(time.Now().Add(ioTimeout))
 
-		var req syncRequest
+		var req subscribeRequest
 		if err := json.NewDecoder(io.LimitReader(s, maxBytes)).Decode(&req); err != nil {
-			log.Printf("realm maps: failed to decode sync request: %v", err)
-			return
-		}
-		group, ok := findGroupByID(reg.Config().Groups, req.ScopeID)
-		if !ok {
-			_ = json.NewEncoder(s).Encode(syncResponse{})
+			log.Printf("realm maps: failed to decode subscribe request: %v", err)
 			return
 		}
 
-		evs := f.store.EventsSince(req.ScopeID, req.SinceUnix)
-		resp := syncResponse{Events: make([]model.MapEventEnvelope, 0, len(evs))}
-		for _, ev := range evs {
-			env, err := signEvent(group, ev)
-			if err != nil {
-				log.Printf("realm maps: failed to sign event for sync response: %v", err)
-				continue
+		group, ok := findGroupByID(reg.Config().Groups, req.GroupID)
+		if !ok {
+			_ = json.NewEncoder(s).Encode(subscribeResponse{})
+			return
+		}
+
+		remotePeerID := s.Conn().RemotePeer().String()
+		info, known := reg.Peers().Get(remotePeerID)
+		isMember := false
+		for _, gn := range info.GroupNames {
+			if gn == group.Name {
+				isMember = true
+				break
 			}
-			resp.Events = append(resp.Events, env)
+		}
+		if !known || !isMember {
+			_ = json.NewEncoder(s).Encode(subscribeResponse{})
+			return
+		}
+
+		var resp subscribeResponse
+		for _, sc := range req.Stores {
+			f.addIncomingSub(req.GroupID, sc.StoreName, remotePeerID)
+			for _, ev := range f.store.EventsSinceForStore(req.GroupID, sc.StoreName, sc.SinceUnix) {
+				env, err := signEvent(group, ev)
+				if err != nil {
+					log.Printf("realm maps: failed to sign event for subscribe response: %v", err)
+					continue
+				}
+				resp.Events = append(resp.Events, env)
+			}
 		}
 		if err := json.NewEncoder(s).Encode(resp); err != nil {
-			log.Printf("realm maps: failed to send sync response: %v", err)
+			log.Printf("realm maps: failed to send subscribe response: %v", err)
+		}
+	}
+}
+
+// handleUnsubscribeStream is the libp2p stream handler for
+// UnsubscribeProtocolID: removes the requester from the incoming-subscriber
+// table for each listed store. Fire-and-forget, no response sent.
+func (f *Feature) handleUnsubscribeStream(reg *realm.Registrar) network.StreamHandler {
+	return func(s network.Stream) {
+		defer s.Close()
+		_ = s.SetDeadline(time.Now().Add(ioTimeout))
+
+		var req unsubscribeRequest
+		if err := json.NewDecoder(io.LimitReader(s, maxBytes)).Decode(&req); err != nil {
+			log.Printf("realm maps: failed to decode unsubscribe request: %v", err)
+			return
+		}
+		remotePeerID := s.Conn().RemotePeer().String()
+		for _, storeName := range req.StoreNames {
+			f.removeIncomingSub(req.GroupID, storeName, remotePeerID)
+		}
+	}
+}
+
+func (f *Feature) addIncomingSub(groupID, storeName, peerID string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	byStore := f.incomingSubs[groupID]
+	if byStore == nil {
+		byStore = map[string]map[string]bool{}
+		f.incomingSubs[groupID] = byStore
+	}
+	peers := byStore[storeName]
+	if peers == nil {
+		peers = map[string]bool{}
+		byStore[storeName] = peers
+	}
+	peers[peerID] = true
+}
+
+func (f *Feature) removeIncomingSub(groupID, storeName, peerID string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if byStore, ok := f.incomingSubs[groupID]; ok {
+		delete(byStore[storeName], peerID)
+	}
+}
+
+func (f *Feature) incomingSubscribers(groupID, storeName string) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	peers := f.incomingSubs[groupID][storeName]
+	result := make([]string, 0, len(peers))
+	for pid := range peers {
+		result = append(result, pid)
+	}
+	return result
+}
+
+// OnPeerDisconnected implements realm.PeerDisconnectedHook: forgets every
+// purely in-memory subscription (incoming and outgoing) we kept for id,
+// since none of it is persisted — a peer that reconnects starts over with a
+// fresh initial subscribe (see onPeerAvailable).
+func (f *Feature) OnPeerDisconnected(id peer.ID) {
+	peerID := id.String()
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, gs := range f.groupStates {
+		delete(gs.initializedPeers, peerID)
+		for storeName := range gs.subscribedPeers {
+			delete(gs.subscribedPeers[storeName], peerID)
+		}
+	}
+	for _, byStore := range f.incomingSubs {
+		for storeName := range byStore {
+			delete(byStore[storeName], peerID)
+		}
+	}
+}
+
+// RunPeriodic implements realm.PeriodicHook, driven by the engine's
+// keep-alive tick (currently every 10 minutes): at most once per hour, at
+// this process's own randomly-chosen minute (so peers sharing a group don't
+// all sweep on the same tick), tombstones every entry older than its map's
+// configured AutoDeleteEntriesHours. Any single subscribed peer doing this
+// is enough — the tombstone propagates to every other subscriber via the
+// normal push/subscribe path — so correctness doesn't depend on any
+// particular peer's turn coming up first.
+func (f *Feature) RunPeriodic(reg *realm.Registrar) {
+	now := time.Now()
+	hourBucket := now.Truncate(time.Hour)
+
+	f.mu.Lock()
+	if f.lastSweptHour.Equal(hourBucket) || now.Minute() < f.sweepMinute {
+		f.mu.Unlock()
+		return
+	}
+	f.lastSweptHour = hourBucket
+	f.mu.Unlock()
+
+	for _, group := range reg.Config().Groups {
+		groupID := group.KeyPair.ID
+		cfgMap := f.store.GetMap(groupID, SystemConfigStoreName)
+		for storeName, entry := range cfgMap.Entries {
+			var cfg model.RealmMapConfig
+			if err := json.Unmarshal([]byte(entry.Value), &cfg); err != nil || cfg.AutoDeleteEntriesHours <= 0 {
+				continue
+			}
+			cutoff := now.Add(-time.Duration(cfg.AutoDeleteEntriesHours) * time.Hour).UnixMilli()
+			rm := f.store.GetMap(groupID, storeName)
+			for key, e := range rm.Entries {
+				if e.UpdatedAtUnixMillis < cutoff {
+					if err := f.DeleteValue(groupID, storeName, key); err != nil {
+						log.Printf("realm maps: failed to auto-delete expired entry %q in %s/%s: %v", key, groupID, storeName, err)
+					}
+				}
+			}
 		}
 	}
 }
 
 // signEvent signs ev's SigningBytes with group's private key — every member
 // holds it, so a valid signature both proves and is the sole check for
-// write authorization to that scope.
+// write authorization to that group.
 func signEvent(group model.Group, ev model.MapEvent) (model.MapEventEnvelope, error) {
 	priv, err := keypair.PrivateKey(group.KeyPair)
 	if err != nil {

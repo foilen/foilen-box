@@ -238,7 +238,10 @@ further wiring.
 in particular:
 
 - `maps` shows a signed wire payload and a `PeerConnectedHook`/
-  `GroupConfirmedHook` pair that pulls missed state on reconnect.
+  `GroupConfirmedHook` pair that drives a per-store subscribe/unsubscribe
+  protocol: a peer only receives pushes for the stores it has explicitly
+  subscribed to (tracked via a reserved `_realmMaps` config store), rather
+  than syncing everything under a shared group indiscriminately.
 - `spec` shows a `TextProvider func() string` constructor argument, used to
   keep an application-specific concern (foilen-box's own
   `internal/spec.Report` machine-info dump) out of the library — a feature

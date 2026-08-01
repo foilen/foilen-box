@@ -171,7 +171,7 @@ export function initRealmScripts(api, output, renderConfig) {
 	async function refreshPeerScripts() {
 		const result = [];
 		for (const group of groups) {
-			const map = await api.call("realm.getMap", { scopeId: group.id, storeName: SCRIPTS_STORE_NAME });
+			const map = await api.call("realm.getMap", { groupId: group.id, storeName: SCRIPTS_STORE_NAME });
 			for (const [key, entry] of Object.entries(map.entries || {})) {
 				if (!key.startsWith(SCRIPTS_KEY_PREFIX)) continue;
 				const rest = key.slice(SCRIPTS_KEY_PREFIX.length);

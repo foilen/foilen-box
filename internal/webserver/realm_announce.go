@@ -36,6 +36,11 @@ const (
 	// actually changed; a real change to any of those fields is posted
 	// immediately instead of waiting for this.
 	peerInfoRefreshInterval = 24 * time.Hour
+
+	// commonMapDefaultAutoDeleteHours is the entry TTL seeded into
+	// announceStoreName's _realmMaps config the first time any peer notices
+	// it's missing (see seedCommonConfig) — 7 days.
+	commonMapDefaultAutoDeleteHours = 168
 )
 
 // peerAnnounceInfo is the JSON shape posted under peers/{peerId}: a peer's
@@ -127,6 +132,8 @@ func (a *realmAnnounce) RunPeriodic(reg *realm.Registrar) {
 	}
 
 	for _, group := range cfg.Groups {
+		a.seedCommonConfig(group)
+
 		for _, svc := range cfg.Services {
 			b, err := json.Marshal(svc)
 			if err != nil {
@@ -176,6 +183,26 @@ func (a *realmAnnounce) RunPeriodic(reg *realm.Registrar) {
 	}
 
 	a.consumePeerInfo(reg, cfg)
+}
+
+// seedCommonConfig idempotently ensures group's _realmMaps has an entry for
+// announceStoreName, so the shared announce map gets a default entry TTL
+// even though nothing ever calls CreateMap for it explicitly (SetValue
+// creates stores implicitly). Doesn't stomp an existing entry, so a user
+// override (or a default already seeded by another peer) is left alone.
+func (a *realmAnnounce) seedCommonConfig(group realmmodel.Group) {
+	cfgMap := a.mapsFeature.GetMap(group.KeyPair.ID, realmmaps.SystemConfigStoreName)
+	if _, ok := cfgMap.Entries[announceStoreName]; ok {
+		return
+	}
+	data, err := json.Marshal(realmmodel.RealmMapConfig{AutoDeleteEntriesHours: commonMapDefaultAutoDeleteHours})
+	if err != nil {
+		log.Printf("realm announce: failed to marshal default config for %q: %v", announceStoreName, err)
+		return
+	}
+	if err := a.mapsFeature.SetValue(group.KeyPair.ID, realmmaps.SystemConfigStoreName, announceStoreName, string(data)); err != nil {
+		log.Printf("realm announce: failed to seed default config for %q in group %q: %v", announceStoreName, group.Name, err)
+	}
 }
 
 // serviceMapKey returns the RealmMap key a service is posted under, so an
