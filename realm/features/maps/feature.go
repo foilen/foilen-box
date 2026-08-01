@@ -447,6 +447,7 @@ func (f *Feature) mutate(groupID, storeName, key string, entry model.MapEntry) e
 	if err != nil {
 		return err
 	}
+	log.Printf("realm maps: local write to %s/%s key=%q deleted=%v", group.Name, storeName, key, entry.Deleted)
 	f.broadcast(reg, group, storeName, env)
 	return nil
 }
@@ -475,7 +476,11 @@ func (f *Feature) broadcast(reg *realm.Registrar, group model.Group, storeName s
 	if h == nil || ctx == nil {
 		return
 	}
-	for _, peerID := range f.incomingSubscribers(group.KeyPair.ID, storeName) {
+	recipients := f.incomingSubscribers(group.KeyPair.ID, storeName)
+	if len(recipients) > 0 {
+		log.Printf("realm maps: broadcasting %s/%s key=%q to %d subscriber(s)", group.Name, storeName, env.Key, len(recipients))
+	}
+	for _, peerID := range recipients {
 		info, ok := reg.Peers().Get(peerID)
 		if !ok || !info.Connected {
 			continue
@@ -558,6 +563,7 @@ func (f *Feature) subscribeToPeer(reg *realm.Registrar, id peer.ID, group model.
 			log.Printf("realm maps: failed to persist subscribe cursor for peer %s/%s: %v", id, storeName, err)
 		}
 	}
+	log.Printf("realm maps: subscribed to peer %s for group %q stores %v (%d event(s) received)", id, group.Name, storeNames, len(resp.Events))
 }
 
 // sendUnsubscribe tells id to stop pushing us storeNames under groupID,
@@ -580,7 +586,9 @@ func (f *Feature) sendUnsubscribe(reg *realm.Registrar, id peer.ID, groupID stri
 	req := unsubscribeRequest{GroupID: groupID, StoreNames: storeNames}
 	if err := json.NewEncoder(s).Encode(req); err != nil {
 		log.Printf("realm maps: failed to send unsubscribe request to %s: %v", id, err)
+		return
 	}
+	log.Printf("realm maps: unsubscribed from peer %s for group %q stores %v", id, groupID, storeNames)
 }
 
 // applyVerified verifies env's signature against group's key and, if valid,
@@ -593,7 +601,9 @@ func (f *Feature) applyVerified(group model.Group, env model.MapEventEnvelope) {
 	entry := model.MapEntry{Value: env.Value, Deleted: env.Deleted, UpdatedAtUnixMillis: env.UpdatedAtUnixMillis, OriginPeerID: env.OriginPeerID}
 	if _, err := f.store.ApplyEvent(env.GroupID, env.StoreName, env.Key, entry); err != nil {
 		log.Printf("realm maps: failed to persist event for group %q: %v", env.GroupID, err)
+		return
 	}
+	log.Printf("realm maps: applied event for %s/%s key=%q deleted=%v from peer %s", group.Name, env.StoreName, env.Key, env.Deleted, env.OriginPeerID)
 }
 
 // handlePushStream is the libp2p stream handler for PushProtocolID: one
@@ -636,13 +646,20 @@ func (f *Feature) handleSubscribeStream(reg *realm.Registrar) network.StreamHand
 			return
 		}
 
+		remotePeerID := s.Conn().RemotePeer().String()
+		storeNames := make([]string, len(req.Stores))
+		for i, sc := range req.Stores {
+			storeNames[i] = sc.StoreName
+		}
+		log.Printf("realm maps: received subscribe request from peer %s for group %q stores %v", remotePeerID, req.GroupID, storeNames)
+
 		group, ok := findGroupByID(reg.Config().Groups, req.GroupID)
 		if !ok {
+			log.Printf("realm maps: rejecting subscribe request from peer %s: not a member of group %q ourselves", remotePeerID, req.GroupID)
 			_ = json.NewEncoder(s).Encode(subscribeResponse{})
 			return
 		}
 
-		remotePeerID := s.Conn().RemotePeer().String()
 		info, known := reg.Peers().Get(remotePeerID)
 		isMember := false
 		for _, gn := range info.GroupNames {
@@ -652,6 +669,7 @@ func (f *Feature) handleSubscribeStream(reg *realm.Registrar) network.StreamHand
 			}
 		}
 		if !known || !isMember {
+			log.Printf("realm maps: rejecting subscribe request from peer %s: not a confirmed member of group %q", remotePeerID, group.Name)
 			_ = json.NewEncoder(s).Encode(subscribeResponse{})
 			return
 		}
@@ -670,7 +688,9 @@ func (f *Feature) handleSubscribeStream(reg *realm.Registrar) network.StreamHand
 		}
 		if err := json.NewEncoder(s).Encode(resp); err != nil {
 			log.Printf("realm maps: failed to send subscribe response: %v", err)
+			return
 		}
+		log.Printf("realm maps: accepted subscribe request from peer %s for group %q stores %v (%d event(s) sent)", remotePeerID, group.Name, storeNames, len(resp.Events))
 	}
 }
 
@@ -688,6 +708,7 @@ func (f *Feature) handleUnsubscribeStream(reg *realm.Registrar) network.StreamHa
 			return
 		}
 		remotePeerID := s.Conn().RemotePeer().String()
+		log.Printf("realm maps: received unsubscribe request from peer %s for group %q stores %v", remotePeerID, req.GroupID, req.StoreNames)
 		for _, storeName := range req.StoreNames {
 			f.removeIncomingSub(req.GroupID, storeName, remotePeerID)
 		}

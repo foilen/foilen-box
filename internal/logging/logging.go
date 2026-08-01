@@ -28,6 +28,11 @@ const (
 	maxAge  = 24 * time.Hour
 )
 
+// current is the writer installed by Setup, kept around so Clear can reach
+// it (the standard "log" package only exposes the writer for output, not for
+// operations like truncation).
+var current *rotatingWriter
+
 // Setup points the standard logger at a rotating file inside dir, creating
 // dir if needed, and clears any existing log file so each process start
 // begins with an empty log. It's meant to be called once, as early as
@@ -39,7 +44,25 @@ func Setup(dir string) error {
 		return fmt.Errorf("failed to open log file: %w", err)
 	}
 	log.SetOutput(w)
+	// Set explicitly (rather than relying on the "log" package's own
+	// default) so a date/time prefix on every line doesn't depend on no
+	// dependency ever having called log.SetFlags on the shared standard
+	// logger before Setup runs.
+	log.SetFlags(log.Ldate | log.Ltime)
+	current = w
 	return nil
+}
+
+// Clear empties the current log file in place, same as a rotation but
+// without waiting for the size/age threshold — used by the web UI's Logs
+// tab "Clear" button. No-op if Setup hasn't been called yet.
+func Clear() error {
+	if current == nil {
+		return nil
+	}
+	current.mu.Lock()
+	defer current.mu.Unlock()
+	return current.rotate()
 }
 
 // rotatingWriter is an io.Writer appending to LogFileName inside dir. Once a

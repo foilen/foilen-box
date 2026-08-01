@@ -28,6 +28,10 @@ func handleLogsRead(a *api, params json.RawMessage) (any, error) {
 	return map[string]string{"text": text}, nil
 }
 
+func handleLogsClear(_ *api, _ json.RawMessage) (any, error) {
+	return nil, logging.Clear()
+}
+
 func handleTroubleshootingRun(_ *api, params json.RawMessage) (any, error) {
 	var p struct {
 		Domain string `json:"domain"`

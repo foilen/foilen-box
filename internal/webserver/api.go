@@ -207,6 +207,7 @@ var handlers = map[string]handlerFunc{
 	"spec.report":         handleSpecReport,
 	"troubleshooting.run": handleTroubleshootingRun,
 	"logs.read":           handleLogsRead,
+	"logs.clear":          handleLogsClear,
 
 	"early.loadConfig": handleEarlyLoadConfig,
 	"early.saveConfig": handleEarlySaveConfig,
