@@ -136,6 +136,26 @@ export function initRealmScripts(api, output, renderConfig) {
 		];
 	}
 
+	// Mirrors syncConnectedCell in realm-services.js: built on first call,
+	// patched in place afterward, since the connected state changes on its
+	// own poll cycle independent of the peer-scripts data refresh.
+	function syncConnectedCell(row, peerId) {
+		let cell = row.querySelector('td[data-label="Connected"]');
+		let dot;
+		if (!cell) {
+			cell = document.createElement("td");
+			cell.dataset.label = "Connected";
+			dot = document.createElement("span");
+			cell.appendChild(dot);
+			row.appendChild(cell);
+		} else {
+			dot = cell.querySelector("span");
+		}
+		const connected = knownPeers.find((p) => p.id === peerId)?.connected ?? false;
+		dot.className = `status-dot${connected ? " connected" : ""}`;
+		dot.title = connected ? "Connected" : "Not connected";
+	}
+
 	// The Status cell is intentionally left untouched on update: it's driven
 	// by execute-click + pollRuns (via pendingRuns, keyed by the row's own
 	// status <td>), not by the peer-scripts data refresh. Keeping the same
@@ -149,6 +169,7 @@ export function initRealmScripts(api, output, renderConfig) {
 			(script) => {
 				const row = document.createElement("tr");
 				syncCells(row, peerScriptCells(script));
+				syncConnectedCell(row, script.peerId);
 
 				const statusCell = document.createElement("td");
 				statusCell.dataset.label = "Status";
@@ -171,7 +192,10 @@ export function initRealmScripts(api, output, renderConfig) {
 
 				return row;
 			},
-			(row, script) => syncCells(row, peerScriptCells(script))
+			(row, script) => {
+				syncCells(row, peerScriptCells(script));
+				syncConnectedCell(row, script.peerId);
+			}
 		);
 	}
 
