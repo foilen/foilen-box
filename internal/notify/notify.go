@@ -7,6 +7,13 @@ package notify
 
 import "github.com/gen2brain/beeep"
 
+func init() {
+	// beeep.AppName defaults to "DefaultAppName", which is what the OS
+	// notification shows as the sending app's identity (separate from the
+	// title/body passed to Notify).
+	beeep.AppName = "Foilen Box"
+}
+
 // Notify shows title/body as a desktop notification.
 func Notify(title, body string) error {
 	return beeep.Notify(title, body, "")
