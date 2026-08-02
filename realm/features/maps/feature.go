@@ -222,9 +222,18 @@ func (f *Feature) onPeerAvailable(reg *realm.Registrar, id peer.ID, group model.
 
 // reconcileDesiredStores diffs the group's local _realmMaps live keys
 // against what we last knew, subscribes every already-initialized,
-// connected peer to newly-added stores, and unsubscribes+purges removed
-// ones. Called both after a peer's initial subscribe (onPeerAvailable) and
-// whenever _realmMaps itself changes (onStoreChange).
+// connected peer to every currently-desired store it hasn't been asked for
+// yet (via claimStoresToSubscribe's per-peer bookkeeping, so this is cheap
+// even though it re-walks stores that aren't new), and unsubscribes+purges
+// stores that are no longer desired by anyone. Called both after a peer's
+// initial subscribe (onPeerAvailable) and whenever _realmMaps itself changes
+// (onStoreChange).
+//
+// Using the full desired set (rather than only the group-wide "added" diff)
+// matters for a peer that (re)connects after a store already exists: without
+// it, that peer would never be asked to subscribe to pre-existing stores,
+// since "added" only fires the first time a store name is ever seen for the
+// group, regardless of which peer triggered this call.
 func (f *Feature) reconcileDesiredStores(reg *realm.Registrar, groupID string) {
 	group, ok := findGroupByID(reg.Config().Groups, groupID)
 	if !ok {
@@ -240,25 +249,24 @@ func (f *Feature) reconcileDesiredStores(reg *realm.Registrar, groupID string) {
 	gs := f.groupSubsFor(groupID)
 
 	f.mu.Lock()
-	var added, removed []string
-	for name := range desired {
-		if !gs.desiredStores[name] {
-			added = append(added, name)
-		}
-	}
+	var removed []string
 	for name := range gs.desiredStores {
 		if !desired[name] {
 			removed = append(removed, name)
 		}
 	}
 	gs.desiredStores = desired
+	allDesired := make([]string, 0, len(desired))
+	for name := range desired {
+		allDesired = append(allDesired, name)
+	}
 	initializedPeers := make([]string, 0, len(gs.initializedPeers))
 	for pid := range gs.initializedPeers {
 		initializedPeers = append(initializedPeers, pid)
 	}
 	f.mu.Unlock()
 
-	if len(added) > 0 {
+	if len(allDesired) > 0 {
 		for _, pidStr := range initializedPeers {
 			info, ok := reg.Peers().Get(pidStr)
 			if !ok || !info.Connected {
@@ -268,7 +276,7 @@ func (f *Feature) reconcileDesiredStores(reg *realm.Registrar, groupID string) {
 			if err != nil {
 				continue
 			}
-			toAsk := f.claimStoresToSubscribe(gs, pidStr, added)
+			toAsk := f.claimStoresToSubscribe(gs, pidStr, allDesired)
 			if len(toAsk) > 0 {
 				go f.subscribeToPeer(reg, pid, group, toAsk)
 			}
