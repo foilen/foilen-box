@@ -24,7 +24,9 @@ function initRealmSubtabs(onActivate) {
 		if (onActivate) onActivate(button.dataset.subtab, extra);
 	}
 	buttons.forEach((button) => {
-		button.addEventListener("click", () => {
+		button.addEventListener("click", (event) => {
+			if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+			event.preventDefault();
 			console.log("[action] switch realm subtab", { subtab: button.dataset.subtab });
 			activate(button);
 			updateHash();

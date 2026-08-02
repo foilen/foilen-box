@@ -77,7 +77,9 @@ function activateTab(tabId) {
 function initTabs() {
 	const buttons = document.querySelectorAll(".tab-button");
 	buttons.forEach((button) => {
-		button.addEventListener("click", () => {
+		button.addEventListener("click", (event) => {
+			if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+			event.preventDefault();
 			console.log("[action] switch tab", { tab: button.dataset.tab });
 			activateTab(button.dataset.tab);
 			updateHash();

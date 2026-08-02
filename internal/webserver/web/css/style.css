@@ -127,6 +127,7 @@ body {
 	border-bottom: 3px solid transparent;
 	transition: color 0.15s ease, background-color 0.15s ease;
 	white-space: nowrap;
+	text-decoration: none;
 }
 
 .tab-button:hover {
@@ -171,6 +172,7 @@ body {
 	border-bottom: 2px solid transparent;
 	transition: color 0.15s ease, background-color 0.15s ease;
 	white-space: nowrap;
+	text-decoration: none;
 }
 
 .subtab-button:hover {
@@ -303,9 +305,10 @@ textarea:focus {
 	border-color: var(--md-primary);
 }
 
-/* .tab-button / .subtab-button remain plain <button>s with their own
-   styling above; every other button in the app is now a Material Web
-   Components <md-filled-tonal-button>/<md-text-button>, styled by the
+/* .tab-button / .subtab-button are plain <a href="#..."> links (styled to
+   look like buttons, and clickable in a new tab via ctrl/cmd/middle-click)
+   with their own styling above; every other button in the app is a Material
+   Web Components <md-filled-tonal-button>/<md-text-button>, styled by the
    component itself via the --md-sys-color-* tokens set on :root. */
 
 md-outlined-select {
