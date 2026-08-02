@@ -135,6 +135,28 @@ func (s *Server) SetRealmStateSink(sink RealmStateSink) {
 	s.api.realmStateSink = sink
 }
 
+// SmsBridge is the platform-specific callback (Android) letting the SMS
+// feature (internal/sms) send/import real texts and show a real clickable
+// notification; nil on desktop. Structurally identical to
+// cmd/mobile.SmsBridge and internal/sms.PlatformBridge (see either's doc for
+// why this is declared independently rather than shared via import).
+type SmsBridge interface {
+	SendSms(phoneNumber string, body string) error
+	ReadAllSms() (string, error)
+	ShowNotification(title string, body string, deepLink string)
+}
+
+// SetSmsBridge registers the platform-specific SMS bridge.
+func (s *Server) SetSmsBridge(bridge SmsBridge) {
+	s.api.realmSms.SetBridge(bridge)
+}
+
+// HandleIncomingSms forwards a freshly-received text (from Kotlin's
+// SmsReceivedReceiver, via cmd/mobile.SmsReceived) to the SMS feature.
+func (s *Server) HandleIncomingSms(sender, body string, timestampMillis int64) error {
+	return s.api.realmSms.HandleIncomingSms(sender, body, timestampMillis)
+}
+
 // Stop shuts the server down.
 func (s *Server) Stop() error {
 	s.api.shutdown()

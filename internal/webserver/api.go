@@ -9,6 +9,7 @@ import (
 	earlyaggregate "foilen-box/internal/early/aggregate"
 	earlyclient "foilen-box/internal/early/client"
 	earlyconfig "foilen-box/internal/early/config"
+	boxsms "foilen-box/internal/sms"
 	appspec "foilen-box/internal/spec"
 	boxspeedtest "foilen-box/internal/speedtest"
 
@@ -53,12 +54,15 @@ type api struct {
 	realmSpeedTest     *boxspeedtest.Feature
 	realmIdentity      *realmidentity.Feature
 	realmStateSink     RealmStateSink
+	realmSms           *boxsms.Manager
+	smsConfig          *boxsms.Service
 }
 
 func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*api, error) {
 	var (
 		configService  *earlyconfig.Service
 		realmConfigSvc *realmconfig.Service
+		smsConfigSvc   *boxsms.Service
 		err            error
 	)
 	if configDir == "" {
@@ -66,10 +70,16 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 		if err == nil {
 			realmConfigSvc, err = realmconfig.New(defaultDhtMode)
 		}
+		if err == nil {
+			smsConfigSvc, err = boxsms.New()
+		}
 	} else {
 		configService, err = earlyconfig.NewInDir(configDir)
 		if err == nil {
 			realmConfigSvc, err = realmconfig.NewInDir(configDir, defaultDhtMode)
+		}
+		if err == nil {
+			smsConfigSvc, err = boxsms.NewInDir(configDir)
 		}
 	}
 	if err != nil {
@@ -98,6 +108,7 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 	mapsFeature := realmmaps.New(realmMapsStore)
 	announceFeature := newRealmAnnounce(mapsFeature, func() string { return appspec.Report(dataDir) }, func() appspec.Summary { return appspec.GetSummary(dataDir) }, func() string { return resolveHostname(hostnameOverride) })
 	speedTestFeature := boxspeedtest.New()
+	smsManager := boxsms.NewManager(mapsFeature, smsConfigSvc, func() string { return realmConfigSvc.Load().PeerID.ID })
 	// a is assigned below, but the identity feature's onReceive callback
 	// can only ever fire later (once a peer actually pushes an identity to
 	// us), long after a is fully constructed, so it's safe for the closure
@@ -112,6 +123,7 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 	realmEng.Register(announceFeature)
 	realmEng.Register(speedTestFeature)
 	realmEng.Register(identityFeature)
+	realmEng.Register(smsManager)
 
 	a = &api{
 		configDir:          configDir,
@@ -127,7 +139,10 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 		realmMapsFeature:   mapsFeature,
 		realmSpeedTest:     speedTestFeature,
 		realmIdentity:      identityFeature,
+		realmSms:           smsManager,
+		smsConfig:          smsConfigSvc,
 	}
+	smsManager.Start()
 
 	// Auto-start the realm engine once a peer id already exists
 	// (decision 5); a failure here shouldn't prevent the web UI itself
@@ -294,6 +309,13 @@ var handlers = map[string]handlerFunc{
 	"realm.deleteMap":      handleRealmDeleteMap,
 
 	"realm.runSpeedTest": handleRealmRunSpeedTest,
+
+	"sms.loadConfig":           handleSmsLoadConfig,
+	"sms.saveManagementConfig": handleSmsSaveManagementConfig,
+	"sms.listStores":           handleSmsListStores,
+	"sms.listConversations":    handleSmsListConversations,
+	"sms.listMessages":         handleSmsListMessages,
+	"sms.sendMessage":          handleSmsSendMessage,
 }
 
 func (a *api) dispatch(req request) response {

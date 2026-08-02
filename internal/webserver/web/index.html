@@ -41,6 +41,7 @@
 		<button class="subtab-button" data-subtab="realm-scripts-subtab">Scripts</button>
 		<button class="subtab-button" data-subtab="realm-services-subtab">Services</button>
 		<button class="subtab-button" data-subtab="realm-speedtest-subtab">Speed Test</button>
+		<button class="subtab-button" data-subtab="realm-sms-subtab">SMS</button>
 		<button class="subtab-button" data-subtab="realm-maps-subtab">Maps</button>
 	</div>
 
@@ -382,6 +383,85 @@
 				<thead><tr><th>Peer</th><th>Status</th><th>Download</th><th>Upload</th></tr></thead>
 				<tbody id="realm-speedtest-results-tbody"></tbody>
 			</table>
+		</div>
+	</div>
+
+	<div id="realm-sms-subtab" class="subtab-panel">
+		<h3>SMS</h3>
+		<p class="hint">One Android device acts as the read/write authority for its own SMS messages, synced to
+			other peers through an encrypted map. There's no delete here — messages can only be removed by
+			deleting them on the phone itself.</p>
+
+		<div id="sms-config">
+			<md-text-button id="sms-config-toggle">▼ Configuration (Android only)</md-text-button>
+			<div id="sms-config-body">
+				<div class="row">
+					<md-checkbox id="sms-config-enabled"></md-checkbox>
+					<label for="sms-config-enabled">Manage SMS on this device</label>
+				</div>
+				<div class="row">
+					<label>Group:
+						<md-outlined-select id="sms-config-group"></md-outlined-select>
+					</label>
+				</div>
+				<div class="row">
+					<md-outlined-text-field label="New store suffix (e.g. my-phone)" id="sms-config-suffix"></md-outlined-text-field>
+					<label>Encrypt to identity:
+						<md-outlined-select id="sms-config-identity"></md-outlined-select>
+					</label>
+					<md-filled-tonal-button id="sms-config-create-button">Create &amp; Use New Store</md-filled-tonal-button>
+				</div>
+				<div class="row">
+					<label>Or use an existing store:
+						<md-outlined-select id="sms-config-existing-store"></md-outlined-select>
+					</label>
+					<md-filled-tonal-button id="sms-config-use-existing-button">Use This Store</md-filled-tonal-button>
+				</div>
+			</div>
+		</div>
+
+		<div class="row">
+			<label>Viewing store:
+				<md-outlined-select id="sms-store-select"></md-outlined-select>
+			</label>
+		</div>
+		<p id="sms-store-locked" class="hint hidden">This store is encrypted and the identity required to decrypt
+			it isn't available locally, but its (opaque) entries are still being replicated.</p>
+
+		<div id="sms-conversations">
+			<div class="table-scroll">
+				<table id="sms-conversations-table">
+					<thead><tr><th>Phone Number</th><th>Last message</th><th>Count</th><th>Updated</th><th></th></tr></thead>
+					<tbody id="sms-conversations-tbody"></tbody>
+				</table>
+			</div>
+
+			<div class="row">
+				<md-outlined-text-field label="New phone number" id="sms-new-conversation-phone"></md-outlined-text-field>
+				<label>Send from peer:
+					<md-outlined-select id="sms-new-conversation-peer"></md-outlined-select>
+				</label>
+				<md-outlined-text-field label="Message" id="sms-new-conversation-body"></md-outlined-text-field>
+				<md-filled-tonal-button id="sms-new-conversation-send-button">Start Conversation</md-filled-tonal-button>
+			</div>
+		</div>
+
+		<div id="sms-conversation-detail" class="hidden">
+			<h3 id="sms-conversation-title">Conversation</h3>
+			<div class="table-scroll">
+				<table id="sms-messages-table">
+					<thead><tr><th>Direction</th><th>Body</th><th>Time</th></tr></thead>
+					<tbody id="sms-messages-tbody"></tbody>
+				</table>
+			</div>
+			<div class="row">
+				<label>Send from peer:
+					<md-outlined-select id="sms-reply-peer"></md-outlined-select>
+				</label>
+				<md-outlined-text-field label="Reply" id="sms-reply-body"></md-outlined-text-field>
+				<md-filled-tonal-button id="sms-reply-send-button">Send</md-filled-tonal-button>
+			</div>
+			<md-text-button id="sms-close-conversation-button">Close</md-text-button>
 		</div>
 	</div>
 

@@ -7,6 +7,7 @@ import { initRealmSpecs } from "./realm-specs.js";
 import { initRealmScripts } from "./realm-scripts.js";
 import { initRealmServices } from "./realm-services.js";
 import { initRealmSpeedtest } from "./realm-speedtest.js";
+import { initRealmSms } from "./realm-sms.js";
 import { initRealmMaps } from "./realm-maps.js";
 import { parseHash, updateHash } from "./hash.js";
 
@@ -15,12 +16,12 @@ import { parseHash, updateHash } from "./hash.js";
 // switched to (used by Services to refresh stale peers on activation).
 function initRealmSubtabs(onActivate) {
 	const buttons = document.querySelectorAll("#realm-subtabs .subtab-button");
-	function activate(button) {
+	function activate(button, extra) {
 		buttons.forEach((b) => b.classList.remove("active"));
 		document.querySelectorAll("#realm .subtab-panel").forEach((p) => p.classList.remove("active"));
 		button.classList.add("active");
 		document.getElementById(button.dataset.subtab).classList.add("active");
-		if (onActivate) onActivate(button.dataset.subtab);
+		if (onActivate) onActivate(button.dataset.subtab, extra);
 	}
 	buttons.forEach((button) => {
 		button.addEventListener("click", () => {
@@ -29,9 +30,9 @@ function initRealmSubtabs(onActivate) {
 			updateHash();
 		});
 	});
-	const { tab, subtab } = parseHash();
+	const { tab, subtab, extra } = parseHash();
 	const fromHash = tab === "realm" && subtab && [...buttons].find((b) => b.dataset.subtab === subtab);
-	activate(fromHash || buttons[0]);
+	activate(fromHash || buttons[0], fromHash ? extra : null);
 }
 
 export function initRealmTab(api, isAndroid) {
@@ -82,6 +83,7 @@ export function initRealmTab(api, isAndroid) {
 	let onSpecsConfigUpdate = () => {};
 	let onScriptsConfigUpdate = () => {};
 	let onSpeedtestConfigUpdate = () => {};
+	let onSmsConfigUpdate = () => {};
 
 	// ownPeer/latestPeers/pushPeers: the local peer's own hostname/description
 	// come from realm.loadConfig, not from the discovered-peers list (a node
@@ -102,6 +104,7 @@ export function initRealmTab(api, isAndroid) {
 		scriptsModule.onPeersUpdate(peers);
 		speedtestModule.onPeersUpdate(peers);
 		identitiesModule.onPeersUpdate(peers);
+		smsModule.onPeersUpdate(peers);
 	}
 
 	function renderConfig(cfg) {
@@ -145,6 +148,7 @@ export function initRealmTab(api, isAndroid) {
 		onSpecsConfigUpdate(cfg);
 		onScriptsConfigUpdate(cfg);
 		onSpeedtestConfigUpdate(cfg);
+		onSmsConfigUpdate(cfg);
 
 		ownPeer = cfg.peerId ? { id: cfg.peerId, hostname: cfg.hostname, description: cfg.description } : null;
 		pushPeers();
@@ -165,6 +169,8 @@ export function initRealmTab(api, isAndroid) {
 	onServicesConfigUpdate = servicesModule.onConfigUpdate;
 	const speedtestModule = initRealmSpeedtest(api, output);
 	onSpeedtestConfigUpdate = speedtestModule.onConfigUpdate;
+	const smsModule = initRealmSms(api, output, isAndroid);
+	onSmsConfigUpdate = smsModule.onConfigUpdate;
 	const mapsModule = initRealmMaps(api, output, renderConfig);
 	onMapsConfigUpdate = mapsModule.onConfigUpdate;
 	const specsModule = initRealmSpecs(api);
@@ -173,8 +179,9 @@ export function initRealmTab(api, isAndroid) {
 		latestPeers = peers;
 		pushPeers();
 	});
-	initRealmSubtabs((subtab) => {
+	initRealmSubtabs((subtab, extra) => {
 		if (subtab === "realm-maps-subtab") mapsModule.onSubtabActivated();
+		if (subtab === "realm-sms-subtab") smsModule.onSubtabActivated(extra);
 	});
 
 	api.call("realm.loadConfig").then(renderConfig);

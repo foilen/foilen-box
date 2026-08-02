@@ -1,14 +1,20 @@
 package com.foilen.box.android
 
 import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.database.Cursor
 import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.provider.Telephony
+import android.telephony.SmsManager
 import android.util.Log
 import android.webkit.GeolocationPermissions
 import android.webkit.PermissionRequest
@@ -21,10 +27,14 @@ import androidx.activity.result.ActivityResult
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import mobile.BatteryProvider
 import mobile.Mobile
 import mobile.RealmStateSink
+import mobile.SmsBridge
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * Hosts the same local web UI/API server the desktop build runs
@@ -43,8 +53,14 @@ import mobile.RealmStateSink
  * info: Go's usual sysfs-based detection (internal/spec) can't read
  * /sys/class/power_supply on Android, since that's commonly blocked by
  * SELinux for regular (non-system) apps, so BatteryManager is used instead.
+ *
+ * Also implements mobile.SmsBridge so the SMS feature (internal/sms) can
+ * send/import real texts and show a real clickable notification —
+ * READ_SMS/SEND_SMS/RECEIVE_SMS are only requested on demand (see
+ * SmsPermissionBridge), not unconditionally at startup like location/camera,
+ * since most users will never turn this on.
  */
-class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider {
+class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBridge {
 
 	private lateinit var webView: WebView
 	private var filePickerCallback: ValueCallback<Array<Uri>>? = null
@@ -66,6 +82,7 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider {
 		webView.settings.javaScriptEnabled = true
 		webView.settings.setGeolocationEnabled(true)
 		webView.addJavascriptInterface(AndroidConfigBridge(this), "AndroidConfigBridge")
+		webView.addJavascriptInterface(SmsPermissionBridge(this), "SmsPermissionBridge")
 		webView.webChromeClient = object : WebChromeClient() {
 			override fun onGeolocationPermissionsShowPrompt(
 				origin: String,
@@ -140,7 +157,7 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider {
 		// the server URL and reload if it no longer matches what's loaded.
 		Thread {
 			try {
-				val url = Mobile.startServer(filesDir.absolutePath, deviceName(), this, this)
+				val url = Mobile.startServer(filesDir.absolutePath, deviceName(), this, this, this)
 				val currentUrl = webView.url
 				if (currentUrl == null || !currentUrl.startsWith(url)) {
 					runOnUiThread { webView.loadUrl("$url?platform=android") }
@@ -165,10 +182,21 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider {
 		ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 
 	private fun startServerAndLoad() {
+		// If launched from the SMS notification's PendingIntent (see
+		// showNotification), FLAG_ACTIVITY_CLEAR_TASK means this is a fresh
+		// onCreate even if the app was already running, so handling the deep
+		// link here (rather than in onNewIntent) covers both the cold- and
+		// warm-start cases uniformly.
+		val smsDeepLink = intent.getStringExtra(EXTRA_SMS_DEEP_LINK)
 		Thread {
 			try {
-				val url = Mobile.startServer(filesDir.absolutePath, deviceName(), this, this)
-				runOnUiThread { webView.loadUrl("$url?platform=android") }
+				val url = Mobile.startServer(filesDir.absolutePath, deviceName(), this, this, this)
+				val target = if (smsDeepLink != null) {
+					"$url?platform=android#realm/realm-sms-subtab/${Uri.encode(smsDeepLink)}"
+				} else {
+					"$url?platform=android"
+				}
+				runOnUiThread { webView.loadUrl(target) }
 			} catch (e: Exception) {
 				Log.e(TAG, "failed to start server", e)
 			}
@@ -216,10 +244,115 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider {
 		}
 	}
 
+	// mobile.SmsBridge: called from Go (internal/sms.Manager) when a
+	// create-request entry targets this device.
+	override fun sendSms(phoneNumber: String, body: String) {
+		val smsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+			getSystemService(SmsManager::class.java)
+		} else {
+			@Suppress("DEPRECATION")
+			SmsManager.getDefault()
+		}
+		smsManager.sendTextMessage(phoneNumber, null, body, null, null)
+	}
+
+	// mobile.SmsBridge: called from Go once, when SMS management is first
+	// enabled, to bulk-import this device's full SMS history (sent and
+	// received alike) — reading content://sms doesn't require being the
+	// default SMS app, only READ_SMS.
+	//
+	// Uses a null projection (every column content://sms has, not just the
+	// ones the "raw" struct fields below map to) so each row also carries a
+	// "raw" dump of the full provider row (see MainActivity.dumpRow) —
+	// temporary, to find whether any column reflects the SMS app's own
+	// "Trash" state, which content://sms itself has no documented column
+	// for.
+	override fun readAllSms(): String {
+		val result = JSONArray()
+		contentResolver.query(Telephony.Sms.CONTENT_URI, null, null, null, "${Telephony.Sms.DATE} ASC")
+			?.use { cursor ->
+				val addressIdx = cursor.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
+				val bodyIdx = cursor.getColumnIndexOrThrow(Telephony.Sms.BODY)
+				val dateIdx = cursor.getColumnIndexOrThrow(Telephony.Sms.DATE)
+				val typeIdx = cursor.getColumnIndexOrThrow(Telephony.Sms.TYPE)
+				while (cursor.moveToNext()) {
+					val address = cursor.getString(addressIdx) ?: continue
+					val body = cursor.getString(bodyIdx) ?: ""
+					val date = cursor.getLong(dateIdx)
+					val outgoing = cursor.getInt(typeIdx) == Telephony.Sms.MESSAGE_TYPE_SENT
+					result.put(
+						JSONObject().apply {
+							put("phoneNumber", address)
+							put("direction", if (outgoing) "outgoing" else "incoming")
+							put("body", body)
+							put("sender", if (outgoing) "" else address)
+							put("receiver", if (outgoing) address else "")
+							put("timestampUnixMillis", date)
+							put("raw", dumpRow(cursor))
+						},
+					)
+				}
+			}
+		return result.toString()
+	}
+
+	// dumpRow reads every column of cursor's current row into a JSONObject
+	// keyed by column name, converting each value to its string form
+	// (BLOB columns are summarized by length instead, since they aren't
+	// meaningfully representable as text). See readAllSms's "raw" field.
+	private fun dumpRow(cursor: Cursor): JSONObject {
+		val raw = JSONObject()
+		for (i in 0 until cursor.columnCount) {
+			val value: Any = when (cursor.getType(i)) {
+				Cursor.FIELD_TYPE_NULL -> JSONObject.NULL
+				Cursor.FIELD_TYPE_BLOB -> "<blob:${cursor.getBlob(i)?.size ?: 0} bytes>"
+				else -> cursor.getString(i) ?: JSONObject.NULL
+			}
+			raw.put(cursor.getColumnName(i), value)
+		}
+		return raw
+	}
+
+	// mobile.SmsBridge: called from Go whenever a genuinely new message
+	// arrives in an SMS-* store this device isn't the owner of, so the user
+	// can be alerted even if the app isn't in the foreground. Clicking it
+	// reopens MainActivity with deepLink ("groupId|storeName|phoneNumber", see
+	// internal/sms.PlatformBridge.ShowNotification) as a deep link into the
+	// SMS subtab (see startServerAndLoad).
+	override fun showNotification(title: String, body: String, deepLink: String) {
+		val channel = NotificationChannel(
+			SMS_NOTIFICATION_CHANNEL_ID,
+			"SMS messages",
+			NotificationManager.IMPORTANCE_HIGH,
+		).apply { description = "New SMS messages synced through Foilen Box" }
+		getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+
+		val contentIntent = PendingIntent.getActivity(
+			this,
+			deepLink.hashCode(),
+			Intent(this, MainActivity::class.java)
+				.putExtra(EXTRA_SMS_DEEP_LINK, deepLink)
+				.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
+			PendingIntent.FLAG_IMMUTABLE,
+		)
+
+		val notification = NotificationCompat.Builder(this, SMS_NOTIFICATION_CHANNEL_ID)
+			.setSmallIcon(android.R.drawable.ic_dialog_email)
+			.setContentTitle(title)
+			.setContentText(body)
+			.setPriority(NotificationCompat.PRIORITY_HIGH)
+			.setAutoCancel(true)
+			.setContentIntent(contentIntent)
+			.build()
+		getSystemService(NotificationManager::class.java).notify(deepLink.hashCode(), notification)
+	}
+
 	companion object {
 		private const val TAG = "FoilenBox"
 		private const val LOCATION_PERMISSION_REQUEST = 1
 		private const val CAMERA_PERMISSION_REQUEST = 2
 		private const val NOTIFICATION_PERMISSION_REQUEST = 3
+		private const val SMS_NOTIFICATION_CHANNEL_ID = "sms_messages"
+		private const val EXTRA_SMS_DEEP_LINK = "smsDeepLink"
 	}
 }
