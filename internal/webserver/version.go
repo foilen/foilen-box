@@ -1,10 +1,7 @@
 package webserver
 
-// Version is the git commit short hash of the running build, and CommitDate
-// is that commit's date/time (UTC). Both are injected via -ldflags at build
-// time (see step-package-desktop.sh, step-package-android.sh, and
-// flake.nix). Left as their zero defaults for local builds that don't go
-// through those (e.g. plain `go build`/`go run`).
+// Version and CommitDate are injected via -ldflags at build time (see
+// step-package-*.sh, flake.nix); left as zero defaults for plain `go build`.
 var (
 	Version    = "dev"
 	CommitDate = ""
@@ -19,10 +16,7 @@ func displayVersion() string {
 	return CommitDate + " " + Version
 }
 
-// appVersion returns this build's self-reported application name and
-// version, e.g. "FoilenBox - 20260731_1557 abc1234", posted alongside peer
-// announce info so other peers can tell which application (and build)
-// they're talking to.
+// appVersion is posted alongside peer announce info, e.g. "FoilenBox - 20260731_1557 abc1234".
 func appVersion() string {
 	return "FoilenBox - " + displayVersion()
 }

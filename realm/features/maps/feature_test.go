@@ -63,12 +63,9 @@ func TestVerifyEventRejectsWrongGroup(t *testing.T) {
 	}
 }
 
-// featurePair is two maps.Feature instances, each on its own real libp2p
-// host (via a real realm.Engine), connected to each other and with each
-// side's peer store seeded as if the group challenge had already confirmed
-// the other side's membership in group — the actual discovery/challenge
-// handshake is realm-internal and already covered by group_challenge_test.go,
-// not something this package's tests need to re-drive.
+// featurePair is two Feature instances, each on its own real libp2p host,
+// connected and pre-seeded as already-confirmed group members — the actual
+// challenge handshake is covered by group_challenge_test.go, not re-driven here.
 type featurePair struct {
 	f1, f2           *Feature
 	peerID1, peerID2 peer.ID
@@ -143,14 +140,9 @@ func newConnectedFeaturePairWithIdentities(t *testing.T, identities1, identities
 	reg1 := f1.registrar()
 	reg2 := f2.registrar()
 
-	// Seed both sides' peer stores (GroupNames *and* Addresses) before
-	// connecting: the engine's own periodic connection-ring shaping
-	// (maintainGroupRings) runs an immediate pass right at Start() in the
-	// background, and disconnects any connected peer it doesn't recognize
-	// as a required ring member. Seeding first means that pass either
-	// leaves our connection alone (recognizing the peer as required) or
-	// establishes it itself — either way it never races a real connection
-	// out from under us.
+	// Seed both peer stores before connecting: the engine's connection-ring
+	// shaping runs immediately at Start() and disconnects any peer it doesn't
+	// recognize as a required ring member.
 	addrs1 := make([]string, 0, len(reg1.Host().Addrs()))
 	for _, a := range reg1.Host().Addrs() {
 		addrs1 = append(addrs1, a.String())

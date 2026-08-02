@@ -22,10 +22,8 @@ import (
 
 const (
 	// PushProtocolID carries one signed MapEventEnvelope per stream,
-	// fire-and-forget. Sent to every peer currently subscribed to that
-	// specific group/store (see broadcast); a peer that misses it (offline,
-	// or never subscribed) catches up via SubscribeProtocolID's catch-up
-	// events the next time it (re)subscribes.
+	// fire-and-forget, to every subscriber of that group/store (see
+	// broadcast). A peer that misses it catches up on its next subscribe.
 	PushProtocolID = protocol.ID("/foilen-box/maps-push/1.0.0")
 
 	// SubscribeProtocolID is a synchronous request/response: "I want
@@ -37,23 +35,17 @@ const (
 	// stores under this group."
 	UnsubscribeProtocolID = protocol.ID("/foilen-box/maps-unsubscribe/1.0.0")
 
-	// SystemConfigStoreName is the reserved store holding one RealmMapConfig
-	// entry (JSON-encoded) per map name, keyed by that map's storeName. Like
-	// any other store, it isn't special-cased for read/write access — it's
-	// just the one every peer watches to know which other stores to
-	// subscribe to (see reconcileDesiredStores) and what settings (e.g.
-	// AutoDeleteEntriesHours) apply to them.
+	// SystemConfigStoreName is the reserved store holding one JSON-encoded
+	// RealmMapConfig entry per map name — the store every peer watches to
+	// know what other stores to subscribe to (reconcileDesiredStores) and their settings.
 	SystemConfigStoreName = "_realmMaps"
 
 	ioTimeout = 10 * time.Second
 	maxBytes  = 256 * 1024
 
-	// FeatureName namespaces this feature, even though it declares no
-	// Permission actions: a valid event signature (made with the group's
-	// own private key, which every member already holds) is itself the
-	// write authorization, and subscribe access is simply "confirmed member
-	// of the group" (see handleSubscribeStream) — there's nothing left for
-	// a Permission to gate.
+	// FeatureName namespaces this feature; it declares no Permission actions
+	// since a valid event signature (the group's own key) is itself the write
+	// authorization, and subscribe access is just "confirmed group member".
 	FeatureName = "common/maps"
 )
 
@@ -91,11 +83,10 @@ type groupSubs struct {
 }
 
 // Feature implements realm.Feature, realm.PeerConnectedHook,
-// realm.GroupConfirmedHook, realm.PeerDisconnectedHook, and
-// realm.PeriodicHook. Unlike the old blanket-sync design, a peer only
-// receives pushes for the stores it has explicitly subscribed to (see
-// incomingSubs/broadcast); onPeerAvailable and reconcileDesiredStores keep
-// our own outgoing subscriptions in sync with the local _realmMaps map.
+// realm.GroupConfirmedHook, realm.PeerDisconnectedHook, and realm.PeriodicHook.
+// A peer only receives pushes for stores it explicitly subscribed to
+// (incomingSubs/broadcast); onPeerAvailable/reconcileDesiredStores keep our
+// own subscriptions in sync with _realmMaps.
 type Feature struct {
 	store *Store
 
@@ -149,10 +140,8 @@ func (f *Feature) RegisterHandlers(reg *realm.Registrar) {
 	reg.SetStreamHandler(SubscribeProtocolID, f.handleSubscribeStream(reg))
 	reg.SetStreamHandler(UnsubscribeProtocolID, f.handleUnsubscribeStream(reg))
 
-	// Only install once: RegisterHandlers is called again whenever the
-	// engine's host is recreated, and Store.Subscribe has no dedup of its
-	// own — a second install would fire reconcileDesiredStores twice per
-	// _realmMaps change.
+	// Only install once: RegisterHandlers re-runs whenever the host is
+	// recreated, and Store.Subscribe doesn't dedup its own listeners.
 	if !alreadyInstalled {
 		f.store.Subscribe(f.onStoreChange)
 	}
@@ -186,19 +175,15 @@ func (f *Feature) OnPeerConnected(reg *realm.Registrar, id peer.ID) {
 	}
 }
 
-// OnGroupConfirmed converges with OnPeerConnected above via onPeerAvailable
-// the moment id's membership in group is cryptographically confirmed, per
-// realm.GroupConfirmedHook — covers the case where the challenge completes
-// after OnPeerConnected already ran and found no confirmed groups yet.
+// OnGroupConfirmed covers the case where the join challenge for group
+// confirms after OnPeerConnected already ran and found no confirmed groups.
 func (f *Feature) OnGroupConfirmed(reg *realm.Registrar, id peer.ID, group model.Group) {
 	f.onPeerAvailable(reg, id, group)
 }
 
-// onPeerAvailable runs once per (peer, group): does the initial subscribe to
-// the system stores ("common" plus SystemConfigStoreName), then reconciles
-// our desired stores against the now-fetched _realmMaps content, which
-// naturally also subscribes to whatever application stores that group
-// already has.
+// onPeerAvailable runs once per (peer, group): subscribes to the system
+// stores ("common" plus SystemConfigStoreName), then reconciles our desired
+// stores against the fetched _realmMaps content.
 func (f *Feature) onPeerAvailable(reg *realm.Registrar, id peer.ID, group model.Group) {
 	groupID := group.KeyPair.ID
 	peerID := id.String()
@@ -220,20 +205,12 @@ func (f *Feature) onPeerAvailable(reg *realm.Registrar, id peer.ID, group model.
 	f.reconcileDesiredStores(reg, groupID)
 }
 
-// reconcileDesiredStores diffs the group's local _realmMaps live keys
-// against what we last knew, subscribes every already-initialized,
-// connected peer to every currently-desired store it hasn't been asked for
-// yet (via claimStoresToSubscribe's per-peer bookkeeping, so this is cheap
-// even though it re-walks stores that aren't new), and unsubscribes+purges
-// stores that are no longer desired by anyone. Called both after a peer's
-// initial subscribe (onPeerAvailable) and whenever _realmMaps itself changes
-// (onStoreChange).
-//
-// Using the full desired set (rather than only the group-wide "added" diff)
-// matters for a peer that (re)connects after a store already exists: without
-// it, that peer would never be asked to subscribe to pre-existing stores,
-// since "added" only fires the first time a store name is ever seen for the
-// group, regardless of which peer triggered this call.
+// reconcileDesiredStores subscribes every initialized, connected peer to
+// every currently-desired store it hasn't been asked for yet
+// (claimStoresToSubscribe dedupes per-peer), and unsubscribes+purges stores
+// no longer desired. Called after a peer's initial subscribe and whenever
+// _realmMaps changes. Reconciles against the full desired set (not just a
+// diff) so a peer reconnecting after a store already exists still gets it.
 func (f *Feature) reconcileDesiredStores(reg *realm.Registrar, groupID string) {
 	group, ok := findGroupByID(reg.Config().Groups, groupID)
 	if !ok {
@@ -331,10 +308,9 @@ func (f *Feature) groupStatesLocked(groupID string) *groupSubs {
 	return gs
 }
 
-// claimStoresToSubscribe filters storeNames down to the ones gs doesn't
-// already record as asked of peerID, marking them asked as it goes (so a
-// concurrent caller won't also claim them) and returning only the ones the
-// caller should actually go request.
+// claimStoresToSubscribe filters storeNames down to the ones not already
+// asked of peerID, atomically marking them asked so a concurrent caller
+// can't also claim them.
 func (f *Feature) claimStoresToSubscribe(gs *groupSubs, peerID string, storeNames []string) []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -398,10 +374,8 @@ func (f *Feature) EncryptionIdentityID(groupID, storeName string) string {
 	return cfg.Encryption.IdentityID
 }
 
-// configForStore returns storeName's RealmMapConfig within groupID's
-// _realmMaps system store (see SystemConfigStoreName), or a zero-value
-// config if none is set yet (e.g. storeName is itself SystemConfigStoreName,
-// or SetValue was somehow called before CreateMap).
+// configForStore returns storeName's RealmMapConfig from groupID's
+// _realmMaps store, or a zero value if none is set yet.
 func (f *Feature) configForStore(groupID, storeName string) model.RealmMapConfig {
 	cfgMap := f.store.GetMap(groupID, SystemConfigStoreName)
 	entry, ok := cfgMap.Entries[storeName]
@@ -415,13 +389,10 @@ func (f *Feature) configForStore(groupID, storeName string) model.RealmMapConfig
 	return cfg
 }
 
-// GetMap returns groupID/storeName's current entries. For an encrypted map
-// (see RealmMapConfig.Encryption), entries are only decrypted -- and
-// returned keyed by their real keys, with plaintext values -- if the target
-// identity is configured locally; encrypted reports whether the map is
-// encrypted at all, and available reports whether decryption was actually
-// possible. encrypted&&!available means the caller can see the map exists
-// (and is replicating/copying it, per the group signature) but not read it.
+// GetMap returns groupID/storeName's current entries. For an encrypted map,
+// entries are decrypted and keyed by their real keys only if the target
+// identity is configured locally; encrypted&&!available means the caller can
+// see the map exists (and replicates it) but can't read it.
 func (f *Feature) GetMap(groupID, storeName string) (rm model.RealmMap, encrypted bool, available bool) {
 	raw := f.store.GetMap(groupID, storeName)
 
@@ -470,17 +441,14 @@ func (f *Feature) GetMap(groupID, storeName string) (rm model.RealmMap, encrypte
 }
 
 // CreateMap ensures an (initially empty) map exists locally for
-// groupID/storeName, so it shows up in ListSummaries before any key is set,
-// and writes config into _realmMaps — which is what makes the store show up
-// as a live key other peers watching this group will subscribe to.
-// Re-creating an existing map updates its config.
+// groupID/storeName and writes its config into _realmMaps, which makes the
+// store a live key other peers subscribe to. Re-creating an existing map
+// updates its config.
 //
-// If encryptToIdentityID is non-empty, the map's entries become
-// confidential to that identity: a random symmetric key is generated and
-// sealed to the identity's public key, which is derivable from
-// encryptToIdentityID alone (see identityPubKeyFromID) — the caller doesn't
-// need to hold that identity locally just to create the map, only to later
-// write to or read it.
+// If encryptToIdentityID is non-empty, a random symmetric key is generated
+// and sealed to that identity's public key (derivable from the ID alone, see
+// identityPubKeyFromID) — the caller need not hold the identity locally just
+// to create the map, only to later read/write it.
 func (f *Feature) CreateMap(groupID, storeName string, config model.RealmMapConfig, encryptToIdentityID string) error {
 	if _, err := f.groupFor(groupID); err != nil {
 		return err
@@ -518,11 +486,9 @@ func (f *Feature) DeleteValue(groupID, storeName, key string) error {
 	return f.mutate(groupID, storeName, key, model.MapEntry{Deleted: true})
 }
 
-// DeleteMap removes storeName from groupID entirely: it deletes the map's
-// entry from _realmMaps (which broadcasts normally, so every subscribed
-// peer sees the key disappear and self-reconciles via reconcileDesiredStores)
-// and also purges it locally right away, rather than waiting on our own
-// reconcile pass to get to it.
+// DeleteMap removes storeName from groupID entirely: deletes its entry from
+// _realmMaps (so subscribed peers see it disappear and self-reconcile via
+// reconcileDesiredStores) and purges it locally right away.
 func (f *Feature) DeleteMap(groupID, storeName string) error {
 	if err := f.DeleteValue(groupID, SystemConfigStoreName, storeName); err != nil {
 		return err
@@ -565,14 +531,10 @@ func (f *Feature) mutate(groupID, storeName, key string, entry model.MapEntry) e
 	return nil
 }
 
-// encryptMutation transforms a plaintext mutation (real key, and for
-// non-deletes a real Value) for an encrypted map into its wire form: the
-// storage key becomes hashKey(identityID, key) so the real key never leaves
-// this function, Value becomes ciphertext (a delete tombstone carries no
-// Value — there's nothing about it worth hiding), and the result is signed
-// with the target identity's private key. Requires that identity to be
-// configured locally — without it, writing to an encrypted map isn't
-// possible, matching that only identity holders can meaningfully write.
+// encryptMutation turns a plaintext mutation into its wire form for an
+// encrypted map: storage key becomes hashKey(identityID, key), Value becomes
+// ciphertext (tombstones carry none), signed with the identity's private
+// key. Requires that identity locally — only identity holders can write.
 func (f *Feature) encryptMutation(reg *realm.Registrar, enc *model.MapEncryptionConfig, groupID, storeName, key string, entry model.MapEntry) (string, model.MapEntry, error) {
 	identity, ok := findIdentityByID(reg.Config().Identities, enc.IdentityID)
 	if !ok {
@@ -625,12 +587,9 @@ func (f *Feature) groupFor(groupID string) (model.Group, error) {
 	return group, nil
 }
 
-// broadcast sends env to every peer currently subscribed to
-// group/storeName, fire-and-forget: incomingSubs is already pruned of a peer
-// the moment it disconnects (see OnPeerDisconnected), so there's no need to
-// re-check Connected here — a peer that's actually gone will just fail
-// sendPush's stream open, which logs it instead of silently dropping the
-// event, and picks the change up via its next subscribe catch-up.
+// broadcast sends env to every subscriber of group/storeName, fire-and-forget.
+// No need to check Connected: incomingSubs is pruned on disconnect (see
+// OnPeerDisconnected), and a gone peer just fails sendPush's stream open.
 func (f *Feature) broadcast(reg *realm.Registrar, group model.Group, storeName string, env model.MapEventEnvelope) {
 	h := reg.Host()
 	ctx := reg.Context()
@@ -785,13 +744,10 @@ func (f *Feature) handlePushStream(reg *realm.Registrar) network.StreamHandler {
 	}
 }
 
-// handleSubscribeStream is the libp2p stream handler for
-// SubscribeProtocolID: registers the requester as an incoming subscriber
-// for each requested store (so future broadcasts reach it) and answers with
-// catch-up events for each, but only if the requester is a confirmed member
-// of the requested group — otherwise (or if we don't hold that group
-// ourselves) we can't verify anything, so we register nothing and answer
-// empty.
+// handleSubscribeStream is the stream handler for SubscribeProtocolID:
+// registers the requester and answers with catch-up events, but only if it's
+// a confirmed member of the requested group we hold ourselves — otherwise
+// answers empty.
 func (f *Feature) handleSubscribeStream(reg *realm.Registrar) network.StreamHandler {
 	return func(s network.Stream) {
 		defer s.Close()
@@ -907,10 +863,8 @@ func (f *Feature) incomingSubscribers(groupID, storeName string) []string {
 	return result
 }
 
-// OnPeerDisconnected implements realm.PeerDisconnectedHook: forgets every
-// purely in-memory subscription (incoming and outgoing) we kept for id,
-// since none of it is persisted — a peer that reconnects starts over with a
-// fresh initial subscribe (see onPeerAvailable).
+// OnPeerDisconnected forgets id's in-memory subscriptions (incoming and
+// outgoing); a reconnecting peer starts over via onPeerAvailable.
 func (f *Feature) OnPeerDisconnected(id peer.ID) {
 	peerID := id.String()
 
@@ -929,14 +883,10 @@ func (f *Feature) OnPeerDisconnected(id peer.ID) {
 	}
 }
 
-// RunPeriodic implements realm.PeriodicHook, driven by the engine's
-// keep-alive tick (currently every 10 minutes): at most once per hour, at
-// this process's own randomly-chosen minute (so peers sharing a group don't
-// all sweep on the same tick), tombstones every entry older than its map's
-// configured AutoDeleteEntriesHours. Any single subscribed peer doing this
-// is enough — the tombstone propagates to every other subscriber via the
-// normal push/subscribe path — so correctness doesn't depend on any
-// particular peer's turn coming up first.
+// RunPeriodic tombstones entries older than their map's AutoDeleteEntriesHours,
+// at most once per hour at this process's own random minute (so peers
+// sharing a group don't all sweep at once). Any one subscribed peer doing
+// this is enough — the tombstone propagates via the normal push path.
 func (f *Feature) RunPeriodic(reg *realm.Registrar) {
 	now := time.Now()
 	hourBucket := now.Truncate(time.Hour)

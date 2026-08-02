@@ -16,13 +16,9 @@ import (
 	"foilen-realm/model"
 )
 
-// generateSelfSignedTLSConfig creates a throwaway, in-memory self-signed TLS
-// certificate for the websocket listener's "wss" transport. It's never
-// persisted and never verified by dialing peers (see
-// websocketDialerTLSConfig): the outer TLS handshake only exists so the
-// connection looks like ordinary HTTPS/WSS traffic to firewalls/proxies; the
-// actual peer authentication happens afterwards, via libp2p's own Noise
-// security handshake.
+// generateSelfSignedTLSConfig creates a throwaway self-signed cert for the
+// "wss" listener, just to look like ordinary HTTPS/WSS to firewalls/proxies;
+// real peer auth is libp2p's Noise handshake on top (websocketDialerTLSConfig).
 func generateSelfSignedTLSConfig() (*tls.Config, error) {
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -54,13 +50,10 @@ func generateSelfSignedTLSConfig() (*tls.Config, error) {
 	}, nil
 }
 
-// websocketDialerTLSConfig is used for every outgoing websocket-secure dial,
-// not just when this peer's own ExposeWebEnabled is set: any peer might have
-// it enabled with a self-signed certificate (see
-// generateSelfSignedTLSConfig), and there's no shared CA to validate it
-// against. Skipping verification here is safe because libp2p's own Noise
-// handshake, layered on top of this transport, is what actually
-// authenticates the remote peer's identity.
+// websocketDialerTLSConfig is used for every outgoing wss dial, since any
+// peer may have a self-signed cert (generateSelfSignedTLSConfig) with no
+// shared CA to validate against. Safe to skip: libp2p's Noise handshake on
+// top actually authenticates the peer.
 func websocketDialerTLSConfig() *tls.Config {
 	return &tls.Config{InsecureSkipVerify: true} //nolint:gosec // see doc comment
 }

@@ -27,10 +27,10 @@ func handleSmsLoadConfig(a *api, _ json.RawMessage) (any, error) {
 }
 
 // handleSmsSaveManagementConfig saves this device's SMS management config
-// (Android-only, but not enforced here — the config UI is hidden on
-// desktop). If createNew, a new "SMS-<suffix>" realmmap is created first;
-// otherwise storeName selects an existing one. On the disabled->enabled
-// transition, a full SMS history import is kicked off in the background.
+// (Android-only; unenforced here since the config UI is hidden on desktop).
+// If createNew, creates a new "SMS-<suffix>" realmmap; otherwise storeName
+// selects an existing one. Kicks off a background history import on
+// disabled->enabled transition.
 func handleSmsSaveManagementConfig(a *api, params json.RawMessage) (any, error) {
 	var p struct {
 		Enabled                bool   `json:"enabled"`

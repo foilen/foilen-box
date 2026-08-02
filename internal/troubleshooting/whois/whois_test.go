@@ -59,8 +59,7 @@ func TestParse(t *testing.T) {
 		t.Errorf("ExpiryDate = %v, want %v", resp.ExpiryDate, wantExpiry)
 	}
 
-	// Unrecognized keys (Registry Domain ID, the ">>> Last update..." line
-	// has no colon-splittable "key: value" of a known field) land in Others.
+	// Unrecognized keys land in Others.
 	foundRegistryDomainID := false
 	for _, other := range resp.Others {
 		if other == "Registry Domain ID: 123456_DOMAIN_COM-VRSN" {

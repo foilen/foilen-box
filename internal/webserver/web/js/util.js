@@ -1,5 +1,4 @@
-// report runs fn and, on failure, writes "Error: <message>" to output. Used
-// by every button handler that just needs to surface a failed api.call().
+// Runs fn; on failure writes "Error: <message>" to output.
 export async function report(output, fn) {
 	try {
 		await fn();
@@ -8,15 +7,11 @@ export async function report(output, fn) {
 	}
 }
 
-// shortId returns the last 6 characters of an id, wrapped in brackets, so
-// long ids can be shown compactly while still being distinguishable.
 export function shortId(id) {
 	return `[${id.slice(-6)}]`;
 }
 
-// formatPeerLabel renders a peer id as "hostname (description) [last 6
-// chars of id]", falling back gracefully when hostname/description are
-// missing.
+// Renders "hostname (description) [last 6 chars of id]", omitting parts that are missing.
 export function formatPeerLabel(peer) {
 	const parts = [];
 	if (peer.hostname) parts.push(peer.hostname);
@@ -25,36 +20,27 @@ export function formatPeerLabel(peer) {
 	return parts.join(" ");
 }
 
-// formatGroupLabel renders a group as "name [last 6 chars of id]".
 export function formatGroupLabel(group) {
 	return `${group.name} ${shortId(group.id)}`;
 }
 
-// formatIdentityLabel renders an identity as "name [last 6 chars of id]".
 export function formatIdentityLabel(identity) {
 	return `${identity.name} ${shortId(identity.id)}`;
 }
 
-// formatKnownPeerLabel renders peerId via formatPeerLabel when it's found in
-// knownPeers, falling back to just the shortened id (rather than the full raw
-// id) when the peer isn't known yet, e.g. a peer that has posted into a
-// group's map but hasn't been approved/seen directly.
+// Falls back to the shortened id when peerId isn't in knownPeers yet (e.g. a
+// peer that posted into a group's map but hasn't been approved/seen directly).
 export function formatKnownPeerLabel(knownPeers, peerId) {
 	const peer = knownPeers.find((p) => p.id === peerId);
 	return peer ? formatPeerLabel(peer) : shortId(peerId);
 }
 
-// syncList reconciles the element children of `container` to match `items`,
-// keyed by `keyOf(item)`, instead of clearing and rebuilding everything on
-// every render. Children whose key is still present are patched in place via
-// `update(el, item)`; children whose key has disappeared are removed; new
-// keys are built via `create(item)`. Existing nodes are moved (not
-// recreated) to match the order of `items`. This is what keeps <select>
-// selections, checkbox/details state, and scroll position stable across
-// polling refreshes instead of flickering on every tick.
-//
-// Requires each item's key to be stable and unique within the list (e.g. an
-// id, not an array index).
+// Reconciles container's children to match items (keyed by keyOf) instead of
+// clearing and rebuilding on every render: existing keys are patched via
+// update(el, item), gone keys are removed, new keys via create(item). Nodes
+// are moved rather than recreated, which keeps <select> selections,
+// checkbox/details state, and scroll position stable across polling refreshes.
+// Each item's key must be stable and unique (e.g. an id, not an array index).
 export function syncList(container, items, keyOf, create, update) {
 	const remaining = new Map();
 	for (const child of container.children) {
@@ -84,14 +70,10 @@ export function syncList(container, items, keyOf, create, update) {
 	}
 }
 
-// syncCells patches a <tr>'s leading <td>s in place from `cells`, an array
-// of [label, value] pairs, creating a cell at a position if missing and
-// otherwise only touching textContent when the value actually changed.
-// Works identically whether `row` is brand new (cells get created) or
-// existing (cells get patched by position), so the same cell list can drive
-// both a syncList `create` and `update` callback. Returns the number of
-// cells written, so callers appending further custom cells (buttons, etc.)
-// after these know how many leading cells to skip over.
+// Patches a <tr>'s leading <td>s in place from [label, value] pairs, creating
+// cells if missing and only touching textContent when it changed — works for
+// both syncList's create and update callbacks. Returns the cell count so
+// callers can append further custom cells after these.
 export function syncCells(row, cells) {
 	cells.forEach(([label, value], i) => {
 		let cell = row.children[i];

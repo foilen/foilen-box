@@ -17,10 +17,9 @@ import (
 	"foilen-realm/model"
 )
 
-// groupChallengeProtocolID is how a peer proves it actually holds a group's
-// shared private key (rather than merely having claimed the group's public
-// id over identifyProtocolID) before we add that group to its confirmed
-// GroupNames.
+// groupChallengeProtocolID proves a peer actually holds a group's private
+// key (vs. merely claiming its public id over identifyProtocolID) before
+// adding it to confirmed GroupNames.
 const groupChallengeProtocolID = "/foilen-box/group-challenge/1.0.0"
 
 // groupChallengeRequest asks responderID to prove membership in the group
@@ -48,10 +47,9 @@ func challengeHash(req groupChallengeRequest) []byte {
 	return sum[:]
 }
 
-// challengeGroup asks remote to prove it holds group's private key, and, if
-// the signature verifies, records the group as confirmed for remote in the
-// peer store. Called for a group remote merely claimed via identifyPayload;
-// membership is not trusted until this succeeds.
+// challengeGroup asks remote to prove it holds group's private key and, if
+// verified, records the group as confirmed for remote. Membership claimed
+// via identifyPayload isn't trusted until this succeeds.
 func (e *Engine) challengeGroup(remote peer.ID, group model.Group) {
 	e.mu.Lock()
 	h := e.host
@@ -102,11 +100,9 @@ func (e *Engine) challengeGroup(remote peer.ID, group model.Group) {
 	}
 }
 
-// handleGroupChallengeStream answers a group-challenge: if we hold the
-// private key for the requested group, we sign challengeHash(req) with it
-// and return the signature. We do not consult or update our own peer store
-// here — answering a challenge about a group we hold says nothing about
-// whether the requester itself belongs to that group.
+// handleGroupChallengeStream answers a group-challenge by signing
+// challengeHash(req) if we hold the requested group's private key. Doesn't
+// touch our own peer store — answering says nothing about the requester's membership.
 func (e *Engine) handleGroupChallengeStream(s network.Stream) {
 	defer s.Close()
 	_ = s.SetDeadline(time.Now().Add(identifyIOTimeout))

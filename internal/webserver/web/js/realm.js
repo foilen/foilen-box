@@ -11,9 +11,8 @@ import { initRealmSms } from "./realm-sms.js";
 import { initRealmMaps } from "./realm-maps.js";
 import { parseHash, updateHash } from "./hash.js";
 
-// initRealmSubtabs wires subtab switching; onActivate, if given, is called
-// with the activated button's data-subtab value every time a subtab is
-// switched to (used by Services to refresh stale peers on activation).
+// Wires subtab switching. onActivate (optional) is called with the
+// activated subtab on every switch — used by Services to refresh stale peers.
 function initRealmSubtabs(onActivate) {
 	const buttons = document.querySelectorAll("#realm-subtabs .subtab-button");
 	function activate(button, extra) {
@@ -45,12 +44,8 @@ export function initRealmTab(api, isAndroid) {
 	const descriptionInput = document.getElementById("realm-description");
 	const saveDescriptionButton = document.getElementById("realm-save-description-button");
 	const enableMdnsCheckbox = document.getElementById("realm-enable-mdns");
-	// mDNS (LAN discovery) isn't supported on Android — see
-	// realm.mdnsSupported in the Go backend — so don't offer a toggle that
-	// would silently do nothing; DHT discovery is unaffected. The detached
-	// enableMdnsCheckbox reference stays valid for the rest of this module
-	// (setting .checked on it below is a harmless no-op), so nothing else
-	// needs to change.
+	// mDNS isn't supported on Android (see realm.mdnsSupported in the Go
+	// backend); remove the toggle rather than offer one that does nothing.
 	if (isAndroid) {
 		document.getElementById("realm-mdns-row").remove();
 	}
@@ -67,12 +62,10 @@ export function initRealmTab(api, isAndroid) {
 	const exposeWebAnnounceProtocolSelect = document.getElementById("realm-expose-web-announce-protocol");
 	const output = document.getElementById("realm-output");
 
-	// renderConfig is the fan-out for the single "full config" response the
-	// backend returns from every realm.* config mutation: it updates the
-	// identity/discovery fields owned by this module directly, and defers
-	// to the groups/permissions subtabs for their own tables. Forward
-	// declared so it can be handed to initRealmGroups/initRealmPermissions
-	// before their own render functions exist.
+	// renderConfig fans out the "full config" response every realm.* mutation
+	// returns, updating this module's fields and deferring to each subtab for
+	// its own tables. Forward-declared so it can be handed to
+	// initRealmGroups/initRealmPermissions before their render functions exist.
 	let renderGroups = () => {};
 	let renderIdentities = () => {};
 	let onIdentitiesConfigUpdate = () => {};
@@ -87,14 +80,10 @@ export function initRealmTab(api, isAndroid) {
 	let onSpeedtestConfigUpdate = () => {};
 	let onSmsConfigUpdate = () => {};
 
-	// ownPeer/latestPeers/pushPeers: the local peer's own hostname/description
-	// come from realm.loadConfig, not from the discovered-peers list (a node
-	// never discovers itself via mDNS/DHT), but its id shows up in maps
-	// (specs/scripts/services entries the peer posts about itself). So we
-	// synthesize a pseudo-peer entry for it and merge it into the peers list
-	// handed to every subtab, letting formatKnownPeerLabel resolve it to a
-	// proper "hostname (description)" label instead of falling back to a
-	// bare shortened id.
+	// A node never discovers itself via mDNS/DHT, but its id shows up in maps
+	// (specs/scripts/services it posts about itself). Synthesize a pseudo-peer
+	// entry from realm.loadConfig and merge it into the peers list handed to
+	// every subtab, so formatKnownPeerLabel can resolve it to a proper label.
 	let ownPeer = null;
 	let latestPeers = [];
 

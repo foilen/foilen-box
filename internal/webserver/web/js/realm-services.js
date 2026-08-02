@@ -4,13 +4,11 @@ const PEER_SERVICES_POLL_INTERVAL_MS = 5000;
 const SERVICES_STORE_NAME = "common";
 const SERVICES_KEY_PREFIX = "services/";
 
-// initRealmServices wires the Services subtab: the "My Services" CRUD table
-// (fed by the same full-config response as Scripts, so it's handed
-// renderConfig the same way), the local-port scan modal, and the "Peer
-// Services" section, which aggregates the services/{peerId}/{name} entries
-// every peer posts into the "common" store of each group it belongs to (see
-// internal/webserver/realm_announce.go) and lets the user start/stop a local
-// proxy tunnel or connect with a native app.
+// Wires the Services subtab: the "My Services" CRUD table, the local-port
+// scan modal, and the "Peer Services" section — aggregates the
+// services/{peerId}/{name} entries every peer posts into the "common" store
+// (see internal/webserver/realm_announce.go) and lets the user start/stop a
+// local proxy tunnel or connect with a native app.
 export function initRealmServices(api, output, renderConfig) {
 	const myServicesBody = document.getElementById("realm-my-services-tbody");
 	const myServicesCount = document.getElementById("realm-services-count");
@@ -164,12 +162,9 @@ export function initRealmServices(api, output, renderConfig) {
 		return `${peerId}|${name}`;
 	}
 
-	// syncProxyCell/syncConnectedCell/syncActionsCell each build their <td>
-	// on first call (create) and patch it in place on later calls (update),
-	// found by dataset.label rather than position — needed because unlike
-	// the data cells above, their content (proxy running state, peer
-	// connected state) can change on its own poll cycle, independent of
-	// whether the underlying peerServices/service entry changed.
+	// These cells are found by dataset.label rather than position, and
+	// build-or-patch in place, since their content (proxy/connected state)
+	// changes on its own poll cycle independent of the service entry data.
 	function syncProxyCell(row, peerId, service) {
 		let cell = row.querySelector('td[data-label="Proxy"]');
 		if (!cell) {

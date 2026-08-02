@@ -17,21 +17,14 @@ import (
 	"foilen-box/internal/notify"
 )
 
-// pollInterval mirrors the web UI's own MAPS_POLL_INTERVAL_MS (realm-maps.js
-// / realm-sms.js): there's no push notification for realmmap changes (see
-// maps.Store.Subscribe's doc — it only sees encrypted ciphertext/hashed keys
-// for application stores, real decryption only happens inside
-// Feature.GetMap), so Manager polls GetMap on the same cadence the browser
-// tab does, both for fulfilling create-requests and for detecting new
-// messages to notify about.
+// pollInterval mirrors the web UI's MAPS_POLL_INTERVAL_MS (realm-maps.js):
+// there's no push notification for realmmap changes, so Manager polls GetMap
+// on the same cadence the browser tab does.
 const pollInterval = 5 * time.Second
 
-// notifyFreshnessWindow bounds how old a message's own reported timestamp
-// can be and still trigger a notification. Without this, a full historical
-// import (thousands of old messages) or a peer syncing an SMS-* store for
-// the very first time would fire one OS notification per historical
-// message, since from a receiving peer's point of view they're all "new"
-// entries it's never seen before.
+// notifyFreshnessWindow bounds how old a message can be and still trigger a
+// notification, so a historical import or first-time store sync doesn't fire
+// one OS notification per old message.
 const notifyFreshnessWindow = 10 * time.Minute
 
 // Manager reacts to SMS-* realmmaps: fulfilling create-requests targeting
@@ -53,8 +46,7 @@ type Manager struct {
 }
 
 // NewManager builds a Manager. localPeerID is called on demand (not cached)
-// since the engine's peer id can be generated/change independently of this
-// package's own lifecycle.
+// since the engine's peer id can change independently of this package.
 func NewManager(mapsFeature *realmmaps.Feature, cfg *Service, localPeerID func() string) *Manager {
 	return &Manager{
 		mapsFeature: mapsFeature,
@@ -80,10 +72,8 @@ func (m *Manager) getBridge() PlatformBridge {
 }
 
 // SetBaseURL registers the local web UI's base URL (e.g.
-// "http://127.0.0.1:12345/"), used to build a clickable deep link for
-// desktop notifications; called once from
-// internal/webserver.Server.Start, after the listener's port is known.
-// Left empty on Android, where the platform bridge handles its own
+// "http://127.0.0.1:12345/"), used to build a clickable deep link for desktop
+// notifications. Left empty on Android, where the platform bridge handles
 // click-to-open via a PendingIntent instead.
 func (m *Manager) SetBaseURL(baseURL string) {
 	m.mu.Lock()
@@ -183,9 +173,7 @@ func (m *Manager) processStore(groupID, storeName string, rm realmmodel.RealmMap
 }
 
 // fulfillCreate sends the requested text via the platform bridge, records it
-// as a normal outgoing message entry (same as an existing/received SMS would
-// be), then removes the create-request — the exact sequence described by
-// the feature's design.
+// as a normal outgoing message entry, then removes the create-request.
 func (m *Manager) fulfillCreate(groupID, storeName, key string, entry realmmodel.MapEntry) {
 	var req SmsCreateRequest
 	if err := json.Unmarshal([]byte(entry.Value), &req); err != nil {
@@ -225,21 +213,17 @@ func (m *Manager) fulfillCreate(groupID, storeName, key string, entry realmmodel
 }
 
 // ImportHistory brings groupID/storeName's own-authored entries in line with
-// the device's current SMS history; called once from the webserver API
-// handler when SMS management transitions from disabled to enabled. See
-// reconcileDeviceStore, which also runs on every RunPeriodic tick so a
-// failed import (e.g. the Android READ_SMS permission wasn't granted yet at
-// enable time) is retried automatically rather than being a one-shot
-// attempt.
+// the device's current SMS history; called once when SMS management
+// transitions from disabled to enabled. See reconcileDeviceStore, which also
+// runs on every RunPeriodic tick so a failed import (e.g. missing READ_SMS
+// permission) is retried automatically.
 func (m *Manager) ImportHistory(groupID, storeName string) error {
 	return m.reconcileDeviceStore(groupID, storeName)
 }
 
-// reconcileDeviceStore ensures groupID/storeName's entries authored by this
-// device (i.e. keyed under its own peer id) exactly match what's currently
-// on the device: any message present on the device but missing from the map
-// is added, and any such entry the map still holds but that's no longer
-// found on the device (deleted by the user, e.g.) is removed.
+// reconcileDeviceStore makes groupID/storeName's entries authored by this
+// device match what's currently on the device: adds messages missing from
+// the map, removes map entries no longer found on the device.
 func (m *Manager) reconcileDeviceStore(groupID, storeName string) error {
 	bridge := m.getBridge()
 	if bridge == nil {
@@ -304,9 +288,8 @@ func (m *Manager) reconcileDeviceStore(groupID, storeName string) error {
 	return nil
 }
 
-// Name, Actions, and RegisterHandlers satisfy realm.Feature so Manager can
-// be registered with the engine purely to receive RunPeriodic ticks, the
-// same reasoning as internal/webserver/realm_announce.go — it still owns no
+// Name, Actions, and RegisterHandlers satisfy realm.Feature so Manager can be
+// registered with the engine purely to receive RunPeriodic ticks; it owns no
 // libp2p protocol of its own.
 func (m *Manager) Name() string { return "box/sms" }
 
@@ -315,11 +298,8 @@ func (m *Manager) Actions() []realmmodel.PermissionAction { return nil }
 func (m *Manager) RegisterHandlers(reg *realm.Registrar) {}
 
 // RunPeriodic reconciles the currently enabled store (if any) against the
-// device's SMS history on the engine's own keep-alive cadence (10 minutes),
-// per realm.PeriodicHook — see reconcileDeviceStore. This is also what
-// retries an initial import that failed (e.g. for a missing permission),
-// since it runs unconditionally on every tick rather than only once at
-// enable time.
+// device's SMS history on the engine's keep-alive cadence (10 minutes); this
+// also retries an initial import that failed (e.g. missing permission).
 func (m *Manager) RunPeriodic(reg *realm.Registrar) {
 	cfg := m.cfg.Load()
 	if !cfg.Enabled || cfg.GroupID == "" || cfg.StoreName == "" {
@@ -340,10 +320,8 @@ func (m *Manager) RunPeriodic(reg *realm.Registrar) {
 const enabledMarkerValue = "1"
 
 // touchEnabledMarker (re)writes this device's "<peerId>/enabled" presence
-// entry in groupID/storeName. Called both right at enable time
-// (SyncEnabledMarker) and on every RunPeriodic tick so the entry survives
-// the store's own AutoDeleteEntriesHours sweep (realmmaps.Feature.RunPeriodic
-// tombstones any entry, regardless of kind, older than that window).
+// entry in groupID/storeName. Called at enable time and on every RunPeriodic
+// tick so it survives the store's AutoDeleteEntriesHours sweep.
 func (m *Manager) touchEnabledMarker(groupID, storeName string) {
 	localID := m.localPeerID()
 	if localID == "" {
@@ -355,9 +333,8 @@ func (m *Manager) touchEnabledMarker(groupID, storeName string) {
 }
 
 // clearEnabledMarker removes this device's "<peerId>/enabled" presence entry
-// from groupID/storeName, called when management is disabled or switched to
-// a different store so this device stops being offered as a "Send from
-// peer" option for a store it no longer manages.
+// from groupID/storeName, so it stops being offered as a "Send from peer"
+// option for a store it no longer manages.
 func (m *Manager) clearEnabledMarker(groupID, storeName string) {
 	localID := m.localPeerID()
 	if localID == "" || groupID == "" || storeName == "" {
@@ -368,12 +345,9 @@ func (m *Manager) clearEnabledMarker(groupID, storeName string) {
 	}
 }
 
-// SyncEnabledMarker keeps this device's "enabled" presence entry (see
-// touchEnabledMarker/clearEnabledMarker) in step with a management config
-// change: called from the webserver's save-config handler with the config
-// just replaced and the one just saved. RunPeriodic's own tick would
-// eventually converge on the same state, but doing it here means "Send from
-// peer" pickers reflect the change immediately instead of after a delay.
+// SyncEnabledMarker keeps this device's "enabled" presence entry in step with
+// a config change immediately, rather than waiting for RunPeriodic's tick to
+// eventually converge.
 func (m *Manager) SyncEnabledMarker(previous, newCfg Config) {
 	if previous.Enabled && (previous.GroupID != newCfg.GroupID || previous.StoreName != newCfg.StoreName || !newCfg.Enabled) {
 		m.clearEnabledMarker(previous.GroupID, previous.StoreName)
@@ -384,10 +358,8 @@ func (m *Manager) SyncEnabledMarker(previous, newCfg Config) {
 }
 
 // EnabledPeerIDs returns the peer ids whose "<peerId>/enabled" presence
-// marker is currently set in groupID/storeName (see touchEnabledMarker) —
-// i.e. the peers that actually manage this store and so can fulfill a
-// create-request sent to them. Returns nil if the store isn't currently
-// decryptable.
+// marker is set in groupID/storeName — the peers that can fulfill a
+// create-request. Returns nil if the store isn't currently decryptable.
 func (m *Manager) EnabledPeerIDs(groupID, storeName string) []string {
 	rm, encrypted, available := m.mapsFeature.GetMap(groupID, storeName)
 	if encrypted && !available {
@@ -409,11 +381,8 @@ func (m *Manager) EnabledPeerIDs(groupID, storeName string) []string {
 }
 
 // fulfillPendingCreates retries every still-unfulfilled create-request
-// targeting this device in groupID/storeName — the same handling
-// pollOnce's fast 5s loop already applies via fulfillCreate — so a request
-// that failed to send (bridge unavailable, transient SendSms error, ...)
-// doesn't depend solely on the in-process poll loop staying alive; it's
-// retried again on the engine's own 10-minute cadence.
+// targeting this device in groupID/storeName, so a request that failed to
+// send isn't left depending solely on the fast poll loop.
 func (m *Manager) fulfillPendingCreates(groupID, storeName string) {
 	localID := m.localPeerID()
 	if localID == "" {
@@ -550,9 +519,8 @@ func (m *Manager) notify(groupID, storeName string, msg SmsMessage) {
 		preview = preview[:20]
 	}
 
-	// groupID|storeName|phoneNumber mirrors the JS side's UI hash format
-	// (realm-sms.js/hash.js) so the deep link can restore both the store
-	// being viewed and the open conversation, not just the phone number.
+	// Mirrors the JS side's UI hash format so the deep link can restore both
+	// the store and the open conversation.
 	deepLink := groupID + "|" + storeName + "|" + msg.PhoneNumber
 
 	if bridge := m.getBridge(); bridge != nil {
@@ -573,11 +541,9 @@ func (m *Manager) notify(groupID, storeName string, msg SmsMessage) {
 	}
 }
 
-// encodeURIComponent mirrors JavaScript's encodeURIComponent well enough for
-// the deep-link segments this package builds ("groupId|storeName|phone"):
-// url.QueryEscape covers the same reserved characters but represents a
-// space as "+" instead of "%20", which decodeURIComponent (used by
-// hash.js/parseHash on the receiving end) would read back literally.
+// encodeURIComponent mirrors JS's encodeURIComponent: url.QueryEscape encodes
+// spaces as "+" instead of "%20", which decodeURIComponent on the receiving
+// end would read back literally.
 func encodeURIComponent(s string) string {
 	return strings.ReplaceAll(url.QueryEscape(s), "+", "%20")
 }

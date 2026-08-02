@@ -120,9 +120,7 @@ type TimeEntriesResponse struct {
 }
 
 // AggregateResult is computed locally, not part of the Early API wire format.
-// Maps are plain Go maps (unordered); callers must sort keys themselves when
-// a stable/sorted iteration order is needed (e.g. for report formatting),
-// since Go has no built-in TreeMap equivalent.
+// Maps are unordered; callers must sort keys themselves for stable output.
 type AggregateResult struct {
 	DurationInSecByActivityDayTag map[string]int64
 	DurationInSecByActivityTag    map[string]int64

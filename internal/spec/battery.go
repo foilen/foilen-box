@@ -29,37 +29,24 @@ func (b batteryInfo) String() string {
 	return s
 }
 
-// BatteryProvider is implemented on the Android side (Kotlin's
-// BatteryManager) and registered via SetAndroidBatteryProvider, since Go has
-// no reliable way to read battery state there: /sys/class/power_supply is
-// commonly blocked by SELinux for regular (non-system) apps, so
-// batteryInfosSysfs's plain file reads silently find nothing. Split into two
-// single-value methods (rather than one call returning percent+status)
-// because gomobile bind doesn't support methods with more than one non-error
-// return value.
+// BatteryProvider is implemented on Android (Kotlin's BatteryManager), set via
+// SetAndroidBatteryProvider — sysfs reads are usually SELinux-blocked there.
+// Two single-value methods because gomobile bind can't return multiple values.
 type BatteryProvider interface {
-	// BatteryPercent returns the current battery charge percentage (0-100),
-	// or -1 if no battery is present/known.
+	// BatteryPercent returns 0-100, or -1 if unknown.
 	BatteryPercent() int32
-	// BatteryStatus returns a human-readable charging status (e.g.
-	// "Charging", "Discharging", "Full"); "" if unknown.
+	// BatteryStatus returns e.g. "Charging", "Discharging", "Full"; "" if unknown.
 	BatteryStatus() string
 }
 
 var androidBatteryProvider BatteryProvider
 
-// SetAndroidBatteryProvider registers the platform-specific battery provider
-// (see BatteryProvider). Passing nil clears it, reverting to (best-effort,
-// often empty on Android) sysfs-based detection.
+// SetAndroidBatteryProvider sets the platform battery provider; nil reverts to sysfs detection.
 func SetAndroidBatteryProvider(p BatteryProvider) {
 	androidBatteryProvider = p
 }
 
-// batteryInfos returns the batteries detected on this system, best-effort.
-// Like GPU detection, gopsutil has no cross-platform battery support, so this
-// reads OS-specific sources; on any error (no battery present, e.g. a desktop
-// PC, or a sandboxed environment) it just returns nil rather than failing the
-// rest of the report.
+// batteryInfos returns detected batteries, best-effort (nil on any error, e.g. no battery present).
 func batteryInfos() []batteryInfo {
 	if androidBatteryProvider != nil {
 		percent := androidBatteryProvider.BatteryPercent()
@@ -71,11 +58,8 @@ func batteryInfos() []batteryInfo {
 
 	switch runtime.GOOS {
 	case "linux", "android":
-		// Pure sysfs file reads (no exec), kept as a fallback for Android in
-		// case no BatteryProvider has been registered yet (e.g.
-		// RealmForegroundService starting the engine on boot, before
-		// MainActivity exists); usually finds nothing there, per the SELinux
-		// note above.
+		// Fallback for Android before a BatteryProvider is registered (e.g. boot);
+		// usually finds nothing there due to SELinux.
 		return batteryInfosSysfs()
 	case "darwin":
 		return batteryInfosDarwin()
@@ -86,12 +70,8 @@ func batteryInfos() []batteryInfo {
 	}
 }
 
-// --- Linux / Android (sysfs) ------------------------------------------------
-
-// batteryInfosSysfs reads /sys/class/power_supply/*, which exposes one
-// directory per power supply (battery, AC adapter, etc). Devices whose "type"
-// isn't "Battery", or that report themselves absent via "present", are
-// skipped.
+// batteryInfosSysfs reads /sys/class/power_supply/*, skipping non-battery
+// or absent devices.
 func batteryInfosSysfs() []batteryInfo {
 	matches, err := filepath.Glob("/sys/class/power_supply/*")
 	if err != nil {
@@ -141,8 +121,6 @@ func readSysfsInt(path string) (int, error) {
 	return strconv.Atoi(s)
 }
 
-// --- Darwin ------------------------------------------------------------
-
 var pmsetBattRe = regexp.MustCompile(`(\d+)%;\s*([a-zA-Z ]+);`)
 
 func batteryInfosDarwin() []batteryInfo {
@@ -165,8 +143,6 @@ func batteryInfosDarwin() []batteryInfo {
 	}
 	return infos
 }
-
-// --- Windows -------------------------------------------------------------
 
 var winBatteryStatus = map[string]string{
 	"1":  "Discharging",

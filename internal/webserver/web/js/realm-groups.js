@@ -2,10 +2,9 @@ import { report, formatGroupLabel, syncList, syncCells } from "./util.js";
 import { renderActionCheckboxes, checkedActions } from "./realm-actions.js";
 import { initQrModal, initScanModal } from "./realm-qr.js";
 
-// initRealmGroups wires the Groups section of the Realm main subtab:
-// listing, generating, importing, exporting, and deleting groups.
-// renderConfig is the top-level fan-out (see realm.js) called after any
-// mutation, since the backend returns the full config on every change.
+// Wires the Groups section: list/generate/import/export/delete. renderConfig
+// is the top-level fan-out (see realm.js), called after any mutation since
+// the backend returns the full config on every change.
 export function initRealmGroups(api, output, renderConfig) {
 	const groupsBody = document.getElementById("realm-groups-tbody");
 	const groupsCount = document.getElementById("realm-groups-count");

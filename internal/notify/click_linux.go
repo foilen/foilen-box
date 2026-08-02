@@ -13,10 +13,9 @@ import (
 	"foilen-box/internal/browseropen"
 )
 
-// clickState tracks the single lazily-created dbus notifier used for
-// clickable notifications, and the notification-ID -> target-URL mapping
-// consulted when the "default" action (clicking the notification body)
-// fires. Entries are removed on click or on close, whichever comes first.
+// clickState tracks the lazily-created dbus notifier and the
+// notification-ID -> target-URL mapping consulted on click. Entries are
+// removed on click or close, whichever comes first.
 var clickState struct {
 	sync.Mutex
 	notifier dbusnotify.Notifier
@@ -70,12 +69,9 @@ func onClickClosed(sig *dbusnotify.NotificationClosedSignal) {
 	clickState.Unlock()
 }
 
-// NotifyClick shows title/body as a desktop notification that opens url in
-// the default browser when clicked, via a dbus notification "default"
-// action (org.freedesktop.Notifications' ActionInvoked signal) - most
-// Linux notification daemons invoke this when the user clicks the
-// notification body itself. Falls back to a plain (non-clickable)
-// notification if the session's dbus notification service isn't reachable.
+// NotifyClick shows a notification that opens url when clicked, via a dbus
+// "default" action (most Linux notification daemons fire this on body
+// click). Falls back to a plain notification if dbus isn't reachable.
 func NotifyClick(title, body, url string) error {
 	n := ensureClickNotifier()
 	if n == nil {

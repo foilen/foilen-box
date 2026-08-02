@@ -14,30 +14,18 @@ import (
 )
 
 const (
-	// identifyProtocolID is a lightweight, engine-owned exchange of a peer's
-	// hostname/description/claimed groups, distinct from the (on-demand,
-	// Feature-owned) spec protocol: it runs automatically whenever a group
-	// peer connects, not only when a user explicitly asks for it.
+	// identifyProtocolID: engine-owned exchange of hostname/description/claimed
+	// groups, run automatically on connect (unlike the on-demand spec protocol).
 	identifyProtocolID = "/foilen-box/identify/1.0.0"
 	identifyIOTimeout  = 10 * time.Second
 	identifyMaxBytes   = 4 * 1024
 )
 
-// identifyPayload is what's exchanged, in both directions, over
-// identifyProtocolID. GroupIDs are self-claimed (each peer's own group
-// public ids, model.Group.KeyPair.ID) — merely receiving one does not grant
-// membership; it only tells the recipient which of its own groups are worth
-// challenging this peer on, see challengeGroup. RelayServiceEnabled reports whether
-// the sender runs with cfg.EnableRelayService, so peers can pick relay
-// candidates (see Engine.relayPeerSource) without blindly probing everyone.
-// Version is the sender's self-reported application name and version (see
-// Engine.SetAppVersion). Addresses is the sender's own current listen
-// multiaddrs (host.Addrs()): recorded by the recipient as the peer store's
-// "announce" address source (see peers.Store.SetAnnouncedAddresses), a
-// fallback dial source for the next time this peer needs reconnecting but
-// has since dropped off mDNS/DHT discovery — since identify only runs over
-// an already-established connection, exchanging it here doesn't help find a
-// peer for the first time, only keep addresses for one already known.
+// identifyPayload is exchanged both ways over identifyProtocolID. GroupIDs
+// are self-claimed — receiving one only tells the recipient which groups to
+// challenge (challengeGroup), it doesn't grant membership. RelayServiceEnabled
+// feeds Engine.relayPeerSource. Addresses is recorded as the peer store's
+// "announce" fallback dial source for reconnecting after discovery drops off.
 type identifyPayload struct {
 	Hostname            string   `json:"hostname"`
 	Description         string   `json:"description"`
@@ -82,11 +70,9 @@ func (e *Engine) handleIdentifyStream(s network.Stream) {
 	e.processClaimedGroups(remote, reqPayload.GroupIDs)
 }
 
-// fetchPeerIdentity dials id over identifyProtocolID, sends our own
-// identifyPayload (hostname/description/claimed group ids), reads the
-// response, records the returned hostname/description, and processes the
-// peer's claimed groups. Called on connect and whenever a new group is
-// added to our own config, for every known peer.
+// fetchPeerIdentity dials id over identifyProtocolID, exchanges
+// identifyPayloads, records the response, and processes the peer's claimed
+// groups. Called on connect and whenever a group is added to our config.
 func (e *Engine) fetchPeerIdentity(id peer.ID) {
 	e.mu.Lock()
 	h := e.host
@@ -121,10 +107,8 @@ func (e *Engine) fetchPeerIdentity(id peer.ID) {
 	e.processClaimedGroups(id, payload.GroupIDs)
 }
 
-// selfIdentifyPayload builds our own identifyPayload: hostname/description
-// plus the public group ids (not names) of every group we're configured
-// with, whether we're currently running the relay service, our own
-// appVersion, and h's current listen addrs (see identifyPayload.Addresses).
+// selfIdentifyPayload builds our own identifyPayload from current config and
+// h's listen addrs.
 func (e *Engine) selfIdentifyPayload(h host.Host) identifyPayload {
 	e.mu.Lock()
 	hostname := e.hostnameOverride

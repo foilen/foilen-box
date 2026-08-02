@@ -129,10 +129,7 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 	)
 	speedTestFeature := boxspeedtest.New()
 	smsManager := boxsms.NewManager(mapsFeature, smsConfigSvc, func() string { return realmConfigSvc.Load().PeerID.ID })
-	// a is assigned below, but the identity feature's onReceive callback
-	// can only ever fire later (once a peer actually pushes an identity to
-	// us), long after a is fully constructed, so it's safe for the closure
-	// to capture this forward-declared pointer.
+	// Forward-declared: onReceive only fires after a is fully constructed.
 	var a *api
 	identityFeature := realmidentity.New(func(name string, kp realmmodel.KeyPair) error {
 		return a.importPushedIdentity(name, kp)
@@ -165,9 +162,8 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 	}
 	smsManager.Start()
 
-	// Auto-start the realm engine once a peer id already exists
-	// (decision 5); a failure here shouldn't prevent the web UI itself
-	// from starting.
+	// Auto-start the realm engine if a peer id already exists; failure here
+	// shouldn't block the web UI from starting.
 	if cfg := realmConfigSvc.Load(); cfg.PeerID.ID != "" {
 		cfg = ensureRealmListenPort(realmConfigSvc, cfg)
 		if err := realmEng.Start(cfg); err != nil {
@@ -192,8 +188,8 @@ func (a *api) shutdown() {
 	}
 }
 
-// updateRealmConfig loads the current Realm config, applies fn, persists
-// it, and restarts (or stops) the engine to reflect the change.
+// updateRealmConfig loads the current Realm config, applies fn, persists it,
+// and reconciles the engine to reflect the change.
 func (a *api) updateRealmConfig(fn func(cfg *realmmodel.Config)) (realmmodel.Config, error) {
 	cfg := a.realmConfig.Load()
 	fn(&cfg)
@@ -209,10 +205,8 @@ func (a *api) updateRealmConfig(fn func(cfg *realmmodel.Config)) (realmmodel.Con
 	return cfg, nil
 }
 
-// importPushedIdentity is the identity feature's onReceive callback: it's
-// invoked whenever another peer pushes an identity to us and permission
-// allows it, and imports it automatically (no user confirmation), renaming
-// on a name collision rather than rejecting the push outright.
+// importPushedIdentity is the identity feature's onReceive callback: auto-imports
+// a pushed identity (no user confirmation), renaming on a name collision.
 func (a *api) importPushedIdentity(name string, kp realmmodel.KeyPair) error {
 	unique := name
 	for i := 2; a.identityExists(unique); i++ {
@@ -232,8 +226,7 @@ func (a *api) importPushedIdentity(name string, kp realmmodel.KeyPair) error {
 	return nil
 }
 
-// resolveHostname returns override if set, falling back to the OS-reported
-// hostname otherwise.
+// resolveHostname returns override if set, else the OS-reported hostname.
 func resolveHostname(override string) string {
 	if override != "" {
 		return override
@@ -245,12 +238,10 @@ func resolveHostname(override string) string {
 	return hostname
 }
 
-// ensureRealmListenPort backfills cfg.RealmListenPort with a freshly picked free
-// port and saves it, if it isn't set yet (a config created or last saved
-// before this field existed). Once assigned, a peer keeps the same listen
-// port forever, which is what keeps its advertised addresses stable across
-// restarts. Returns cfg unchanged if a port was already assigned or a free
-// one couldn't be picked (falls back to libp2p's random-port default).
+// ensureRealmListenPort backfills cfg.RealmListenPort with a free port, once,
+// so the peer's advertised addresses stay stable across restarts. No-op if
+// already assigned or if a free port couldn't be picked (falls back to
+// libp2p's random-port default).
 func ensureRealmListenPort(svc *realmconfig.Service, cfg realmmodel.Config) realmmodel.Config {
 	if cfg.RealmListenPort != 0 {
 		return cfg
@@ -271,9 +262,8 @@ func ensureRealmListenPort(svc *realmconfig.Service, cfg realmmodel.Config) real
 // a service, and shape a response.
 type handlerFunc func(a *api, params json.RawMessage) (any, error)
 
-// handlers maps each action name to the function that handles it. Handlers
-// are defined in api_realm.go, api_early.go, and api_misc.go, grouped by
-// domain rather than all inlined here.
+// handlers maps each action name to its handler, defined across api_realm.go,
+// api_early.go, and api_misc.go by domain.
 var handlers = map[string]handlerFunc{
 	"spec.report":         handleSpecReport,
 	"troubleshooting.run": handleTroubleshootingRun,

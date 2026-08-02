@@ -1,7 +1,5 @@
 // Package spec gathers a human-readable system information report (OS, CPU,
-// RAM, GPU, disk, Go runtime), replacing the Java SpecPanel/SpecFragment's
-// use of OperatingSystemMXBean/StatFs with the cross-platform gopsutil
-// library.
+// RAM, GPU, disk, Go runtime) using gopsutil.
 package spec
 
 import (
@@ -14,10 +12,8 @@ import (
 	"github.com/shirou/gopsutil/v3/mem"
 )
 
-// Summary is a compact, one-line-per-field version of Report, meant for
-// display in a table (e.g. the Realm peers Specs subtab) rather than a full
-// text dump. Any field is left empty if that piece of information couldn't
-// be determined.
+// Summary is a compact, one-line-per-field version of Report, for table
+// display (e.g. the Realm peers Specs subtab). Fields are empty if unknown.
 type Summary struct {
 	OS      string `json:"os"`
 	CPU     string `json:"cpu"`
@@ -27,9 +23,8 @@ type Summary struct {
 	Disk    string `json:"disk"`
 }
 
-// GetSummary returns the compact Summary. extraPath is used the same way as
-// in Report: as the disk usage fallback when no system partition can be
-// statted (e.g. Android's sandboxed app storage).
+// GetSummary returns the compact Summary. extraPath is the disk usage fallback
+// when no system partition can be statted (e.g. Android's sandboxed storage).
 func GetSummary(extraPath string) Summary {
 	var s Summary
 
@@ -79,11 +74,8 @@ func GetSummary(extraPath string) Summary {
 }
 
 // Report returns the full multi-section system information text. extraPath,
-// if non-empty, is always included in the disk space section (as "App
-// storage"), in addition to any system partitions gopsutil can enumerate.
-// This matters on Android: sandboxed apps often can't stat the system's
-// mount points, so extraPath (the app's private files dir) is the only
-// storage location guaranteed to be readable there.
+// if non-empty, is always included as "App storage" — needed on Android,
+// where sandboxed apps often can't stat the system's mount points.
 func Report(extraPath string) string {
 	var sb strings.Builder
 
@@ -184,9 +176,8 @@ func Report(extraPath string) string {
 	return sb.String()
 }
 
-// primaryDiskUsage returns the usage of the largest system partition
-// gopsutil can stat, falling back to extraPath (see Report) if no system
-// partition is reachable.
+// primaryDiskUsage returns the largest statable system partition's usage,
+// falling back to extraPath if none is reachable.
 func primaryDiskUsage(extraPath string) *disk.UsageStat {
 	var best *disk.UsageStat
 	if partitions, err := disk.Partitions(false); err == nil {

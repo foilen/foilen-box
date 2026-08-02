@@ -40,9 +40,7 @@ const (
 	keepAliveInterval   = 10 * time.Minute
 	dialTimeout         = 30 * time.Second
 
-	// reconnectDelay is how long onDisconnected waits before making a single
-	// reconnect attempt to a main (ring-neighbor) peer that just dropped.
-	// See reconnectRingPeerOnce.
+	// reconnectDelay: how long onDisconnected waits before retrying a dropped ring-neighbor peer.
 	reconnectDelay = 10 * time.Second
 )
 
@@ -77,19 +75,14 @@ type Engine struct {
 	mdnsSvcs         map[string]mdns.Service       // by groupKey
 	dhtLoopCancels   map[string]context.CancelFunc // by groupKey
 
-	// lastDHTPeers remembers the public DHT swarm peers (not known Realm
-	// group peers) this host was last connected to, right before they were
-	// disconnected (see disconnectDHTSwarmLocked). In DhtModeClient, the
-	// engine doesn't keep this swarm connected between lookups; keeping
-	// their addresses here lets the next lookup redial them directly (see
-	// reconnectRememberedDHTPeers) instead of only starting from the public
-	// bootstrap list again.
+	// lastDHTPeers remembers the public DHT swarm peers last connected before
+	// disconnectDHTSwarmLocked dropped them, so DhtModeClient's next lookup
+	// can redial them directly (reconnectRememberedDHTPeers) instead of only
+	// starting from the public bootstrap list.
 	lastDHTPeers []peer.AddrInfo
 
-	// relayMu guards relayReservation. Separate from mu so that maintaining
-	// the reservation (which does network I/O, see
-	// maintainManualRelayReservation) never blocks unrelated engine state
-	// access.
+	// relayMu guards relayReservation separately from mu, since maintaining
+	// the reservation does network I/O (maintainManualRelayReservation).
 	relayMu          sync.Mutex
 	relayReservation *relayReservation
 }
@@ -120,11 +113,9 @@ func (e *Engine) SetAppVersion(version string) {
 	e.appVersion = version
 }
 
-// Register adds f to the engine's set of active features: its actions join
-// the AvailableActions catalog, its stream handler(s) are installed whenever
-// the host (re)starts, and any optional hook interfaces it implements
-// (PeerConnectedHook, PeriodicHook) are wired in. Must be called before the
-// engine is first started.
+// Register adds f as an active feature: its actions join AvailableActions,
+// its stream handlers install on (re)start, and any hook interfaces it
+// implements get wired in. Must be called before the engine first starts.
 func (e *Engine) Register(f Feature) {
 	e.features = append(e.features, f)
 	if h, ok := f.(PeerConnectedHook); ok {
@@ -244,14 +235,10 @@ func (e *Engine) Restart(cfg model.Config) error {
 	return e.Start(cfg)
 }
 
-// Reconcile applies cfg to the engine with minimal disruption: if the
-// engine isn't running it starts it (or stops it, if cfg has no peer id
-// yet or is Disabled); if it's already running, it adjusts mDNS/DHT
-// discovery and per-group loops in place, leaving the host and existing
-// peer connections untouched. Only a peer identity change forces a full
-// Restart, since that requires a new libp2p host. Toggling Disabled back
-// off goes through the !running branch, so it always gets a fresh Start
-// rather than a partial reconcile.
+// Reconcile applies cfg with minimal disruption: starts/stops the engine as
+// needed, or if already running, adjusts mDNS/DHT discovery and per-group
+// loops in place without touching the host or existing connections. Only a
+// peer identity, relay-service, or web-listener change forces a full Restart.
 func (e *Engine) Reconcile(cfg model.Config) error {
 	e.mu.Lock()
 	running := e.running
@@ -318,10 +305,8 @@ func (e *Engine) reconcileLocked(cfg model.Config) error {
 	case !cfg.EnableDht && e.kadDHT != nil:
 		log.Printf("realm engine: disabling DHT")
 		e.stopDHTLocked()
-		// stopDHTLocked only closes the DHT's own protocol/datastore; the
-		// swarm connections it opened while bootstrapping/refreshing its
-		// routing table (to public bootstrap nodes and other DHT peers, none
-		// of them known Realm group peers) stay open otherwise.
+		// stopDHTLocked only closes the DHT protocol/datastore; its bootstrap
+		// swarm connections stay open otherwise.
 		e.disconnectDHTSwarmLocked(h)
 	}
 
@@ -390,43 +375,30 @@ func (e *Engine) Start(cfg model.Config) error {
 		return fmt.Errorf("realm engine: invalid peer keypair: %w", err)
 	}
 
-	// A peer's persisted Connected flag reflects the previous host's
-	// connections, not this (not-yet-connected) one; clear it before the new
-	// host starts reporting live connections.
+	// Previous host's Connected flags don't apply to this not-yet-connected one.
 	e.peers.ResetAllConnected()
 
 	opts := []libp2p.Option{
 		libp2p.Identity(priv),
-		// UPnP/NAT-PMP: ask the local router to forward the listen port so
-		// this peer is directly dialable behind a home-router NAT.
+		// UPnP/NAT-PMP: forward the listen port on the local router.
 		libp2p.NATPortMap(),
-		// DCUtR: once a relayed connection to a peer exists, try to upgrade
-		// it to a direct connection via NAT hole punching.
+		// DCUtR: upgrade a relayed connection to direct via hole punching.
 		libp2p.EnableHolePunching(),
-		// AutoRelay (client side): if this peer turns out to be
-		// unreachable, reserve a slot on a relay so others can still reach
-		// it (and hole-punching above has a relayed connection to upgrade
-		// from). There's no public relay infra for a private swarm, so
-		// candidates come from e.relayPeerSource, i.e. this peer's own
-		// known group peers; only ones that opted into
-		// cfg.EnableRelayService actually grant a reservation. This only
-		// engages once AutoNAT's swarm-wide verdict is Private, so it's a
-		// backstop against everyone being unreachable, not the asymmetric
-		// case (unreachable from just a few peers) — see
-		// maintainManualRelayReservation in relay.go for that.
+		// AutoRelay (client): if unreachable, reserve a relay slot so others can
+		// still reach us. No public relay infra for a private swarm, so
+		// candidates come from e.relayPeerSource (our own group peers that opted
+		// into cfg.EnableRelayService). Only engages once AutoNAT goes Private —
+		// a backstop for everyone-unreachable, not the asymmetric case (see
+		// maintainManualRelayReservation in relay.go for that).
 		libp2p.EnableAutoRelayWithPeerSource(e.relayPeerSource, autorelay.WithMinCandidates(1)),
-		// AutoNAT (server side): answer other connected peers' dial-back
-		// probes so their AutoNAT client can determine its own reachability.
-		// Without this, nobody in the swarm can confirm anybody else's
-		// reachability, AutoNAT status stays Unknown forever, and the
-		// AutoRelay client above never gets a Private verdict to act on.
+		// AutoNAT (server): answer peers' dial-back probes so their AutoNAT
+		// client can determine reachability; without it AutoRelay above never
+		// gets a Private verdict to act on.
 		libp2p.EnableNATService(),
 	}
-	// Customizing the websocket transport's options below (via
-	// libp2p.Transport(ws.New, ...)) opts the whole host out of
-	// go-libp2p's own DefaultListenAddrs/DefaultTransports fallback
-	// (which only applies when no Transport option was given at all), so
-	// both must be re-added explicitly below to keep prior behavior.
+	// Customizing the websocket transport below opts the host out of
+	// go-libp2p's DefaultListenAddrs/DefaultTransports fallback, so both are
+	// re-added explicitly to keep prior behavior.
 	if cfg.RealmListenPort != 0 {
 		listenAddrs, err := listenAddrsForPort(cfg.RealmListenPort)
 		if err != nil {
@@ -446,10 +418,8 @@ func (e *Engine) Start(cfg model.Config) error {
 		libp2p.Transport(libp2pwebrtc.New),
 	)
 
-	// The websocket transport's dialer must accept self-signed certs
-	// unconditionally: any peer we try to reach may have ExposeWebEnabled
-	// with its own self-signed cert, regardless of whether we have it
-	// enabled ourselves (see expose_web.go).
+	// Dialer must accept self-signed certs unconditionally: any peer we dial
+	// may have ExposeWebEnabled with its own self-signed cert (expose_web.go).
 	wsOpts := []any{ws.WithTLSClientConfig(websocketDialerTLSConfig())}
 
 	webListenAddr, err := exposeWebListenAddr(cfg)
@@ -474,10 +444,8 @@ func (e *Engine) Start(cfg model.Config) error {
 	if err != nil {
 		log.Printf("realm engine: %v", err)
 	}
-	// Always append the web-announce addr (if any) and this host's current
-	// standing relay reservation addrs (see maintainManualRelayReservation),
-	// on top of whatever address set go-libp2p/AutoRelay otherwise produces
-	// — so a relay path is advertised unconditionally, not only while
+	// Append the web-announce addr and standing relay reservation addrs
+	// (maintainManualRelayReservation) unconditionally, not only while
 	// AutoRelay considers this host privately-reachable.
 	opts = append(opts, libp2p.AddrsFactory(func(addrs []multiaddr.Multiaddr) []multiaddr.Multiaddr {
 		if webAnnounceAddr != nil {
@@ -487,21 +455,12 @@ func (e *Engine) Start(cfg model.Config) error {
 	}))
 
 	if cfg.EnableRelayService {
-		// Circuit-relay-v2 server: let other group peers reserve a slot on
-		// this host and relay through it, e.g. a publicly-reachable box
-		// relaying for peers stuck behind a symmetric/restrictive NAT. Gated
-		// by groupACL so this doesn't turn into an open relay for any
-		// stranger who finds this peer on the public DHT — only peers that
-		// share a group with us (per the known-peers store) may reserve a
-		// slot or relay a connection through us.
-		//
-		// The library's own defaults (Limit.Duration: 2min, Limit.Data:
-		// 128KB) reset a relayed connection long before hole-punching
-		// usually has a chance to upgrade it to direct, or before a peer
-		// with no other reachable address (e.g. one behind CGNAT/a
-		// restrictive mobile carrier) can do any real work over it. Every
-		// relay client here already authenticated via groupACL, so there's
-		// no abuse concern in leaving connections unlimited (Limit: nil).
+		// Circuit-relay-v2 server: lets other group peers relay through this
+		// host (e.g. a publicly-reachable box relaying for NAT-stuck peers).
+		// Gated by groupACL so only peers sharing a group with us can use it.
+		// Default resource limits (2min/128KB) would reset a relayed
+		// connection before hole-punching or real transfer completes; safe to
+		// lift since every client is already groupACL-authenticated.
 		relayResources := circuitrelay.DefaultResources()
 		relayResources.Limit = nil
 		opts = append(opts, libp2p.EnableRelayService(circuitrelay.WithACL(&groupACL{e: e}), circuitrelay.WithResources(relayResources)))
@@ -577,13 +536,10 @@ func (e *Engine) Stop() {
 	e.running = false
 	e.mu.Unlock()
 
-	// h.Close() synchronously drains every open connection and blocks
-	// until each one's Disconnected notification handler returns (see
-	// swarm.Swarm.close) — and onDisconnected/isRingNeighbor need to
-	// acquire e.mu themselves. Closing after releasing e.mu (with
-	// e.running/e.host/e.ctx already updated above, so those handlers see
-	// a stopped engine and skip any reconnect attempt) avoids deadlocking
-	// against our own lock.
+	// h.Close() blocks until every Disconnected handler returns, and those
+	// handlers acquire e.mu themselves; closing after releasing e.mu (with
+	// running/host/ctx already cleared, so handlers skip reconnecting) avoids
+	// deadlocking against our own lock.
 	if h != nil {
 		if err := h.Close(); err != nil {
 			log.Printf("realm engine: failed to close host: %v", err)
@@ -632,7 +588,6 @@ func PickFreeListenPort() (int, error) {
 	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
-// addrsToStrings renders each multiaddr as a string, in order.
 func addrsToStrings(addrs []multiaddr.Multiaddr) []string {
 	result := make([]string, 0, len(addrs))
 	for _, a := range addrs {

@@ -17,30 +17,21 @@ import androidx.core.app.ServiceCompat
 import mobile.Mobile
 
 /**
- * Foreground service whose sole purpose is to keep this process at
- * foreground priority so Android doesn't freeze/kill it (App Standby,
- * Doze, the Android 12+ cached-process freezer) while the user switches
- * to another app. The realm engine (libp2p host) runs as goroutines inside
- * this same process — without a foreground service, backgrounding the app
- * lets the OS suspend that process and the peer connection drops.
+ * Keeps this process at foreground priority so Android doesn't freeze/kill it
+ * (App Standby, Doze, the cached-process freezer) while the realm engine's
+ * goroutines run in the background.
  *
- * Normally the engine is started by MainActivity.onCreate, which also runs
- * before this. But when BootCompletedReceiver starts this service directly
- * (boot autostart, see AndroidConfigPrefs), there is no MainActivity, so
- * this service starts the engine itself here too — Mobile.startServer is
- * idempotent and safe to call from both places (see its doc comment).
+ * Also starts the engine itself, since BootCompletedReceiver may start this
+ * service directly (boot autostart) with no MainActivity around;
+ * Mobile.startServer is idempotent and safe to call from both places.
  *
- * This service does not itself stop the engine; that only happens when the
- * task is actually removed, i.e. the user swipes the app away from
- * recents.
+ * The engine is only torn down when the task is actually removed (app swiped
+ * away from recents), not on a plain app switch.
  */
 class RealmForegroundService : Service() {
 
-	// Android drops incoming Wi-Fi multicast packets (including mDNS,
-	// go-libp2p's LAN peer discovery) for any app that doesn't hold this
-	// lock — without it, this peer can only ever be found by other group
-	// members via the public DHT, never directly over the LAN even when
-	// they're on the same network. Held for as long as the engine runs.
+	// Without this lock, Android drops incoming Wi-Fi multicast (mDNS/LAN peer
+	// discovery), forcing peer discovery through the public DHT only.
 	private var multicastLock: WifiManager.MulticastLock? = null
 
 	override fun onCreate() {
@@ -65,8 +56,7 @@ class RealmForegroundService : Service() {
 		multicastLock = lock
 	}
 
-	// Same fallback as MainActivity.deviceName(): Go's os.Hostname() always
-	// returns "localhost" on Android.
+	// Same fallback as MainActivity.deviceName().
 	private fun deviceName(): String =
 		Settings.Global.getString(contentResolver, Settings.Global.DEVICE_NAME) ?: Build.MODEL
 

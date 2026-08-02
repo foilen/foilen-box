@@ -14,9 +14,7 @@ import (
 func (e *Engine) onConnected(_ network.Network, conn network.Conn) {
 	remote := conn.RemotePeer()
 
-	// Only known peers are worth surfacing (mirrors onDisconnected below);
-	// a peer already marked connected means this is an extra simultaneous
-	// Conn to the same peer, not a fresh connect worth logging again.
+	// Skip unknown peers and extra simultaneous Conns to an already-connected peer.
 	if info, known := e.peers.Get(remote.String()); known && !info.Connected {
 		log.Printf("realm engine: connected to peer %s (%s)", remote, info.Hostname)
 	}
@@ -33,20 +31,9 @@ func (e *Engine) onConnected(_ network.Network, conn network.Conn) {
 	}
 }
 
-// onDisconnected fires once per closed network.Conn, not once per peer
-// actually going unreachable: a peer can have more than one simultaneous
-// Conn (e.g. both sides dialed each other, or more than one transport
-// succeeded), so closing one of them isn't a real disconnect as long as net
-// still reports another live Conn to the same peer. Only a disconnect that
-// drops the peer's last Conn is logged/recorded here; the rest are ignored.
-//
-// Real disconnects are app-initiated (ring/DHT-swarm trimming, see
-// connection_ring.go/discovery_dht.go, both of which already log why they
-// closed the connection) or not; logging unconditionally here makes a
-// spontaneous/network-level drop distinguishable from those: it's any
-// disconnect log line that isn't immediately preceded by one of theirs.
-// Unknown peers (e.g. DHT routing connections to strangers) are skipped;
-// only known peers are worth surfacing.
+// onDisconnected fires once per closed Conn, not once per peer actually
+// unreachable; only a disconnect dropping the peer's last Conn is
+// logged/recorded. Unknown peers (e.g. DHT routing strangers) are skipped.
 func (e *Engine) onDisconnected(net network.Network, conn network.Conn) {
 	remote := conn.RemotePeer()
 	if net.Connectedness(remote) == network.Connected {
@@ -79,12 +66,9 @@ func (e *Engine) onDisconnected(net network.Network, conn network.Conn) {
 }
 
 // handleFoundPeer records a peer surfaced by mDNS/DHT discovery under
-// groupName's rendezvous channel. That channel only narrows the search, it
-// doesn't prove membership (the derived service name/topic can leak to a
-// network observer without the group secret) — so groupName is not trusted
-// here. GroupNames is left untouched (empty for a brand-new peer); it's only
-// ever populated once the peer actually passes a signed group-challenge, see
-// peer_identify.go/challengeGroup.
+// groupName's rendezvous channel. The channel only narrows the search and
+// doesn't prove membership, so groupName isn't trusted here — GroupNames is
+// only populated once the peer passes a signed group-challenge (peer_identify.go).
 func (e *Engine) handleFoundPeer(info peer.AddrInfo, groupName, source string) {
 	e.mu.Lock()
 	h := e.host
@@ -133,20 +117,10 @@ func (e *Engine) handleFoundPeer(info peer.AddrInfo, groupName, source string) {
 	}
 }
 
-// keepAliveLoop runs the per-group connection ring maintenance (see
-// maintainGroupRings) and DHT swarm trimming (see maintainDHTSwarm) every
-// keepAliveInterval, and drives every registered feature's PeriodicHook on
-// the same cadence. PeriodicHook runs first: the "common/announce" hook it
-// drives (see realmAnnounce.RunPeriodic in internal/webserver) is what
-// merges peers' self-reported reachability addresses from the RealmMap
-// ("announce" source, see peers.addressSourcePriority) into the local known-
-// peers store, and a peer's real (e.g. LAN) address learned that way —
-// picked up via gossip through any group member, not only a direct
-// connection to that peer — is often already available and more likely
-// dialable than whatever mDNS/DHT discovery has found so far. Running it
-// before maintainGroupRings means the ring reconnect attempt below uses
-// addresses as fresh as this tick, instead of ones left over from the
-// previous one.
+// keepAliveLoop runs ring maintenance, DHT swarm trimming, relay reservation
+// upkeep, and every feature's PeriodicHook every keepAliveInterval.
+// PeriodicHooks run first since "common/announce" merges gossiped reachability
+// addresses into the peer store before the ring reconnect dials.
 func (e *Engine) keepAliveLoop(ctx context.Context) {
 	e.runPeriodicHooks()
 	e.maintainGroupRings(ctx)
@@ -261,9 +235,8 @@ func addedGroupKeys(prevGroups, newGroups []model.Group) []model.Group {
 }
 
 // notifyConnectedPeersOfGroups re-runs the identify exchange with every
-// already-connected known peer, so a group just added to our config is
-// announced to them immediately (as our claimed GroupIDs) instead of only
-// surfacing next time each connection is re-established.
+// connected known peer, so a newly added group is announced immediately
+// instead of only on the next reconnect.
 func (e *Engine) notifyConnectedPeersOfGroups() {
 	for _, info := range e.peers.List() {
 		if !info.Connected {

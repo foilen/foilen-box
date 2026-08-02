@@ -1,5 +1,5 @@
-// Shared between the groups and permissions subtabs: both render a
-// checkable/selectable list of realm permission actions.
+// Shared between the groups and permissions subtabs: renders a
+// checkable list of realm permission actions.
 
 import { syncList } from "./util.js";
 

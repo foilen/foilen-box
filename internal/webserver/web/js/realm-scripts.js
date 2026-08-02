@@ -10,14 +10,11 @@ const PEER_SCRIPTS_POLL_INTERVAL_MS = 5000;
 const SCRIPTS_STORE_NAME = "common";
 const SCRIPTS_KEY_PREFIX = "scripts/";
 
-// initRealmScripts wires the Scripts subtab: the "My Scripts" CRUD table
-// (fed by the same full-config response as Groups/Permissions, so it's
-// handed renderConfig the same way initRealmGroups/initRealmPermissions
-// are), the "Peer Scripts" list+execute table — which aggregates the
-// scripts/{peerId}/{name} entries every peer posts into the "common" store
-// of each group it belongs to (see internal/webserver/realm_announce.go) —
-// and polls realm.listScriptRuns while any triggered run hasn't been
-// confirmed yet.
+// Wires the Scripts subtab: the "My Scripts" CRUD table (fed by the same
+// full-config response as Groups/Permissions), the "Peer Scripts"
+// list+execute table (aggregates scripts/{peerId}/{name} entries every peer
+// posts into the "common" store — see internal/webserver/realm_announce.go),
+// and polling realm.listScriptRuns while a triggered run is unconfirmed.
 export function initRealmScripts(api, output, renderConfig) {
 	const myScriptsBody = document.getElementById("realm-my-scripts-tbody");
 	const myScriptsCount = document.getElementById("realm-scripts-count");
@@ -156,11 +153,9 @@ export function initRealmScripts(api, output, renderConfig) {
 		dot.title = connected ? "Connected" : "Not connected";
 	}
 
-	// The Status cell is intentionally left untouched on update: it's driven
-	// by execute-click + pollRuns (via pendingRuns, keyed by the row's own
-	// status <td>), not by the peer-scripts data refresh. Keeping the same
-	// row (and thus the same <td>) across refreshes — instead of rebuilding
-	// it — is what keeps pendingRuns' cell reference valid.
+	// The Status cell is left untouched on update — it's driven by
+	// execute-click + pollRuns (via pendingRuns), not the data refresh.
+	// Reusing the same row/cell across refreshes keeps pendingRuns' reference valid.
 	function renderPeerScriptsTable() {
 		syncList(
 			peerScriptsBody,

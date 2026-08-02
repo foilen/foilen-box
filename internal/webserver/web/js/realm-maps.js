@@ -2,10 +2,9 @@ import { report, formatGroupLabel, formatIdentityLabel, syncList, syncCells } fr
 
 const MAPS_POLL_INTERVAL_MS = 5000;
 
-// initRealmMaps wires the Maps subtab: the map list (create/select/delete)
-// and the detail view for the currently-selected map's key-value pairs.
-// Map data isn't part of the full-config response, so it's fetched on its
-// own via realm.listMaps rather than from renderConfig; renderConfig is
+// Wires the Maps subtab: the map list (create/select/delete) and the detail
+// view for the selected map's key-value pairs. Map data isn't part of the
+// full-config response, so it's fetched via realm.listMaps; renderConfig is
 // only used here to read cfg.groups for the "create map" group picker.
 export function initRealmMaps(api, output, renderConfig) {
 	const mapsBody = document.getElementById("realm-maps-tbody");
@@ -35,11 +34,8 @@ export function initRealmMaps(api, output, renderConfig) {
 		return identity ? formatIdentityLabel(identity) : identityId;
 	}
 
-	// syncOptions reconciles an <md-outlined-select>'s <md-select-option>
-	// children in place (keyed by option value) instead of clearing and
-	// rebuilding them, so the currently-selected option's node survives a
-	// refresh — avoiding md-outlined-select's async re-processing of a fresh
-	// option list, which can otherwise desync the shown value.
+	// Patches an <md-outlined-select>'s options in place (keyed by value) so
+	// the selected option's node survives a refresh instead of desyncing.
 	function syncOptions(select, entries) {
 		const previousValue = select.value;
 		syncList(

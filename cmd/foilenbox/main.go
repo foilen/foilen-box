@@ -12,9 +12,7 @@ import (
 )
 
 func main() {
-	// Matches the original Java app's TimeZone.setDefault(UTC): all local
-	// "now" computations (e.g. the Early aggregate window) use UTC.
-	time.Local = time.UTC
+	time.Local = time.UTC // matches original Java app's TimeZone.setDefault(UTC)
 
 	server, err := webserver.Start("", realmmodel.DhtModeServer, "")
 	if err != nil {

@@ -46,15 +46,10 @@ type Store struct {
 	states map[string]model.RealmMap   // by mapID
 	events map[string][]model.MapEvent // by mapID, one entry per key
 
-	// peerCursors tracks, per groupID, then per storeName, then per remote
-	// peer, the newest UpdatedAtUnixMillis we've ever received from that
-	// specific peer for that specific store (see Feature.subscribeToPeer).
-	// It is deliberately not a single group-or-store-wide watermark: if peer
-	// B has an old event we never got (e.g. a push to us failed while we
-	// were offline), and we've since received something newer from peer C,
-	// a shared watermark would sit above B's event forever and we'd never
-	// ask B for it again. A per-peer, per-store cursor means every peer is
-	// asked "since the last thing I got from *you* for *this store*."
+	// peerCursors: newest UpdatedAtUnixMillis received per (group, store,
+	// peer) — see Feature.subscribeToPeer. Deliberately per-peer rather than
+	// a shared watermark: otherwise a peer whose push we missed while
+	// offline could get permanently shadowed by a later, newer peer.
 	peerCursors map[string]map[string]map[string]int64 // groupID -> storeName -> peerID -> unixMillis
 
 	listeners      []listenerEntry
@@ -110,9 +105,7 @@ func NewStore(dir string) (*Store, error) {
 			}
 			var cursors map[string]map[string]int64
 			if err := json.Unmarshal(data, &cursors); err != nil {
-				// Old (pre per-store-cursor) format was a flat
-				// map[string]int64, which won't unmarshal into the nested
-				// shape above — skip it, same as any other unreadable file;
+				// Old flat map[string]int64 format won't unmarshal here; skip it —
 				// worst case is a one-time full resync per store.
 				continue
 			}
@@ -122,12 +115,10 @@ func NewStore(dir string) (*Store, error) {
 	return s, nil
 }
 
-// ListSummaries returns one summary per known RealmMap, restricted to
-// groups present in cfgGroups (groups we're no longer configured with are
-// hidden, though their files are left on disk), sorted by GroupName then
-// StoreName. A map whose every entry has been individually tombstoned via
-// DeleteValue still appears here with EntryCount 0 (it still exists); only
-// Store.DeleteMap actually removes a map from this list.
+// ListSummaries returns one summary per known RealmMap restricted to
+// cfgGroups (unconfigured groups' maps stay on disk but are hidden), sorted
+// by GroupName then StoreName. A fully-tombstoned map still appears with
+// EntryCount 0; only Store.DeleteMap removes it from this list.
 func (s *Store) ListSummaries(cfgGroups []model.Group) []model.RealmMapSummary {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -267,10 +258,8 @@ func (s *Store) ApplyEvent(groupID, storeName, key string, entry model.MapEntry)
 	if !ok {
 		rm = model.RealmMap{GroupID: groupID, StoreName: storeName, Entries: map[string]model.MapEntry{}}
 	}
-	// Reject only strictly-older events: two same-millisecond mutations
-	// (e.g. a local "set" immediately followed by a "delete") must still
-	// apply in call order rather than the second one being silently
-	// dropped as a "duplicate."
+	// Reject only strictly-older events: same-millisecond mutations must
+	// still apply in call order rather than being dropped as "duplicates."
 	existing, hadKey := rm.Entries[key]
 	if hadKey && existing.UpdatedAtUnixMillis > entry.UpdatedAtUnixMillis {
 		s.mu.Unlock()
@@ -293,10 +282,8 @@ func (s *Store) ApplyEvent(groupID, storeName, key string, entry model.MapEntry)
 	}
 	s.events[id] = evs
 
-	// wasLive/isLive determine whether this is an observable change (and of
-	// which kind) from a listener's point of view: a delete applied against
-	// a key that was already tombstoned or never existed changes nothing
-	// visible, so no event fires for it.
+	// wasLive/isLive: a delete against an already-tombstoned or nonexistent
+	// key changes nothing visible, so no event fires for it.
 	wasLive := hadKey && !existing.Deleted
 	isLive := !entry.Deleted
 	var change *model.ChangeEvent

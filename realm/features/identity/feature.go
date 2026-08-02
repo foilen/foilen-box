@@ -22,9 +22,8 @@ import (
 )
 
 const (
-	// PushProtocolID delivers an identity's name and private key to a peer
-	// in one shot; the connection is already libp2p-authenticated, so
-	// nothing further is signed.
+	// PushProtocolID delivers an identity's name and private key in one shot;
+	// the connection is already libp2p-authenticated, so nothing further is signed.
 	PushProtocolID = protocol.ID("/foilen-box/identity-push/1.0.0")
 	ioTimeout      = 10 * time.Second
 	maxBytes       = 16 * 1024
@@ -47,20 +46,17 @@ type pushAck struct {
 	Error    string `json:"error,omitempty"`
 }
 
-// Feature implements realm.Feature. onReceive is called whenever this peer
-// accepts a pushed identity, so the application can persist it into its own
-// config (e.g. Config.Identities) — a Feature has no write access to the
-// shared Config itself, so this callback is how app-specific behavior is
-// plugged in, the same way spec.Feature takes a TextProvider.
+// Feature implements realm.Feature. onReceive persists an accepted identity
+// into app config — Features have no write access to Config, so this
+// callback is how app-specific behavior plugs in.
 type Feature struct {
 	mu        sync.Mutex
 	reg       *realm.Registrar
 	onReceive func(name string, kp model.KeyPair) error
 }
 
-// New builds the identity Feature. onReceive is called (synchronously, from
-// the incoming stream's handler goroutine) with the name and keypair of
-// every identity this peer accepts a push for.
+// New builds the identity Feature. onReceive is called synchronously, from
+// the stream handler goroutine, for every accepted push.
 func New(onReceive func(name string, kp model.KeyPair) error) *Feature {
 	return &Feature{onReceive: onReceive}
 }

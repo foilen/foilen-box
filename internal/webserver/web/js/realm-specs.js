@@ -4,10 +4,9 @@ const SPECS_POLL_INTERVAL_MS = 5000;
 const SPECS_STORE_NAME = "common";
 const SPECS_KEY_PREFIX = "specs/";
 
-// initRealmSpecs wires the (read-only) Specs subtab: every peer posts its own
-// spec into the "common" store of each group it belongs to (see
-// internal/webserver/realm_announce.go), so this just polls every currently
-// configured group's map and aggregates the specs/{peerId} entries.
+// Wires the read-only Specs subtab. Every peer posts its own spec into the
+// "common" store of each group (see internal/webserver/realm_announce.go);
+// this polls each configured group's map and aggregates the specs/{peerId} entries.
 export function initRealmSpecs(api) {
 	const output = document.getElementById("realm-output");
 	const specsBody = document.getElementById("realm-specs-tbody");

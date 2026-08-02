@@ -1,10 +1,8 @@
 // Package sms implements the "SMS" Realm subtab: one Android device acts as
 // the read/write authority for its own SMS messages, synced to other peers
-// (Android or desktop) through an encrypted foilen-realm map named
-// "SMS-<suffix>". Like internal/webserver/realm_announce.go, Manager
-// registers as a realm.Feature purely to receive Engine's PeriodicHook
-// ticks — it owns no libp2p protocol of its own; all wire traffic goes
-// through the existing "common/maps" feature (foilen-realm/features/maps).
+// through an encrypted foilen-realm map named "SMS-<suffix>". Manager
+// registers as a realm.Feature only to receive PeriodicHook ticks — all wire
+// traffic goes through foilen-realm/features/maps.
 package sms
 
 import (
@@ -22,17 +20,13 @@ const storePrefix = "SMS-"
 // key has a unix-millis timestamp there instead (see parseKey).
 const kindCreate = "create"
 
-// kindEnabled marks a presence-marker key's second (and last) segment: its
-// mere presence in a store means peerId currently manages that store (see
-// Manager.touchEnabledMarker), which the web UI uses to restrict "Send from
-// peer" pickers (realm-sms.js) to peers that can actually fulfill a
-// create-request.
+// kindEnabled marks a presence-marker key: its mere presence means peerId
+// currently manages that store (see Manager.touchEnabledMarker), used to
+// restrict "Send from peer" pickers to peers that can fulfill a create-request.
 const kindEnabled = "enabled"
 
-// SmsMessage is the JSON value of one message entry: key =
-// "<peerId>/<unixMillis>/<hash>" (see messageKey), value = this struct,
-// keeping every detail of the SMS (matching the task's "all info about the
-// SMS is kept" requirement) rather than just the body.
+// SmsMessage is the JSON value of one message entry, keyed
+// "<peerId>/<unixMillis>/<hash>" (see messageKey).
 type SmsMessage struct {
 	PeerID              string `json:"peerId,omitempty"`
 	PhoneNumber         string `json:"phoneNumber"`
@@ -42,11 +36,8 @@ type SmsMessage struct {
 	Receiver            string `json:"receiver"`
 	TimestampUnixMillis int64  `json:"timestampUnixMillis"`
 
-	// Raw is a temporary diagnostic dump of every content://sms column for
-	// this row (see MainActivity.readAllSms on the Android side), only
-	// populated for entries imported via reconcileDeviceStore. Used to find
-	// whether any column reflects the SMS app's own "Trash" state; remove
-	// once that's settled.
+	// Raw is a temporary diagnostic dump of every content://sms column
+	// (reconcileDeviceStore), to check for a "Trash" state column; remove once settled.
 	Raw map[string]string `json:"raw,omitempty"`
 }
 
@@ -55,9 +46,8 @@ const (
 	DirectionOutgoing = "outgoing"
 )
 
-// SmsCreateRequest is the JSON value of a create-request entry: key =
-// "<peerId>/create/<uniqueId>" (see createKey), asking peerId's device to
-// actually send this text.
+// SmsCreateRequest is the JSON value of a create-request entry, keyed
+// "<peerId>/create/<uniqueId>" (see createKey).
 type SmsCreateRequest struct {
 	PhoneNumber string `json:"phoneNumber"`
 	Body        string `json:"body"`
@@ -104,9 +94,8 @@ func createKey(peerID, uniqueID string) string {
 	return peerID + "/" + kindCreate + "/" + uniqueID
 }
 
-// enabledKey builds the key for peerID's "enabled" presence marker — one per
-// peer per store, so a device re-touching it (see touchEnabledMarker)
-// overwrites its own previous marker rather than accumulating new entries.
+// enabledKey builds the key for peerID's "enabled" presence marker, one per
+// peer per store.
 func enabledKey(peerID string) string {
 	return peerID + "/" + kindEnabled
 }

@@ -91,11 +91,8 @@ func (e *Engine) stopDHTLocked() {
 	}
 }
 
-// dhtSwarmPeerIDs returns every peer h is currently connected to that isn't
-// a known Realm group peer (i.e. one with at least one confirmed
-// GroupNames entry, per connection_ring.go's disconnectExtraPeers) — a
-// stranger the host is only connected to because the DHT dialed it while
-// bootstrapping or refreshing its routing table.
+// dhtSwarmPeerIDs returns connected peers that aren't known Realm group
+// peers — strangers the DHT dialed while bootstrapping/refreshing routing.
 func (e *Engine) dhtSwarmPeerIDs(h host.Host) []peer.ID {
 	var result []peer.ID
 	for _, pid := range h.Network().Peers() {
@@ -107,13 +104,10 @@ func (e *Engine) dhtSwarmPeerIDs(h host.Host) []peer.ID {
 	return result
 }
 
-// disconnectDHTSwarmLocked closes every current DHT swarm connection (see
-// dhtSwarmPeerIDs), remembering their addresses in e.lastDHTPeers first so
-// the next lookup in DhtModeClient can redial them directly (see
-// reconnectRememberedDHTPeers) instead of only starting from the public
-// bootstrap list again. A peer a feature reports still in use (see
-// PeerInUseHook) is left connected. Must be called with e.mu held; h must
-// be non-nil.
+// disconnectDHTSwarmLocked closes every DHT swarm connection (dhtSwarmPeerIDs),
+// remembering addresses in e.lastDHTPeers for reconnectRememberedDHTPeers.
+// Peers a PeerInUseHook reports in use are left connected. Must be called
+// with e.mu held; h must be non-nil.
 func (e *Engine) disconnectDHTSwarmLocked(h host.Host) {
 	ids := e.dhtSwarmPeerIDs(h)
 	if len(ids) == 0 {
@@ -146,10 +140,9 @@ func (e *Engine) disconnectDHTSwarmLocked(h host.Host) {
 	}
 }
 
-// reconnectRememberedDHTPeers best-effort redials every DHT swarm peer
-// remembered by the last disconnectDHTSwarmLocked call, so a DhtModeClient
-// lookup resumes with warm connections to peers already known to be
-// reachable instead of relying solely on the public bootstrap peers.
+// reconnectRememberedDHTPeers best-effort redials peers remembered by the
+// last disconnectDHTSwarmLocked call, so a lookup resumes with warm
+// connections instead of relying solely on public bootstrap peers.
 func (e *Engine) reconnectRememberedDHTPeers(ctx context.Context, h host.Host) {
 	e.mu.Lock()
 	remembered := e.lastDHTPeers
@@ -177,11 +170,9 @@ func (e *Engine) isDHTClientMode() bool {
 	return e.cfg.DhtMode == model.DhtModeClient
 }
 
-// maintainDHTSwarm disconnects the DHT swarm (see disconnectDHTSwarmLocked)
-// when running in DhtModeClient, so this peer isn't left permanently
-// connected to public DHT infrastructure between lookups. Run periodically
-// from keepAliveLoop; a no-op if not running, DHT is disabled, or the mode
-// is DhtModeServer (which needs to stay reachable to serve others).
+// maintainDHTSwarm disconnects the DHT swarm in DhtModeClient so this peer
+// isn't left connected to public DHT infra between lookups. Run periodically
+// from keepAliveLoop; a no-op in DhtModeServer, which must stay reachable.
 func (e *Engine) maintainDHTSwarm() {
 	e.mu.Lock()
 	defer e.mu.Unlock()

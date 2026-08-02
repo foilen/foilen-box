@@ -1,9 +1,6 @@
 // Package dns performs a breadth-first subdomain-enumeration DNS crawl,
 // starting from a hardcoded list of common subdomain prefixes and following
-// CNAME/MX/SRV targets that stay within the root domain. Ported from a
-// hand-rolled raw-UDP Java implementation; here message building/parsing is
-// delegated to github.com/miekg/dns instead of re-deriving RFC 1035 wire
-// format by hand.
+// CNAME/MX/SRV targets that stay within the root domain.
 package dns
 
 import (

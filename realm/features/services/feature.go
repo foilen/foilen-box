@@ -1,7 +1,6 @@
-// Package services is the "common/services" Realm feature: a peer can
-// advertise local services (name, hostname, type, port) and let peers/groups
-// it has granted the connect action to open a local TCP proxy tunnel to one,
-// riding the same permissioned libp2p connection as every other feature.
+// Package services is the "common/services" Realm feature: a peer advertises
+// local services (name, hostname, type, port) and lets granted peers/groups
+// open a local TCP proxy tunnel to one over the shared libp2p connection.
 package services
 
 import (
@@ -24,20 +23,16 @@ import (
 )
 
 const (
-	// TunnelProtocolID carries one forwarded TCP connection per stream: a
-	// small JSON header naming the service, a one-byte ack, then raw bytes
-	// copied both ways until either side closes. Unlike every other
-	// feature's protocols this stream is long-lived, so ioTimeout is only
-	// ever applied to the initial header/ack handshake, never to the data
-	// phase.
+	// TunnelProtocolID carries one forwarded TCP connection per stream: JSON
+	// header, ack, then raw bytes both ways. Long-lived, so ioTimeout only
+	// applies to the handshake, never the data phase.
 	TunnelProtocolID = protocol.ID("/foilen-box/services-tunnel/1.0.0")
 
 	ioTimeout = 10 * time.Second
 	maxBytes  = 16 * 1024
 
-	// localPortRangeStart/End is the deterministic local-proxy-port range:
-	// hash(peerId+serviceName) picks a starting point in this range, and a
-	// collision linear-probes forward through it.
+	// localPortRangeStart/End: deterministic proxy port range — hash(peerId+serviceName)
+	// picks a start, collisions linear-probe forward.
 	localPortRangeStart = 49152
 	localPortRangeEnd   = 65535
 
@@ -49,14 +44,13 @@ const (
 	ActionConnect model.PermissionAction = FeatureName + "/connect"
 )
 
-// tunnelHeader is the small JSON message sent once at the start of a
-// TunnelProtocolID stream, naming the service to forward this connection to.
+// tunnelHeader is sent once at the start of a TunnelProtocolID stream,
+// naming the service to forward to.
 type tunnelHeader struct {
 	ServiceName string `json:"serviceName"`
 }
 
-// tunnelAck is the one-message reply to a tunnelHeader: whether the local
-// dial to the service succeeded.
+// tunnelAck replies to a tunnelHeader: whether the local dial succeeded.
 type tunnelAck struct {
 	OK    bool   `json:"ok"`
 	Error string `json:"error,omitempty"`
@@ -79,8 +73,7 @@ type ScanResult struct {
 	Unverifiable bool   `json:"unverifiable"`
 }
 
-// proxy is one running local TCP listener forwarding to a single peer
-// service.
+// proxy is a running local TCP listener forwarding to one peer service.
 type proxy struct {
 	listener  net.Listener
 	localPort int
@@ -101,11 +94,7 @@ type Feature struct {
 }
 
 // New builds the services Feature backed by store (see NewStore), which
-// remembers which proxies the user explicitly started so RestoreAll can
-// start them again on the next app start. The services this peer itself
-// offers come from the currently-applied Config.Services (via the
-// Registrar), so there's nothing else feature-specific to configure at
-// construction time.
+// remembers explicitly-started proxies so RestoreAll can restart them later.
 func New(store *Store) *Feature {
 	return &Feature{proxies: make(map[string]*proxy), store: store}
 }
@@ -183,8 +172,8 @@ func (f *Feature) handleTunnelStream(reg *realm.Registrar) network.StreamHandler
 			return
 		}
 
-		// The data phase is long-lived: clear the handshake deadline so an
-		// idle-but-open connection doesn't get killed.
+		// Data phase is long-lived: clear the handshake deadline so idle
+		// connections aren't killed.
 		_ = s.SetDeadline(time.Time{})
 		splice(s, conn)
 	}
@@ -208,11 +197,10 @@ func splice(a io.ReadWriteCloser, b io.ReadWriteCloser) {
 	<-done
 }
 
-// StartProxy binds a local TCP listener on a deterministic port derived from
-// peerID+serviceName (linear-probed forward through the port range on
-// collision) and starts forwarding accepted connections to serviceName on
-// peer peerID over TunnelProtocolID. It returns the bound local port
-// immediately, without waiting for any connection.
+// StartProxy binds a local listener on a deterministic port (hashed from
+// peerID+serviceName, linear-probed on collision) and forwards accepted
+// connections to serviceName on peerID. Returns immediately, without waiting
+// for any connection.
 func (f *Feature) StartProxy(peerID, serviceName string) (int, error) {
 	reg := f.registrar()
 	if reg == nil {
@@ -335,10 +323,9 @@ func (f *Feature) forward(reg *realm.Registrar, pid peer.ID, serviceName string,
 	splice(s, conn)
 }
 
-// StopProxy closes the local listener and every in-flight connection for
-// peerID+serviceName, if one is running, and forgets it so it won't be
-// restarted by RestoreAll on the next app start. For an app-shutdown stop
-// that should still be restored next time, use StopAll instead.
+// StopProxy stops the proxy for peerID+serviceName and forgets it, so
+// RestoreAll won't restart it next time. For a shutdown stop that should
+// still be restored, use StopAll instead.
 func (f *Feature) StopProxy(peerID, serviceName string) error {
 	err := f.stopProxyLocal(peerID, serviceName)
 	if f.store != nil {
@@ -347,8 +334,7 @@ func (f *Feature) StopProxy(peerID, serviceName string) error {
 	return err
 }
 
-// stopProxyLocal closes the local listener and every in-flight connection
-// for peerID+serviceName, if one is running, without touching the
+// stopProxyLocal stops the proxy for peerID+serviceName without touching the
 // persisted "should be running" record.
 func (f *Feature) stopProxyLocal(peerID, serviceName string) error {
 	key := proxyKey(peerID, serviceName)
@@ -370,11 +356,9 @@ func (f *Feature) stopProxyLocal(peerID, serviceName string) error {
 	return nil
 }
 
-// StopAll stops every running proxy without forgetting any of them, so
-// RestoreAll starts them all again on the next app start. Called on
-// shutdown/disable, since Engine.Stop only tears down the libp2p host and
-// has no hook back into features for their own off-host state (local
-// listeners/goroutines).
+// StopAll stops every running proxy without forgetting them, so RestoreAll
+// restarts them all next time. Called on shutdown/disable, since Engine.Stop
+// only tears down the libp2p host, not feature-owned local state.
 func (f *Feature) StopAll() {
 	f.proxiesMu.Lock()
 	keys := make([]string, 0, len(f.proxies))
@@ -388,12 +372,9 @@ func (f *Feature) StopAll() {
 	}
 }
 
-// RestoreAll starts a proxy for every service the user had previously,
-// explicitly started (persisted via Store), so they come back up again on
-// the next app start rather than staying stopped until the user notices
-// and restarts them by hand. Called once after the realm engine is up.
-// Failures (e.g. the peer isn't reachable yet) are logged and skipped —
-// the user can retry from the UI.
+// RestoreAll restarts every proxy persisted via Store, so they come back up
+// after an app restart. Called once after the engine is up. Failures (e.g.
+// peer unreachable) are logged and skipped.
 func (f *Feature) RestoreAll() {
 	if f.store == nil {
 		return
@@ -417,10 +398,9 @@ func (f *Feature) ListActive() []ActiveProxy {
 	return result
 }
 
-// IsPeerInUse reports whether id has a running proxy currently forwarding at
-// least one live connection, per realm.PeerInUseHook: an idle proxy (bound
-// but with no open connection) doesn't need id to stay connected, since a
-// new local connection would just reconnect on demand via EnsureConnected.
+// IsPeerInUse reports whether id has a proxy with a live connection, per
+// realm.PeerInUseHook — an idle proxy doesn't need the peer to stay
+// connected, since a new connection reconnects on demand.
 func (f *Feature) IsPeerInUse(id peer.ID) bool {
 	peerID := id.String()
 	f.proxiesMu.Lock()
@@ -468,10 +448,8 @@ func splitProxyKey(key string) (peerID, serviceName string) {
 	return key, ""
 }
 
-// listenDeterministic binds a local TCP listener on the port
-// hash(peerID+serviceName) picks within [localPortRangeStart,
-// localPortRangeEnd], linear-probing forward through the range if that port
-// is already taken by something else.
+// listenDeterministic binds a listener on hash(peerID+serviceName)'s port
+// within [localPortRangeStart, localPortRangeEnd], linear-probing on collision.
 func listenDeterministic(peerID, serviceName string) (net.Listener, int, error) {
 	rangeSize := localPortRangeEnd - localPortRangeStart + 1
 	h := fnv.New32a()

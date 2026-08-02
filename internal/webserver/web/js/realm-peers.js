@@ -2,9 +2,8 @@ import { formatPeerLabel, syncList, syncCells } from "./util.js";
 
 const PEERS_POLL_INTERVAL_MS = 5000;
 
-// initRealmPeers wires the Peers and Swarm tables on the Realm main
-// subtab. onPeersUpdate, if given, is called with the latest peers list on
-// every refresh (used by the permissions subtab).
+// Wires the Peers/Swarm tables. onPeersUpdate (optional) gets the latest
+// peers list on every refresh — used by the permissions subtab.
 export function initRealmPeers(api, onPeersUpdate) {
 	const peersBody = document.getElementById("realm-peers-tbody");
 	const peersCount = document.getElementById("realm-peers-count");
@@ -14,11 +13,8 @@ export function initRealmPeers(api, onPeersUpdate) {
 	const addressesOpenState = new Map();
 	const swarmAddressesOpenState = new Map();
 
-	// syncAddressesCell builds/patches the "<details><summary>N
-	// address(es)</summary><ul>...</ul></details>" widget shared by the
-	// peers and swarm tables in place, remembering per-row open/closed state
-	// across re-renders in openStateMap and diffing the address <li>s so an
-	// open panel doesn't collapse or lose scroll position on every poll.
+	// Builds/patches the <details> "N address(es)" widget in place, preserving
+	// open/closed state and diffing rows so scroll position survives re-renders.
 	function syncAddressesCell(cell, rowId, addresses, openStateMap) {
 		if (addresses.length === 0) {
 			cell.replaceChildren();

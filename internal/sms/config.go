@@ -10,25 +10,21 @@ import (
 const configFileName = "sms.json"
 
 // Config is the local, per-device SMS management setting: which realmmap (if
-// any) this device is the owning/sending authority for. Never synced itself
-// — every device decides this independently, the same as Early's API
-// credentials.
+// any) this device is the owning/sending authority for. Never synced — each
+// device decides independently.
 type Config struct {
 	Enabled   bool   `json:"enabled"`
 	GroupID   string `json:"groupId"`
 	StoreName string `json:"storeName"`
 }
 
-// Service loads/saves Config from a directory resolved at construction time
-// (desktop: env var or home dir; Android: pass the app's files dir), mirroring
-// internal/early/config's Service exactly.
+// Service loads/saves Config from a directory resolved at construction time.
 type Service struct {
 	configFile string
 }
 
-// New resolves the config directory from $FOILEN_BOX_CONFIG_DIR, falling
-// back to ~/.foilen-box, creates it if needed, and returns a Service backed
-// by sms.json inside it.
+// New resolves the config directory from $FOILEN_BOX_CONFIG_DIR, falling back
+// to ~/.foilen-box, and returns a Service backed by sms.json inside it.
 func New() (*Service, error) {
 	dir := os.Getenv("FOILEN_BOX_CONFIG_DIR")
 	if dir == "" {

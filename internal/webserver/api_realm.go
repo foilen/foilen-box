@@ -146,9 +146,7 @@ func realmConfigResponse(a *api, cfg realmmodel.Config) realmConfigResult {
 	}
 }
 
-// parseActions validates that each string in actions is a known action per
-// api's engine (i.e. declared by one of its registered features), returning
-// the typed slice.
+// parseActions validates actions against the engine's known actions, returning the typed slice.
 func parseActions(api *api, actions []string) ([]realmmodel.PermissionAction, error) {
 	available := api.realmEngine.AvailableActions()
 	result := make([]realmmodel.PermissionAction, 0, len(actions))
@@ -169,8 +167,6 @@ func parseActions(api *api, actions []string) ([]realmmodel.PermissionAction, er
 	return result, nil
 }
 
-// groupExists reports whether a group named name already exists in the
-// current Realm config.
 func (a *api) groupExists(name string) bool {
 	for _, g := range a.realmConfig.Load().Groups {
 		if g.Name == name {
@@ -180,9 +176,8 @@ func (a *api) groupExists(name string) bool {
 	return false
 }
 
-// createGroup adds a new group under kp and grants it actionNames,
-// persisting and reconciling the engine. Shared by realm.addGroup (a
-// freshly generated keypair) and realm.importGroup (an imported one).
+// createGroup adds a group under kp with actionNames, persists, and reconciles the
+// engine. Shared by realm.addGroup (fresh keypair) and realm.importGroup (imported).
 func (a *api) createGroup(name string, kp realmmodel.KeyPair, actionNames []string) (realmmodel.Config, error) {
 	actions, err := parseActions(a, actionNames)
 	if err != nil {
@@ -293,8 +288,6 @@ func handleRealmDeleteGroup(a *api, params json.RawMessage) (any, error) {
 	return realmConfigResponse(a, cfg), nil
 }
 
-// identityExists reports whether an identity named name already exists in
-// the current Realm config.
 func (a *api) identityExists(name string) bool {
 	for _, id := range a.realmConfig.Load().Identities {
 		if id.Name == name {
@@ -304,9 +297,8 @@ func (a *api) identityExists(name string) bool {
 	return false
 }
 
-// createIdentity adds a new identity under kp, persisting it. Shared by
-// realm.addIdentity (a freshly generated keypair) and realm.importIdentity
-// (an imported one).
+// createIdentity persists a new identity under kp. Shared by realm.addIdentity
+// (fresh keypair) and realm.importIdentity (imported).
 func (a *api) createIdentity(name string, kp realmmodel.KeyPair) (realmmodel.Config, error) {
 	return a.updateRealmConfig(func(c *realmmodel.Config) {
 		c.Identities = append(c.Identities, realmmodel.Identity{Name: name, KeyPair: kp})
@@ -437,8 +429,6 @@ func handleRealmPushIdentity(a *api, params json.RawMessage) (any, error) {
 	return map[string]any{"pushed": true}, nil
 }
 
-// scriptExists reports whether a script named name already exists in the
-// current Realm config.
 func (a *api) scriptExists(name string) bool {
 	for _, sc := range a.realmConfig.Load().Scripts {
 		if sc.Name == name {
@@ -575,8 +565,6 @@ func handleRealmListScriptRuns(a *api, _ json.RawMessage) (any, error) {
 	return map[string]any{"runs": result}, nil
 }
 
-// serviceExists reports whether a service named name already exists in the
-// current Realm config.
 func (a *api) serviceExists(name string) bool {
 	for _, svc := range a.realmConfig.Load().Services {
 		if svc.Name == name {
@@ -871,9 +859,7 @@ func handleRealmExportGroup(a *api, params json.RawMessage) (any, error) {
 	if group == nil {
 		return nil, fmt.Errorf("no group named %q", p.Name)
 	}
-	// The local peer is always "online" and belongs to every group in its
-	// own config, but it never appears in a.realmPeers (that store only
-	// tracks remote peers seen over libp2p connections), so list it first.
+	// The local peer never appears in a.realmPeers (remote peers only), so list it first.
 	onlinePeers := []onlinePeerResult{
 		{ID: cfg.PeerID.ID, Addresses: a.realmEngine.Addrs()},
 	}

@@ -24,8 +24,7 @@ type ConfigService interface {
 
 const dayLayout = "2006-01-02"
 
-// Service orchestrates connect+fetch+aggregate/delete against Early, mirroring
-// the original EarlyAggregateService (plain constructor injection, no DI framework).
+// Service orchestrates connect+fetch+aggregate/delete against Early.
 type Service struct {
 	earlyService  EarlyService
 	configService ConfigService

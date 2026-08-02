@@ -1,11 +1,10 @@
 import { report, formatPeerLabel, syncList } from "./util.js";
 import { actionLabel } from "./realm-actions.js";
 
-// initRealmPermissions wires the Permissions subtab: a checkbox matrix per
-// group and per peer, one checkbox per available action, mirroring the
-// checkbox list used on group creation. renderConfig is the top-level
-// fan-out (see realm.js) called after any mutation, since the backend
-// returns the full config on every change.
+// Wires the Permissions subtab: a checkbox matrix per group and per peer, one
+// checkbox per available action. renderConfig is the top-level fan-out (see
+// realm.js), called after any mutation since the backend returns the full
+// config on every change.
 export function initRealmPermissions(api, output, renderConfig) {
 	const permissionsCount = document.getElementById("realm-permissions-count");
 	const groupsContainer = document.getElementById("realm-permissions-groups");
@@ -60,10 +59,8 @@ export function initRealmPermissions(api, output, renderConfig) {
 		);
 	}
 
-	// syncActionCheckboxes reconciles the per-action checkbox row for one
-	// entity (group or peer), keeping each <md-checkbox> node stable across
-	// re-renders so mid-click state / focus isn't lost when this runs on
-	// every peers poll.
+	// Keeps each <md-checkbox> node stable across re-renders so mid-click
+	// state/focus isn't lost when this runs on every peers poll.
 	function syncActionCheckboxes(list, target) {
 		syncList(
 			list,

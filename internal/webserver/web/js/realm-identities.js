@@ -3,13 +3,10 @@ import { initQrModal, initScanModal } from "./realm-qr.js";
 
 const IDENTITIES_POLL_INTERVAL_MS = 5000;
 
-// initRealmIdentities wires the Identities subtab: listing, generating,
-// importing, exporting, deleting, and pushing standalone identities.
-// renderConfig is the top-level fan-out (see realm.js) called after any
-// mutation, since the backend returns the full config on every change. It's
-// also polled here (like realm-peers.js/realm-maps.js poll their own state)
-// so an identity another peer pushes to us shows up without a manual page
-// reload, since there's no server->client push channel in this app.
+// Wires the Identities subtab: list/generate/import/export/delete/push.
+// renderConfig is the top-level fan-out (see realm.js). Also polled here so
+// an identity pushed by another peer shows up without a manual reload, since
+// there's no server->client push channel in this app.
 export function initRealmIdentities(api, output, renderConfig) {
 	const identitiesBody = document.getElementById("realm-identities-tbody");
 	const identitiesCount = document.getElementById("realm-identities-count");
@@ -37,14 +34,9 @@ export function initRealmIdentities(api, output, renderConfig) {
 	let knownPeers = [];
 	let ownPeerId = "";
 
-	// syncOptions reconciles an <md-outlined-select>'s <md-select-option>
-	// children in place (keyed by option value) instead of clearing and
-	// rebuilding them. This is what lets both selects be re-rendered freely
-	// on every relevant refresh (the identities list changing, or the peers
-	// poll every few seconds — see realm-peers.js) without desyncing the
-	// select's shown value: the currently-selected option's node is never
-	// torn down, so there's nothing for md-outlined-select's async
-	// re-processing of a fresh option list to get out of sync with.
+	// Patches an <md-outlined-select>'s options in place (keyed by value)
+	// instead of rebuilding them, so re-rendering on every refresh doesn't tear
+	// down the selected option and desync the select's shown value.
 	function syncOptions(select, entries) {
 		syncList(
 			select,

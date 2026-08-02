@@ -8,22 +8,18 @@ import (
 )
 
 // androidOSVersion holds the Android OS version (e.g. "13"), set via
-// SetAndroidOSVersion. Go has no way to read it directly on Android: unlike
-// desktop Linux, there's no /etc/os-release or similar gopsutil's
-// host.PlatformInformation can read there, so the Kotlin side (which knows it
-// via android.os.Build.VERSION.RELEASE) provides it instead.
+// SetAndroidOSVersion. Go has no /etc/os-release equivalent on Android, so
+// the Kotlin side (android.os.Build.VERSION.RELEASE) provides it instead.
 var androidOSVersion string
 
-// SetAndroidOSVersion registers the Android OS version, passed from Kotlin's
-// MainActivity/RealmForegroundService (see cmd/mobile.StartServer). Passing
-// "" leaves osName's Android output generic ("Android").
+// SetAndroidOSVersion sets the Android OS version, passed from Kotlin
+// (cmd/mobile.StartServer). "" leaves osName's output generic ("Android").
 func SetAndroidOSVersion(version string) {
 	androidOSVersion = version
 }
 
-// osName returns a human-readable OS name and version, e.g. "Ubuntu 22.04" on
-// Linux or "Android 13" on Android, falling back to a generic name if the
-// specific distribution/version can't be determined.
+// osName returns a human-readable OS name and version, e.g. "Ubuntu 22.04" or
+// "Android 13", falling back to a generic name if undetermined.
 func osName() string {
 	switch runtime.GOOS {
 	case "android":

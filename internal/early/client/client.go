@@ -83,10 +83,8 @@ func (c *Client) TimeEntryDelete(id string) (*model.Response, error) {
 	return &resp, nil
 }
 
-// --- HTTP helpers ---
 // Unlike Java's HttpURLConnection, Go's http.Client never errors on non-2xx
-// responses, so the body is always read straight from resp.Body — no
-// getErrorStream()-style fallback is needed.
+// responses, so the body is always read straight from resp.Body.
 
 func (c *Client) get(url, bearerToken string) ([]byte, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)

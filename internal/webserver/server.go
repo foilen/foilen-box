@@ -30,16 +30,11 @@ type Server struct {
 	token    string
 }
 
-// Start binds a random free port on 127.0.0.1, wires up the static file and
-// WebSocket handlers, and begins serving in the background. configDir is the
-// directory to persist local config in (Early API credentials, Realm
-// config/peers); pass "" to use the default (env var or home dir)
-// resolution — used on desktop. On Android, pass the app's private files
-// dir. defaultDhtMode (realm/model.DhtModeServer or DhtModeClient) is the
-// per-platform default applied the first time Realm config is created.
-// hostnameOverride, when non-empty, is reported as the Realm config's
-// hostname instead of os.Hostname() — used on Android, where the OS-level
-// hostname is always "localhost".
+// Start binds a random free port on 127.0.0.1 and begins serving in the
+// background. configDir persists local config (""=default resolution on
+// desktop; app's private files dir on Android). defaultDhtMode is the
+// per-platform default for a freshly created Realm config. hostnameOverride,
+// if set, replaces os.Hostname() (Android's is always "localhost").
 func Start(configDir string, defaultDhtMode string, hostnameOverride string) (*Server, error) {
 	logDir, err := resolveConfigDir(configDir)
 	if err != nil {
@@ -100,10 +95,8 @@ func Start(configDir string, defaultDhtMode string, hostnameOverride string) (*S
 	return s, nil
 }
 
-// listenForUI binds 127.0.0.1 on a random free port, unless cfg pins a
-// specific one (the Config tab's "Random webui port" checkbox unchecked);
-// if the pinned port can't be bound (e.g. already in use), falls back to a
-// random one rather than failing the whole server start.
+// listenForUI binds a random free port on 127.0.0.1, unless cfg pins one; falls
+// back to random if the pinned port can't be bound.
 func listenForUI(cfg uiConfig) (net.Listener, error) {
 	if cfg.RandomPort || cfg.Port == 0 {
 		return net.Listen("tcp", "127.0.0.1:0")
@@ -116,11 +109,9 @@ func listenForUI(cfg uiConfig) (net.Listener, error) {
 	return listener, nil
 }
 
-// resolveConfigDir mirrors the default-directory resolution done
-// independently by internal/early/config and foilen-realm/config
-// ($FOILEN_BOX_CONFIG_DIR, falling back to ~/.foilen-box) so the log file
-// lands in the same place as the rest of this peer's local state. On
-// Android, configDir is always passed explicitly (the app's files dir).
+// resolveConfigDir mirrors the resolution in internal/early/config and
+// foilen-realm/config ($FOILEN_BOX_CONFIG_DIR, else ~/.foilen-box) so the log
+// file lands alongside the rest of this peer's state.
 func resolveConfigDir(configDir string) (string, error) {
 	if configDir != "" {
 		return configDir, nil
@@ -140,9 +131,8 @@ func (s *Server) URL() string {
 	return fmt.Sprintf("http://%s/", s.listener.Addr().String())
 }
 
-// RealmStateSink is the platform-specific callback (Android) invoked
-// whenever the user toggles Realm networking on/off via the API, so a
-// platform resource tied to Realm connectivity (e.g. a foreground-service
+// RealmStateSink is the platform-specific callback (Android) invoked when
+// Realm networking is toggled, so a tied resource (e.g. a foreground-service
 // notification) can be updated to match.
 type RealmStateSink interface {
 	SetRealmEnabled(enabled bool)
@@ -154,11 +144,11 @@ func (s *Server) SetRealmStateSink(sink RealmStateSink) {
 	s.api.realmStateSink = sink
 }
 
-// SmsBridge is the platform-specific callback (Android) letting the SMS
-// feature (internal/sms) send/import real texts and show a real clickable
-// notification; nil on desktop. Structurally identical to
-// cmd/mobile.SmsBridge and internal/sms.PlatformBridge (see either's doc for
-// why this is declared independently rather than shared via import).
+// SmsBridge is the platform-specific callback (Android) letting internal/sms
+// send/import real texts and show notifications; nil on desktop.
+// Structurally identical to cmd/mobile.SmsBridge and
+// internal/sms.PlatformBridge — see either's doc for why it's declared
+// independently rather than shared via import.
 type SmsBridge interface {
 	SendSms(phoneNumber string, body string) error
 	ReadAllSms() (string, error)

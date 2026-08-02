@@ -1,19 +1,14 @@
-// Package speedtest is the "box/speedtest" Realm feature: lets this peer
-// measure raw download/upload throughput against another peer it's
-// connected to, over a dedicated libp2p stream per direction. Unlike the
-// features under realm/features (part of the foilen-realm library, and so
-// usable by any future application built on it), this one lives in the
-// foilen-box module itself since a synthetic throughput test is specific to
-// this app, not something every Realm-based application would want.
+// Package speedtest is the "box/speedtest" Realm feature: measures raw
+// download/upload throughput against a connected peer, over a dedicated
+// libp2p stream per direction. Lives in foilen-box rather than realm/features
+// since it's app-specific, not something every Realm application would want.
 //
-// The wire protocol and timing (5 seconds per direction) mirror
+// Wire protocol and timing (5s per direction) mirror
 // github.com/foilen/LANSpeedTest's CheckSpeed/SpeedServer: the initiator
-// opens a stream, sends a 1-byte mode saying which direction it wants to
-// measure, then either reads (download) or writes (upload) as fast as
-// possible until its own timer elapses, at which point closing the stream
-// tells the other side to stop. The chunk size is bumped up from
-// LANSpeedTest's 1kB to better amortize libp2p's own stream-framing
-// overhead.
+// opens a stream, sends a 1-byte mode, then reads/writes as fast as possible
+// until its timer elapses, closing the stream to signal the other side to
+// stop. Chunk size is bumped from LANSpeedTest's 1kB to better amortize
+// libp2p's stream-framing overhead.
 package speedtest
 
 import (
@@ -43,33 +38,26 @@ const (
 	// ActionRun gates letting another peer run a speed test against this one.
 	ActionRun model.PermissionAction = FeatureName + "/run"
 
-	// testDuration is how long each direction's data phase runs for,
-	// matching LANSpeedTest's CheckSpeed.
+	// testDuration matches LANSpeedTest's CheckSpeed.
 	testDuration = 5 * time.Second
 
-	// chunkSize is the size of each read/write during the data phase.
-	// LANSpeedTest uses 1kB, sized for raw TCP sockets; libp2p multiplexes
-	// streams over yamux, whose per-write framing overhead would dominate
-	// at that size, so this uses a larger chunk to actually saturate the
-	// link being measured.
+	// chunkSize: larger than LANSpeedTest's 1kB so yamux's per-write framing
+	// overhead doesn't dominate and cap the measured throughput.
 	chunkSize = 64 * 1024
 
-	// handshakeTimeout bounds connecting, opening a stream, and the 2-byte
-	// mode/ack exchange; it's also added on top of testDuration as the data
-	// phase's own deadline, as a safety net against a peer that stops
-	// responding mid-test.
+	// handshakeTimeout bounds connect/handshake, and is added on top of
+	// testDuration as a safety net against an unresponsive peer.
 	handshakeTimeout = 10 * time.Second
 
-	modeDownload byte = 0 // "send me data": the initiator measures download speed.
-	modeUpload   byte = 1 // "receive data from me": the initiator measures upload speed.
+	modeDownload byte = 0 // initiator measures download speed
+	modeUpload   byte = 1 // initiator measures upload speed
 
 	ackOK     byte = 0
 	ackDenied byte = 1
 )
 
-// Result is one peer's speed test outcome. Error is set (and the Mbps
-// fields left zero) when the test couldn't be completed, so a caller running
-// this against several peers in sequence can keep going after one fails.
+// Result is one peer's speed test outcome; Error is set (Mbps fields left
+// zero) when the test couldn't be completed.
 type Result struct {
 	PeerID       string  `json:"peerId"`
 	DownloadMbps float64 `json:"downloadMbps"`
@@ -82,9 +70,8 @@ type Feature struct {
 	mu  sync.Mutex
 	reg *realm.Registrar
 
-	// runMu serializes RunSpeedTest calls, so two tests (e.g. triggered from
-	// two browser tabs) never share this machine's bandwidth and skew each
-	// other's numbers.
+	// runMu serializes RunSpeedTest calls so concurrent tests don't skew
+	// each other's bandwidth numbers.
 	runMu sync.Mutex
 }
 
@@ -130,9 +117,8 @@ func (f *Feature) handleStream(reg *realm.Registrar) network.StreamHandler {
 			return
 		}
 
-		// The data phase's length is controlled entirely by the initiator
-		// closing the stream once its own timer elapses, so clear the
-		// handshake deadline rather than racing it.
+		// Initiator controls the data phase's length by closing the stream;
+		// clear the handshake deadline rather than racing it.
 		_ = s.SetDeadline(time.Time{})
 
 		chunk := make([]byte, chunkSize)
@@ -153,11 +139,9 @@ func (f *Feature) handleStream(reg *realm.Registrar) network.StreamHandler {
 	}
 }
 
-// RunSpeedTest measures download then upload throughput against peerID, one
-// after the other, each over its own stream. It always returns a Result;
-// failures are reported via Result.Error rather than a Go error, so a caller
-// testing several peers in a row doesn't need special-case error handling to
-// keep going after one peer fails.
+// RunSpeedTest measures download then upload throughput against peerID.
+// Always returns a Result; failures are reported via Result.Error rather than
+// a Go error.
 func (f *Feature) RunSpeedTest(peerID string) Result {
 	result := Result{PeerID: peerID}
 

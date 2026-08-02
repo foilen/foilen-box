@@ -17,9 +17,8 @@ type Data struct {
 	Active map[string]PersistedProxy `json:"active"`
 }
 
-// Store persists which service proxies should be running, backed by
-// realm-services-active.json, so Feature.RestoreAll can start them again on
-// the next app start.
+// Store persists which service proxies should be running, so
+// Feature.RestoreAll can start them again on the next app start.
 type Store struct {
 	db *jsondb.Store[Data]
 }
@@ -44,8 +43,7 @@ func (s *Store) List() []PersistedProxy {
 	return result
 }
 
-// Add records that peerID/serviceName should be started automatically on
-// the next app start.
+// Add records peerID/serviceName to be started automatically next time.
 func (s *Store) Add(peerID, serviceName string) {
 	s.db.Update(func(d *Data) {
 		if d.Active == nil {
@@ -55,8 +53,7 @@ func (s *Store) Add(peerID, serviceName string) {
 	})
 }
 
-// Remove forgets peerID/serviceName, so it won't be restarted on the next
-// app start.
+// Remove forgets peerID/serviceName, so it won't be restarted next time.
 func (s *Store) Remove(peerID, serviceName string) {
 	s.db.Update(func(d *Data) {
 		delete(d.Active, peerID+"|"+serviceName)

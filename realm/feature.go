@@ -15,75 +15,56 @@ import (
 	"foilen-realm/peers"
 )
 
-// Feature is a self-contained Realm capability an application opts into by
-// constructing it and passing it to Engine.Register. Each feature owns its
-// own libp2p protocol(s), permission actions, and any state/store it needs;
-// the application calls whatever public methods the concrete feature type
-// exposes directly (e.g. a scripts.Feature's RunOnPeer) — Engine itself
-// only knows about the Feature interface below.
+// Feature is a self-contained Realm capability an application opts into via
+// Engine.Register. It owns its own libp2p protocol(s), permission actions,
+// and state; Engine only knows this interface, not the concrete type.
 type Feature interface {
 	// Name namespaces this feature's actions, e.g. "common/scripts".
 	Name() string
 
-	// Actions lists the fully-qualified permission actions this feature's
-	// incoming handlers check, of the form Name()+"/"+verb (e.g.
-	// "common/scripts/run"). Engine.AvailableActions aggregates
-	// these across every registered feature to build the dynamic
-	// permission catalog.
+	// Actions lists fully-qualified permission actions (Name()+"/"+verb,
+	// e.g. "common/scripts/run"), aggregated by Engine.AvailableActions.
 	Actions() []model.PermissionAction
 
-	// RegisterHandlers is called once whenever the engine's host is
-	// (re)created, so the feature can register its own libp2p stream
-	// handler(s) via reg.SetStreamHandler.
+	// RegisterHandlers is called on every (re)creation of the engine's host,
+	// to register stream handler(s) via reg.SetStreamHandler.
 	RegisterHandlers(reg *Registrar)
 }
 
-// PeerConnectedHook is an optional Feature interface: if implemented, Engine
-// calls OnPeerConnected (in its own goroutine) every time a peer connects —
-// e.g. to flush queued outgoing sends to it, or refresh cached state.
+// PeerConnectedHook: Engine calls OnPeerConnected (own goroutine) whenever a peer connects.
 type PeerConnectedHook interface {
 	OnPeerConnected(reg *Registrar, id peer.ID)
 }
 
-// PeriodicHook is an optional Feature interface: if implemented, Engine
-// calls RunPeriodic on the same cadence as its known-peer keep-alive loop.
+// PeriodicHook: Engine calls RunPeriodic on the keep-alive loop's cadence.
 type PeriodicHook interface {
 	RunPeriodic(reg *Registrar)
 }
 
-// PeerRemovedHook is an optional Feature interface: if implemented, Engine
-// calls OnPeerRemoved whenever a known peer is dropped from the peer store
-// (currently: pruned for being unseen past the configured retention
-// window), so the feature can discard whatever per-peer state it keeps
-// (cached specs, script run history, ...).
+// PeerRemovedHook: Engine calls OnPeerRemoved when a known peer is pruned
+// from the peer store (unseen past the retention window), so the feature can
+// discard its per-peer state.
 type PeerRemovedHook interface {
 	OnPeerRemoved(id string)
 }
 
-// GroupConfirmedHook is an optional Feature interface: if implemented,
-// Engine calls OnGroupConfirmed (in its own goroutine) whenever a peer
-// passes the group-challenge for group (see group_challenge.go), i.e. the
-// moment its membership goes from merely claimed to cryptographically
-// proven — e.g. to push/pull whatever group-scoped state the feature keeps
-// as soon as the peer is known to actually hold the group's key.
+// GroupConfirmedHook: Engine calls OnGroupConfirmed (own goroutine) once a
+// peer passes the group-challenge (group_challenge.go) — membership going
+// from claimed to cryptographically proven.
 type GroupConfirmedHook interface {
 	OnGroupConfirmed(reg *Registrar, id peer.ID, group model.Group)
 }
 
-// PeerInUseHook is an optional Feature interface: if implemented, Engine
-// consults IsPeerInUse (on its keep-alive tick, see connection_ring.go)
-// before disconnecting a peer that's outside every group's current
-// connection ring, so an actively-used connection (e.g. a service proxy
-// with data in flight) isn't torn down underneath it.
+// PeerInUseHook: Engine consults IsPeerInUse (keep-alive tick,
+// connection_ring.go) before disconnecting a peer outside every ring, so an
+// actively-used connection isn't torn down.
 type PeerInUseHook interface {
 	IsPeerInUse(id peer.ID) bool
 }
 
-// PeerDisconnectedHook is an optional Feature interface: if implemented,
-// Engine calls OnPeerDisconnected once a peer's last live Conn actually
-// closes (not on every closed Conn when others remain, and not on a later
-// stale-peer prune — see onDisconnected), so a feature can discard whatever
-// purely-in-memory, per-connection state it keeps for that peer.
+// PeerDisconnectedHook: Engine calls OnPeerDisconnected once a peer's last
+// live Conn closes (not per-Conn, not on a stale-peer prune — see
+// onDisconnected), so a feature can discard in-memory per-connection state.
 type PeerDisconnectedHook interface {
 	OnPeerDisconnected(id peer.ID)
 }
@@ -94,13 +75,8 @@ type Registrar struct{ e *Engine }
 
 // SetStreamHandler registers h for protocol id on the running host.
 //
-// Unlike Host/PrivKey/Context/Config below, this deliberately reads r.e.host
-// directly rather than through the locked Host() accessor: RegisterHandlers
-// (the only caller) runs synchronously inside Engine.Start, on the same
-// goroutine that is holding e.mu for the whole call — going through Host()
-// here would try to re-lock the (non-reentrant) mutex and deadlock. Reading
-// the field directly is safe because, as the current holder of e.mu, no
-// other goroutine can be writing it concurrently.
+// Reads r.e.host directly instead of via Host(): the only caller runs inside
+// Engine.Start while already holding e.mu, so Host() would deadlock.
 func (r *Registrar) SetStreamHandler(id protocol.ID, h network.StreamHandler) {
 	if r.e.host != nil {
 		r.e.host.SetStreamHandler(id, h)
@@ -153,12 +129,10 @@ func (r *Registrar) Peers() *peers.Store {
 	return r.e.peers
 }
 
-// EnsureConnected dials id if it isn't already connected, using the
-// addresses last recorded for it in the peer store (the same source
-// Engine's keep-alive loop dials from). It blocks until connected, dialTimeout
-// elapses, or ctx is done. Features call this before opening an outbound
-// stream so an on-demand action (e.g. a user pressing a button) doesn't fail
-// just because the periodic reconnect hasn't gotten to this peer yet.
+// EnsureConnected dials id (using its last-recorded peer-store addresses) if
+// not already connected, blocking until connected, dialTimeout elapses, or
+// ctx is done. Call before opening an outbound stream so an on-demand action
+// doesn't fail just because the periodic reconnect hasn't reached this peer yet.
 func (r *Registrar) EnsureConnected(ctx context.Context, id peer.ID) error {
 	h := r.Host()
 	if h == nil {

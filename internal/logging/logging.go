@@ -1,9 +1,5 @@
-// Package logging redirects the standard "log" package's output (used
-// throughout this codebase for all console/status output) to a rotating
-// file, since the desktop tray build and the Android WebView build have no
-// console for the user to see it in. The file is rotated once it reaches
-// 100MB or 1 day old, whichever comes first; rotation discards the old
-// file rather than keeping it around.
+// Package logging redirects the standard "log" package's output to a rotating
+// file (desktop tray/Android WebView have no console). Rotated at 100MB or 1 day old.
 package logging
 
 import (
@@ -28,34 +24,25 @@ const (
 	maxAge  = 24 * time.Hour
 )
 
-// current is the writer installed by Setup, kept around so Clear can reach
-// it (the standard "log" package only exposes the writer for output, not for
-// operations like truncation).
+// current is the writer installed by Setup, kept around so Clear can reach it.
 var current *rotatingWriter
 
-// Setup points the standard logger at a rotating file inside dir, creating
-// dir if needed, and clears any existing log file so each process start
-// begins with an empty log. It's meant to be called once, as early as
-// possible, by each entry point (desktop, Android) before any other package
-// logs anything.
+// Setup points the standard logger at a rotating file inside dir (created if
+// needed), truncating any existing log. Call once, as early as possible, from
+// each entry point (desktop, Android).
 func Setup(dir string) error {
 	w, err := newRotatingWriter(dir)
 	if err != nil {
 		return fmt.Errorf("failed to open log file: %w", err)
 	}
 	log.SetOutput(w)
-	// Set explicitly (rather than relying on the "log" package's own
-	// default) so a date/time prefix on every line doesn't depend on no
-	// dependency ever having called log.SetFlags on the shared standard
-	// logger before Setup runs.
 	log.SetFlags(log.Ldate | log.Ltime)
 	current = w
 	return nil
 }
 
-// Clear empties the current log file in place, same as a rotation but
-// without waiting for the size/age threshold — used by the web UI's Logs
-// tab "Clear" button. No-op if Setup hasn't been called yet.
+// Clear empties the current log file in place, without waiting for the
+// rotation threshold — used by the web UI's Logs tab "Clear" button.
 func Clear() error {
 	if current == nil {
 		return nil
@@ -65,9 +52,8 @@ func Clear() error {
 	return current.rotate()
 }
 
-// rotatingWriter is an io.Writer appending to LogFileName inside dir. Once a
-// write would push the file past maxSize, or the file has been open longer
-// than maxAge, it's deleted and a fresh one is started.
+// rotatingWriter appends to LogFileName inside dir, rotating (delete +
+// restart) once maxSize or maxAge is exceeded.
 type rotatingWriter struct {
 	mu       sync.Mutex
 	dir      string
@@ -106,11 +92,9 @@ func (w *rotatingWriter) open() error {
 	return nil
 }
 
-// readOrInitOpenedAt returns when the current log file was first created,
-// persisted in a sidecar file next to it so age-based rotation survives
-// process restarts (a file's OS-level creation time isn't reliably
-// available cross-platform, and its mtime changes on every append). If the
-// sidecar is missing or unreadable, it's (re)stamped with now.
+// readOrInitOpenedAt returns when the log file was first created, persisted in
+// a sidecar file so age-based rotation survives restarts. Re-stamped with now
+// if the sidecar is missing or unreadable.
 func (w *rotatingWriter) readOrInitOpenedAt() time.Time {
 	if data, err := os.ReadFile(w.metaPath()); err == nil {
 		if t, err := time.Parse(time.RFC3339, strings.TrimSpace(string(data))); err == nil {
@@ -136,13 +120,13 @@ func (w *rotatingWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
-// maxTailBytes caps how much of the current log file ReadTail returns, so
-// the web UI never has to load/render the full (up to 100MB) file.
+// maxTailBytes caps how much of the current log file ReadTail returns, so the
+// web UI never has to load/render the full (up to 100MB) file.
 const maxTailBytes = 512 * 1024
 
-// ReadTail returns up to the last maxTailBytes of the current (not yet
-// rotated) log file inside dir, for display in the web UI's Logs tab. If
-// search is non-empty, only lines containing it (case-insensitive) are kept.
+// ReadTail returns up to the last maxTailBytes of the current log file, for
+// the web UI's Logs tab. If search is non-empty, only matching lines
+// (case-insensitive) are kept.
 func ReadTail(dir string, search string) (string, error) {
 	f, err := os.Open(filepath.Join(dir, LogFileName))
 	if err != nil {

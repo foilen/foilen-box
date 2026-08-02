@@ -52,22 +52,15 @@ func (s *Store) Get(id string) (model.PeerInfo, bool) {
 	return info, ok
 }
 
-// addressSourcePriority controls the order per-source address lists are
-// merged in, and so which addresses come first in the merged result:
-// LAN-discovered (mdns) addresses first, then addresses self-reported via
-// the realm map (announce), then addresses only known via public DHT
-// routing (dht) last, since those are the least likely to be reachable
-// without going out to the internet and back. Sources not listed here are
-// merged in afterwards, sorted by name for determinism.
+// addressSourcePriority controls per-source address merge order: LAN (mdns)
+// first, then self-reported (announce), then public-DHT (dht) last since
+// those are least likely reachable directly. Unlisted sources are merged
+// afterwards, sorted by name for determinism.
 var addressSourcePriority = []string{"mdns", "announce", "dht"}
 
-// Upsert records/updates a peer's usage info. source identifies who is
-// reporting info.Addresses (e.g. "mdns", "dht", "announce"); that source's
-// addresses are recorded independently of every other source's, and
-// info.Addresses/info.AddressesBySource are overwritten with the merged
-// result (see addressSourcePriority) before the record is stored. Pass
-// source "" to leave addresses untouched (e.g. updates unrelated to
-// discovery).
+// Upsert records/updates a peer's usage info. source identifies who's
+// reporting info.Addresses (e.g. "mdns", "dht", "announce"); merged per
+// addressSourcePriority before storing. Pass source "" to leave addresses untouched.
 func (s *Store) Upsert(info model.PeerInfo, source string) {
 	s.db.Update(func(d *Data) {
 		if d.Peers == nil {
@@ -173,12 +166,8 @@ func (s *Store) SetHostnameDescription(id, hostname, description string, relaySe
 	})
 }
 
-// SetAnnouncedAddresses records addrs as the "announce" source's address
-// list for peer id (see addressSourcePriority) and recomputes the merged
-// Addresses, if the peer is already known. A no-op otherwise, since this is
-// only ever called with a peer's self-reported addrs from the identify
-// exchange, which only runs over an already-established connection to an
-// already-known peer (see handleIdentifyStream).
+// SetAnnouncedAddresses records addrs as the "announce" source for peer id
+// and recomputes merged Addresses, if the peer is already known.
 func (s *Store) SetAnnouncedAddresses(id string, addrs []string) {
 	s.db.Update(func(d *Data) {
 		p, ok := d.Peers[id]

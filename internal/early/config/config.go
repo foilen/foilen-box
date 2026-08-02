@@ -20,9 +20,8 @@ type Service struct {
 	configFile string
 }
 
-// New resolves the config directory from $FOILEN_BOX_CONFIG_DIR, falling
-// back to ~/.foilen-box, creates it if needed, and returns a Service backed
-// by early.json inside it.
+// New resolves the config directory from $FOILEN_BOX_CONFIG_DIR, falling back
+// to ~/.foilen-box, and returns a Service backed by early.json inside it.
 func New() (*Service, error) {
 	dir := os.Getenv("FOILEN_BOX_CONFIG_DIR")
 	if dir == "" {

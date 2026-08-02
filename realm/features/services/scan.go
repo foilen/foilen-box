@@ -17,10 +17,8 @@ type knownPort struct {
 	typ  string
 }
 
-// knownPorts is the fixed set of ports/services ScanLocalPorts checks on
-// 127.0.0.1. UDP entries can't be confirmed by a TCP dial, so they're always
-// reported unverified — the UI still lists them as a manually-checkable
-// option.
+// knownPorts is checked on 127.0.0.1 by ScanLocalPorts. UDP entries can't be
+// confirmed by a TCP dial, so they're always reported unverified.
 var knownPorts = []knownPort{
 	{80, "http", model.ServiceTypeHTTP},
 	{443, "https", model.ServiceTypeHTTPS},
@@ -34,8 +32,8 @@ var knownPorts = []knownPort{
 }
 
 // ScanLocalPorts probes 127.0.0.1 for each of knownPorts, so the owner can
-// quickly register the services this machine offers. It never touches
-// libp2p/permissions — it only probes the local machine it runs on.
+// quickly register the services this machine offers. Never touches
+// libp2p/permissions.
 func (f *Feature) ScanLocalPorts() []ScanResult {
 	results := make([]ScanResult, 0, len(knownPorts))
 	for _, kp := range knownPorts {

@@ -20,11 +20,9 @@ import (
 	"foilen-realm/model"
 )
 
-// identityPubKeyFromID derives an identity's full Ed25519 public key purely
-// from its peer-id-shaped identityID: libp2p inlines small (Ed25519-sized)
-// public keys directly into the peer id via an identity multihash, so no
-// access to the identity's private key is needed to do this -- any peer can
-// encrypt to an identity it doesn't hold.
+// identityPubKeyFromID derives an identity's Ed25519 public key from its
+// peer-id-shaped identityID (libp2p inlines small public keys via an
+// identity multihash) — any peer can encrypt to an identity without holding it.
 func identityPubKeyFromID(identityID string) (gocrypto.PubKey, error) {
 	id, err := peer.Decode(identityID)
 	if err != nil {
@@ -37,10 +35,8 @@ func identityPubKeyFromID(identityID string) (gocrypto.PubKey, error) {
 	return pub, nil
 }
 
-// ed25519PubToX25519 converts an Ed25519 public key to its birationally
-// equivalent X25519 (Curve25519 Montgomery) form, for use with box
-// encryption -- the same technique as libsodium's
-// crypto_sign_ed25519_pk_to_curve25519.
+// ed25519PubToX25519 converts an Ed25519 public key to X25519 for box
+// encryption (libsodium's crypto_sign_ed25519_pk_to_curve25519).
 func ed25519PubToX25519(pub gocrypto.PubKey) (*[32]byte, error) {
 	raw, err := pub.Raw()
 	if err != nil {
@@ -58,11 +54,9 @@ func ed25519PubToX25519(pub gocrypto.PubKey) (*[32]byte, error) {
 	return &out, nil
 }
 
-// ed25519PrivToX25519 converts an Ed25519 private key to its equivalent
-// X25519 scalar (crypto_sign_ed25519_sk_to_curve25519): SHA-512 the seed and
-// clamp the low 32 bytes -- exactly how Ed25519 itself derives the scalar it
-// signs with, which is why this conversion is safe/standard. Derived fresh
-// from the stored Ed25519 key every time it's needed, never persisted.
+// ed25519PrivToX25519 converts an Ed25519 private key to its X25519 scalar
+// (crypto_sign_ed25519_sk_to_curve25519): SHA-512 the seed and clamp the low
+// 32 bytes, same as Ed25519's own scalar derivation. Derived fresh each time, never persisted.
 func ed25519PrivToX25519(priv gocrypto.PrivKey) (*[32]byte, error) {
 	raw, err := priv.Raw()
 	if err != nil {
@@ -80,10 +74,9 @@ func ed25519PrivToX25519(priv gocrypto.PrivKey) (*[32]byte, error) {
 	return &out, nil
 }
 
-// sealSymmetricKey generates a random 32-byte map symmetric key and seals it
-// (anonymous public-key encryption -- libsodium crypto_box_seal-equivalent)
-// to recipientPub, so only whoever holds the matching identity's private key
-// can recover it. The caller doesn't need to hold that identity itself.
+// sealSymmetricKey generates a random map symmetric key and seals it
+// (crypto_box_seal-equivalent) to recipientPub — only that identity's private
+// key holder can recover it; the caller need not hold it.
 func sealSymmetricKey(recipientPub gocrypto.PubKey) (encoded string, key [32]byte, err error) {
 	if _, err = rand.Read(key[:]); err != nil {
 		return "", key, fmt.Errorf("realm maps: failed to generate symmetric key: %w", err)
@@ -99,8 +92,8 @@ func sealSymmetricKey(recipientPub gocrypto.PubKey) (encoded string, key [32]byt
 	return base64.StdEncoding.EncodeToString(sealed), key, nil
 }
 
-// openSymmetricKey recovers the map symmetric key sealed by
-// sealSymmetricKey, using identityPriv -- the target identity's private key.
+// openSymmetricKey recovers the key sealed by sealSymmetricKey using the
+// target identity's private key.
 func openSymmetricKey(encoded string, identityPriv gocrypto.PrivKey) ([32]byte, error) {
 	var key [32]byte
 	sealed, err := base64.StdEncoding.DecodeString(encoded)
@@ -123,12 +116,10 @@ func openSymmetricKey(encoded string, identityPriv gocrypto.PrivKey) ([32]byte, 
 	return key, nil
 }
 
-// hashKey returns the storage key used externally (RealmMap.Entries' key,
-// MapEvent.Key) for realKey inside a map encrypted to identityID: a
-// length-prefixed hash so the real key is never visible to group members who
-// don't hold the target identity, while still letting them replicate the
-// entry under a stable key. Length-prefixing identityID avoids
-// concatenation ambiguity between (identityID, realKey) pairs.
+// hashKey returns the external storage key for realKey inside a map
+// encrypted to identityID: a length-prefixed hash so the real key stays
+// hidden from members without that identity, while still letting them
+// replicate the entry under a stable key.
 func hashKey(identityID, realKey string) string {
 	h := sha256.New()
 	var lenBuf [4]byte
@@ -139,11 +130,9 @@ func hashKey(identityID, realKey string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// encryptedPayload is what's actually sealed for one entry: bundling key and
-// value into a single plaintext (rather than encrypting each separately)
-// avoids reusing a nonce across two different ciphertexts, and lets the real
-// key be recovered on decrypt even though the entry's external key is just
-// hashKey's opaque hash.
+// encryptedPayload bundles key and value into one sealed plaintext, avoiding
+// nonce reuse across two ciphertexts and letting the real key be recovered
+// on decrypt despite the external key being hashKey's opaque hash.
 type encryptedPayload struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
@@ -188,9 +177,8 @@ func decryptEntry(ciphertextB64, nonceB64 string, symmetricKey [32]byte) (key, v
 }
 
 // signEncryptedEvent signs ev's EncryptedSigningBytes with identityPriv,
-// proving whoever produced this entry holds the target identity's private
-// key -- not just the group's -- returned base64-encoded for
-// MapEntry/MapEvent.IdentitySignature.
+// proving the producer holds the target identity's key (not just the
+// group's), base64-encoded for MapEntry/MapEvent.IdentitySignature.
 func signEncryptedEvent(identityPriv gocrypto.PrivKey, ev model.MapEvent) (string, error) {
 	sig, err := identityPriv.Sign(ev.EncryptedSigningBytes())
 	if err != nil {
@@ -199,9 +187,8 @@ func signEncryptedEvent(identityPriv gocrypto.PrivKey, ev model.MapEvent) (strin
 	return base64.StdEncoding.EncodeToString(sig), nil
 }
 
-// verifyEncryptedEvent reports whether ev.IdentitySignature is a valid
-// signature made with identityPub's matching private key over
-// ev.EncryptedSigningBytes -- checked before any attempt to decrypt ev.
+// verifyEncryptedEvent reports whether ev.IdentitySignature validates against
+// identityPub over ev.EncryptedSigningBytes — checked before decrypting ev.
 func verifyEncryptedEvent(identityPub gocrypto.PubKey, ev model.MapEvent) bool {
 	if ev.IdentitySignature == "" {
 		return false

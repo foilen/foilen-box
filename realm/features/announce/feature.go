@@ -1,11 +1,8 @@
-// Package announce is the "common/announce" Realm feature: on every engine
-// tick it posts this peer's own services, scripts, spec, and reachability
-// info (hostname/description/addresses) to every currently configured
-// group's "common" RealmMap, and consumes every configured group's "common"
-// map for peers/{peerId} entries, upserting them into the local known-peers
-// store. This is how peers discover each other's connection info well
-// enough to reconnect (see connection shaping in realm/connection_ring.go),
-// replacing the old direct peer-to-peer "peer share" gossip protocol.
+// Package announce is the "common/announce" Realm feature: each tick it
+// posts this peer's services, scripts, spec, and reachability info to every
+// configured group's "common" RealmMap, and consumes peers/{peerId} entries
+// from those maps into the local known-peers store — how peers discover
+// each other well enough to reconnect (see realm/connection_ring.go).
 package announce
 
 import (
@@ -24,38 +21,28 @@ const (
 	// FeatureName is this feature's namespace.
 	FeatureName = "common/announce"
 
-	// storeName is the RealmMap store every peer posts its own services,
-	// scripts, spec, and reachability info into, on all of its groups.
+	// storeName is the RealmMap store every peer posts its info into, per group.
 	storeName = "common"
 
-	// peersKeyPrefix namespaces the peers/{peerId} entries every peer posts
-	// with its own hostname/description/addresses, so other members can
-	// discover and reconnect to it without a direct peer-to-peer gossip
-	// protocol.
+	// peersKeyPrefix namespaces each peer's self-reported reachability entries.
 	peersKeyPrefix = "peers/"
 
-	// specRefreshInterval caps how often the (comparatively expensive)
-	// system report is gathered and posted, independently of RunPeriodic's
-	// own (much shorter) cadence.
+	// specRefreshInterval caps how often the (expensive) system report is
+	// gathered and posted.
 	specRefreshInterval = 6 * time.Hour
 
-	// peerInfoRefreshInterval caps how often this peer's own
-	// hostname/description/addresses are re-posted when nothing has
-	// actually changed; a real change to any of those fields is posted
-	// immediately instead of waiting for this.
+	// peerInfoRefreshInterval caps re-posting reachability info when nothing
+	// changed; an actual change is posted immediately instead.
 	peerInfoRefreshInterval = 24 * time.Hour
 
-	// commonMapDefaultAutoDeleteHours is the entry TTL seeded into
-	// storeName's _realmMaps config the first time any peer notices it's
-	// missing (see seedCommonConfig) — 7 days.
+	// commonMapDefaultAutoDeleteHours seeds storeName's entry TTL the first
+	// time a peer notices it's missing (see seedCommonConfig) — 7 days.
 	commonMapDefaultAutoDeleteHours = 168
 )
 
-// SpecSummary is the compact, one-line-per-field system report posted
-// alongside the full spec text — mirrors model.PeerSpec's OS/CPU/Mem/
-// Battery/GPU/Disk fields. Callers adapt their own system-report type (e.g.
-// internal/spec.Summary) into this so the feature itself has no dependency
-// on any application-specific spec package.
+// SpecSummary is the compact system report posted alongside the full spec
+// text, mirroring model.PeerSpec's fields. Callers adapt their own
+// system-report type into this to avoid an app-specific dependency here.
 type SpecSummary struct {
 	OS      string
 	CPU     string
@@ -65,9 +52,8 @@ type SpecSummary struct {
 	Disk    string
 }
 
-// peerAnnounceInfo is the JSON shape posted under peers/{peerId}: a peer's
-// own self-reported reachability info, analogous to model.PeerSpec but for
-// "how do I connect to you" rather than "what's your system report".
+// peerAnnounceInfo is posted under peers/{peerId}: a peer's self-reported
+// reachability info (vs. model.PeerSpec's system report).
 type peerAnnounceInfo struct {
 	Hostname            string   `json:"hostname"`
 	Description         string   `json:"description"`
@@ -90,9 +76,8 @@ type Feature struct {
 	postedInfo    peerAnnounceInfo
 }
 
-// New builds the announce Feature. specText/specSummary/hostname/appVersion
-// are injected rather than computed here so this package has no dependency
-// on any application-specific system-report or versioning code.
+// New builds the announce Feature. Dependencies are injected so this package
+// has no dependency on app-specific system-report or versioning code.
 func New(mapsFeature *realmmaps.Feature, specText func() string, specSummary func() SpecSummary, hostname func() string, appVersion func() string) *Feature {
 	return &Feature{mapsFeature: mapsFeature, specText: specText, specSummary: specSummary, hostname: hostname, appVersion: appVersion}
 }
@@ -103,11 +88,10 @@ func (f *Feature) Actions() []model.PermissionAction { return nil }
 
 func (f *Feature) RegisterHandlers(reg *realm.Registrar) {}
 
-// RunPeriodic posts this peer's services, scripts, and reachability info
-// (the latter only when its hostname, description, or addresses changed, or
-// peerInfoRefreshInterval elapsed), and (at most daily) its spec, to every
-// currently configured group's "common" map; it then pulls every such map's
-// peers/* entries into the local known-peers store, per realm.PeriodicHook.
+// RunPeriodic posts this peer's services, scripts, reachability info (on
+// change or peerInfoRefreshInterval), and spec (at most daily) to every
+// group's "common" map, then pulls peers/* entries into the known-peers
+// store. Per realm.PeriodicHook.
 func (f *Feature) RunPeriodic(reg *realm.Registrar) {
 	cfg := reg.Config()
 	if cfg.PeerID.ID == "" || len(cfg.Groups) == 0 {
@@ -205,11 +189,9 @@ func (f *Feature) RunPeriodic(reg *realm.Registrar) {
 	f.consumePeerInfo(reg, cfg)
 }
 
-// seedCommonConfig idempotently ensures group's _realmMaps has an entry for
-// storeName, so the shared announce map gets a default entry TTL even
-// though nothing ever calls CreateMap for it explicitly (SetValue creates
-// stores implicitly). Doesn't stomp an existing entry, so a user override
-// (or a default already seeded by another peer) is left alone.
+// seedCommonConfig ensures group's _realmMaps has a default TTL entry for
+// storeName, since SetValue creates stores implicitly without one. Leaves an
+// existing entry alone.
 func (f *Feature) seedCommonConfig(group model.Group) {
 	cfgMap, _, _ := f.mapsFeature.GetMap(group.KeyPair.ID, realmmaps.SystemConfigStoreName)
 	if _, ok := cfgMap.Entries[storeName]; ok {
@@ -225,16 +207,14 @@ func (f *Feature) seedCommonConfig(group model.Group) {
 	}
 }
 
-// serviceMapKey returns the RealmMap key a service is posted under, so an
-// immediate publish/retraction (AnnounceServiceNow/RetractServiceNow) and
-// the periodic re-post above agree on the same entry.
+// serviceMapKey is the RealmMap key a service is posted under, shared by
+// AnnounceServiceNow/RetractServiceNow and the periodic re-post.
 func serviceMapKey(peerID, name string) string {
 	return "services/" + peerID + "/" + name
 }
 
-// AnnounceServiceNow immediately posts svc to every one of cfg's groups'
-// "common" RealmMap, instead of waiting for the next RunPeriodic tick, so a
-// service added or edited through the app is visible to peers right away.
+// AnnounceServiceNow immediately posts svc to every group's "common" map,
+// instead of waiting for the next RunPeriodic tick.
 func AnnounceServiceNow(mapsFeature *realmmaps.Feature, cfg model.Config, svc model.Service) {
 	b, err := json.Marshal(svc)
 	if err != nil {
@@ -260,16 +240,12 @@ func RetractServiceNow(mapsFeature *realmmaps.Feature, cfg model.Config, name st
 	}
 }
 
-// consumePeerInfo reads every configured group's "common" map and upserts
-// whatever peers/{peerId} entries it finds into the local known-peers
-// store, replacing the old peer-share gossip protocol. A valid map entry
-// proves whoever wrote it holds the group's private key, but not that the
-// peers/{peerId} key it was filed under truthfully names its author — so,
-// like handleFoundPeer's mDNS/DHT discovery (see realm/peers_helper.go),
-// this only ever records reachability info. GroupNames is left untouched
-// (existing.GroupNames, unmodified): membership is only ever granted by a
-// direct, signed group-challenge with that peer, see
-// realm/peer_identify.go/challengeGroup.
+// consumePeerInfo upserts peers/{peerId} entries from every group's "common"
+// map into the known-peers store. A valid entry proves the group key was
+// held, not that the peerId key names the true author — so, like
+// realm/peers_helper.go's handleFoundPeer, this only records reachability
+// info. GroupNames is left untouched: membership only comes from a signed
+// group-challenge (realm/peer_identify.go/challengeGroup).
 func (f *Feature) consumePeerInfo(reg *realm.Registrar, cfg model.Config) {
 	peersStore := reg.Peers()
 	if peersStore == nil {
@@ -318,10 +294,8 @@ func (f *Feature) dueForSpecPost() bool {
 	return time.Since(f.lastSpecPost) >= specRefreshInterval
 }
 
-// dueForPeerInfoPost reports whether the own-peer-info entry should be
-// (re)posted this tick: either info differs from what was last posted (any
-// of hostname, description, or addresses), or peerInfoRefreshInterval has
-// elapsed since the last post.
+// dueForPeerInfoPost reports whether peer info changed since last posted,
+// or peerInfoRefreshInterval has elapsed.
 func (f *Feature) dueForPeerInfoPost(info peerAnnounceInfo) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()

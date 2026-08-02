@@ -161,11 +161,9 @@ func TestAddedGroupKeys(t *testing.T) {
 	}
 }
 
-// TestHandleFoundPeerDoesNotGrantGroupMembership guards the fix for the
-// insecure prior behavior: merely being surfaced by mDNS/DHT discovery under
-// a group's rendezvous channel used to be enough to mark a peer as a member
-// of that group. Membership must now only ever come from a passed
-// group-challenge (see group_challenge.go), never from discovery alone.
+// TestHandleFoundPeerDoesNotGrantGroupMembership guards against discovery
+// alone granting group membership — that must only come from a passed
+// group-challenge (group_challenge.go).
 func TestHandleFoundPeerDoesNotGrantGroupMembership(t *testing.T) {
 	dir := t.TempDir()
 	kp, err := keypair.Generate()

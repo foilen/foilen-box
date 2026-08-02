@@ -25,11 +25,9 @@ import (
 )
 
 const (
-	// RunProtocolID is a direct request/response: no signature needed, the
-	// connection is already authenticated. CompletionProtocolID is a
-	// best-effort, fire-and-forget push back to the peer that triggered a
-	// run, sent at most once with no retry/queueing — a run completion
-	// isn't guaranteed to ever be delivered.
+	// RunProtocolID is a direct request/response, already authenticated.
+	// CompletionProtocolID is a best-effort, fire-and-forget push back with no
+	// retry — completion isn't guaranteed to be delivered.
 	RunProtocolID        = protocol.ID("/foilen-box/scripts-run/1.0.0")
 	CompletionProtocolID = protocol.ID("/foilen-box/scripts-completion/1.0.0")
 	ioTimeout            = 10 * time.Second
@@ -43,11 +41,8 @@ const (
 	ActionRun model.PermissionAction = FeatureName + "/run"
 )
 
-// Run tracks a script this peer has triggered on another peer: it starts
-// "started" as soon as the remote peer acks the request, and may later move
-// to "completed"/"failed" if (and only if) a Completion push ever arrives —
-// there's no guarantee one will, since either side may go offline in
-// between.
+// Run tracks a script this peer triggered on another: starts "started" on
+// ack, may later move to "completed"/"failed" if a Completion push arrives.
 type Run struct {
 	RunID      string
 	PeerID     string
@@ -73,9 +68,8 @@ type Feature struct {
 	runs   map[string]*Run // by RunID, scripts this peer has triggered on others
 }
 
-// New builds the scripts Feature. The scripts this peer itself offers to
-// run come from the currently-applied Config.Scripts (via the Registrar),
-// so there's nothing feature-specific to configure at construction time.
+// New builds the scripts Feature. Offered scripts come from Config.Scripts
+// via the Registrar — nothing else to configure here.
 func New() *Feature {
 	return &Feature{runs: make(map[string]*Run)}
 }
@@ -100,10 +94,8 @@ func (f *Feature) RegisterHandlers(reg *realm.Registrar) {
 	reg.SetStreamHandler(CompletionProtocolID, f.handleCompletionStream())
 }
 
-// RunScript asks peer id "to" to run one of its own scripts by name. It
-// returns as soon as the peer acks that the run started (or rejects it);
-// the eventual outcome, if the peer manages to report one, arrives later
-// via the completion protocol and can be polled with ListRuns.
+// RunScript asks peer "to" to run scriptName. Returns once the peer acks (or
+// rejects); the outcome, if reported, arrives later — poll ListRuns.
 func (f *Feature) RunScript(to, scriptName string) (string, error) {
 	reg := f.registrar()
 	if reg == nil {
@@ -150,10 +142,8 @@ func (f *Feature) RunScript(to, scriptName string) (string, error) {
 	return runID, nil
 }
 
-// handleRunStream is the libp2p stream handler for RunProtocolID: check
-// permission, look up the script by name, ack synchronously, then actually
-// run the fixed command in the background — its outcome is reported
-// separately, best-effort, via sendCompletion.
+// handleRunStream checks permission, looks up the script, acks
+// synchronously, then runs it in the background; outcome reported via sendCompletion.
 func (f *Feature) handleRunStream(reg *realm.Registrar) network.StreamHandler {
 	return func(s network.Stream) {
 		defer s.Close()
@@ -223,10 +213,8 @@ func (f *Feature) handleRunStream(reg *realm.Registrar) network.StreamHandler {
 	}
 }
 
-// sendCompletion makes a single best-effort attempt to push the outcome of
-// a run back to the peer that triggered it. There's no queue/retry: if the
-// caller is offline right now, the completion is simply dropped, per the
-// no-guarantee behavior of this feature.
+// sendCompletion makes one best-effort attempt to push the run outcome back;
+// if the peer is offline, it's simply dropped.
 func sendCompletion(ctx context.Context, h host.Host, to peer.ID, completion model.ScriptCompletion) {
 	streamCtx, cancel := context.WithTimeout(ctx, ioTimeout)
 	defer cancel()
@@ -243,10 +231,8 @@ func sendCompletion(ctx context.Context, h host.Host, to peer.ID, completion mod
 	}
 }
 
-// handleCompletionStream is the libp2p stream handler for
-// CompletionProtocolID: update the matching local run record, if any. No
-// permission check: the stream is already libp2p-authenticated, and this
-// only closes the loop on a run this peer itself initiated.
+// handleCompletionStream updates the matching local run record, if any. No
+// permission check needed: this only closes the loop on a run we initiated.
 func (f *Feature) handleCompletionStream() network.StreamHandler {
 	return func(s network.Stream) {
 		defer s.Close()
@@ -274,9 +260,8 @@ func (f *Feature) handleCompletionStream() network.StreamHandler {
 	}
 }
 
-// putRun records a newly started run and opportunistically prunes anything
-// older than runRetention, since these are kept in memory only for as long
-// as the caller might still be polling for their outcome.
+// putRun records a new run and prunes anything older than runRetention —
+// runs are kept only as long as the caller might still poll for outcome.
 func (f *Feature) putRun(run *Run) {
 	f.runsMu.Lock()
 	defer f.runsMu.Unlock()

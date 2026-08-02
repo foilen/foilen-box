@@ -13,13 +13,9 @@ import (
 	"foilen-realm/model"
 )
 
-// mdnsSupported is false on Android: go-libp2p's mDNS service resolves its
-// own listen addresses via net.InterfaceAddrs(), which Android has blocked
-// for regular apps (SELinux denies the netlink route dump) since Android 11
-// — see https://github.com/golang/go/issues/40569. Every mDNS start there
-// would just fail, so it's treated as an unsupported platform rather than a
-// per-attempt failure: Start/Reconcile skip it outright regardless of
-// cfg.EnableMdns.
+// mdnsSupported is false on Android: mDNS resolves listen addrs via
+// net.InterfaceAddrs(), SELinux-blocked for regular apps since Android 11
+// (golang/go#40569). Start/Reconcile skip mDNS there regardless of cfg.EnableMdns.
 var mdnsSupported = runtime.GOOS != "android"
 
 // startGroupMdnsLocked starts the mDNS service for a single group and

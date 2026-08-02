@@ -140,11 +140,9 @@ func TestPeerCursorIsPerPeerAndPerStore(t *testing.T) {
 	}
 }
 
-// TestDeleteValueHidesEntryButKeepsTombstoneAndListSummariesRow pins the
-// per-entry delete behavior (ApplyEvent with Deleted: true against a single
-// key): the map itself still exists, still shows up in ListSummaries, just
-// with EntryCount 0. Unlike DeleteMap (see below), this does not remove the
-// map.
+// TestDeleteValueHidesEntryButKeepsTombstoneAndListSummariesRow: a per-entry
+// delete keeps the map itself (still in ListSummaries, EntryCount 0) — unlike
+// DeleteMap below, which removes it.
 func TestDeleteValueHidesEntryButKeepsTombstoneAndListSummariesRow(t *testing.T) {
 	dir := t.TempDir()
 	s, err := NewStore(dir)
@@ -170,10 +168,8 @@ func TestDeleteValueHidesEntryButKeepsTombstoneAndListSummariesRow(t *testing.T)
 	}
 }
 
-// TestDeleteMapRemovesMapFromListSummariesAndDisk verifies whole-map
-// deletion (as opposed to per-entry DeleteValue above) actually purges the
-// map: it disappears from ListSummaries entirely, and both on-disk files
-// are removed.
+// TestDeleteMapRemovesMapFromListSummariesAndDisk: whole-map deletion purges
+// it from ListSummaries and removes both on-disk files.
 func TestDeleteMapRemovesMapFromListSummariesAndDisk(t *testing.T) {
 	dir := t.TempDir()
 	s, err := NewStore(dir)

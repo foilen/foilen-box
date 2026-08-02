@@ -8,12 +8,9 @@ import (
 	"github.com/gen2brain/beeep"
 )
 
-// NotifyClick shows title/body as a desktop notification that opens url in
-// the default browser when clicked, via terminal-notifier's -open flag
-// (which itself invokes `open <url>` when the notification is clicked - no
-// in-process click handling needed). Falls back to a plain (non-clickable)
-// notification if terminal-notifier isn't installed: beeep's other macOS
-// path (osascript) has no click action support.
+// NotifyClick shows a notification that opens url when clicked, via
+// terminal-notifier's -open flag. Falls back to a plain notification if
+// terminal-notifier isn't installed (beeep's osascript path has no click support).
 func NotifyClick(title, body, url string) error {
 	path, err := exec.LookPath("terminal-notifier")
 	if err != nil {
