@@ -28,7 +28,7 @@
           modBuildPhase = ''
             go work vendor
           '';
-          vendorHash = "sha256-hZ87pZilbkFUeFGb8EX8kpO3u07ntxQgtui0as8cQxs=";
+          vendorHash = "sha256-mOQwQwMw5yNkgH7SHVPsMfR19fi6idmlrobLsgp++L8=";
 
           subPackages = [ "cmd/foilenbox" ];
 

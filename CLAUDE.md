@@ -37,6 +37,14 @@ permissions — with no dependency back on `foilen-box`).
 Single test: `go test ./internal/webserver/ -run TestServeIndexAndWebSocketRoundTrip -v` (same pattern for
 `realm/...` packages).
 
+`flake.nix` (`nix build .#default`, used by `build-nix.sh`) pins a `vendorHash` for its `go work vendor`
+step. Any change to `go.mod`/`go.sum` in either module (new/updated/removed dependency) makes that hash
+stale, and the Nix build then fails with `go: inconsistent vendoring ... is explicitly required in go.mod,
+but not marked as explicit in vendor/modules.txt` — the FOD silently produces a vendor tree missing the new
+dependency instead of erroring clearly. Fix by getting the real hash from the failed build (`nix build
+.#default.goModules --rebuild --no-link`, which reports `got: sha256-...` on hash mismatch) and pasting it
+into `vendorHash` in `flake.nix`.
+
 Run the desktop app during development: `./start-dev-desktop.sh` (also `start-dev-desktop-2.sh` for a second
 instance — useful for testing peer-to-peer Realm features locally between two local peers). Directories
 `_desktop_1/` and `_desktop_2/` are the local dev instances' persisted config/data dirs.
