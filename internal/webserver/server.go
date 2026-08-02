@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"html/template"
 	"io/fs"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -59,12 +60,13 @@ func Start(configDir string, defaultDhtMode string, hostnameOverride string) (*S
 		return nil, fmt.Errorf("failed to generate session token: %w", err)
 	}
 
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := listenForUI(a.uiConfig.Load())
 	if err != nil {
 		return nil, fmt.Errorf("failed to listen: %w", err)
 	}
 
 	port := listener.Addr().(*net.TCPAddr).Port
+	a.currentPort = port
 	if err := os.WriteFile(filepath.Join(logDir, "ui-port.txt"), []byte(strconv.Itoa(port)), 0o644); err != nil {
 		return nil, fmt.Errorf("failed to write ui-port.txt: %w", err)
 	}
@@ -96,6 +98,22 @@ func Start(configDir string, defaultDhtMode string, hostnameOverride string) (*S
 	go s.httpSrv.Serve(listener)
 
 	return s, nil
+}
+
+// listenForUI binds 127.0.0.1 on a random free port, unless cfg pins a
+// specific one (the Config tab's "Random webui port" checkbox unchecked);
+// if the pinned port can't be bound (e.g. already in use), falls back to a
+// random one rather than failing the whole server start.
+func listenForUI(cfg uiConfig) (net.Listener, error) {
+	if cfg.RandomPort || cfg.Port == 0 {
+		return net.Listen("tcp", "127.0.0.1:0")
+	}
+	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", cfg.Port))
+	if err != nil {
+		log.Printf("web UI: failed to bind pinned port %d, falling back to a random port: %v", cfg.Port, err)
+		return net.Listen("tcp", "127.0.0.1:0")
+	}
+	return listener, nil
 }
 
 // resolveConfigDir mirrors the default-directory resolution done

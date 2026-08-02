@@ -5,6 +5,7 @@ import { initGpsTab } from "./gps.js";
 import { initRealmTab } from "./realm.js";
 import { initAndroidConfigTab } from "./android-config.js";
 import { initLogsTab } from "./logs.js";
+import { initConfigTab } from "./config.js";
 import { parseHash, updateHash } from "./hash.js";
 
 class Api {
@@ -99,6 +100,7 @@ initGpsTab(isAndroid);
 initRealmTab(api, isAndroid);
 initAndroidConfigTab(isAndroid);
 initLogsTab(api);
+initConfigTab(api);
 
 if (!isAndroid) {
 	document.getElementById("gps-tab-button").remove();

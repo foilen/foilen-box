@@ -30,6 +30,7 @@
 	<a class="tab-button" data-tab="gps" id="gps-tab-button" href="#gps">GPS</a>
 	<a class="tab-button" data-tab="android-config" id="android-config-tab-button" href="#android-config">Android</a>
 	<a class="tab-button" data-tab="logs" href="#logs">Logs</a>
+	<a class="tab-button" data-tab="config" href="#config">Config</a>
 </div>
 
 <section id="realm" class="tab-panel active">
@@ -575,6 +576,20 @@
 		<label><md-checkbox id="logs-stay-to-end" checked></md-checkbox> Stay to end</label>
 	</div>
 	<pre id="logs-output" class="output">Loading...</pre>
+</section>
+
+<section id="config" class="tab-panel">
+	<div class="row">
+		<label><md-checkbox id="config-random-port" checked></md-checkbox> Random webui port</label>
+	</div>
+	<div id="config-port-row" class="row hidden">
+		<md-outlined-text-field type="number" label="Webui port" id="config-port" min="1" max="65535" step="1" style="width: 8em;"></md-outlined-text-field>
+	</div>
+	<div class="row">
+		<md-filled-tonal-button id="config-save-button">Save</md-filled-tonal-button>
+	</div>
+	<p class="hint">Changing this takes effect the next time Foilen Box is restarted.</p>
+	<pre id="config-output" class="output"></pre>
 </section>
 
 <script src="js/vendor/qrcode-generator.js"></script>

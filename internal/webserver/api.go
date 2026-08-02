@@ -42,6 +42,8 @@ type api struct {
 	configDir          string
 	logDir             string
 	hostnameOverride   string
+	uiConfig           *uiConfigService
+	currentPort        int
 	earlyConfig        *earlyconfig.Service
 	earlyAggregate     *earlyaggregate.Service
 	realmConfig        *realmconfig.Service
@@ -86,6 +88,15 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 		return nil, err
 	}
 
+	uiDir, err := resolveConfigDir(configDir)
+	if err != nil {
+		return nil, err
+	}
+	uiConfigSvc, err := newUIConfigService(uiDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize web UI config: %w", err)
+	}
+
 	realmPeerStore, err := realmpeers.New(realmConfigSvc.Dir())
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize realm peer store: %w", err)
@@ -128,6 +139,7 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 	a = &api{
 		configDir:          configDir,
 		hostnameOverride:   hostnameOverride,
+		uiConfig:           uiConfigSvc,
 		earlyConfig:        configService,
 		earlyAggregate:     earlyaggregate.New(earlyclient.New(), configService),
 		realmConfig:        realmConfigSvc,
@@ -258,6 +270,9 @@ var handlers = map[string]handlerFunc{
 	"troubleshooting.run": handleTroubleshootingRun,
 	"logs.read":           handleLogsRead,
 	"logs.clear":          handleLogsClear,
+
+	"config.loadConfig": handleConfigLoadConfig,
+	"config.saveConfig": handleConfigSaveConfig,
 
 	"early.loadConfig": handleEarlyLoadConfig,
 	"early.saveConfig": handleEarlySaveConfig,
