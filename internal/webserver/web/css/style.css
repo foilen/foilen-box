@@ -213,6 +213,17 @@ h3, h4 {
 	color: var(--md-on-surface);
 }
 
+/* #realm-output shares its tab-panel with several tall subtab panels
+ * (tables, forms), unlike the other .output boxes which are their tab's only
+ * content. A plain flex:1;min-height:0 there lets it get squeezed down to a
+ * sliver whenever the active subtab is tall, making it hard to scroll. Give
+ * it its own guaranteed, capped height instead so it always stays usable. */
+#realm-output {
+	flex: 0 0 auto;
+	min-height: 6em;
+	max-height: 16em;
+}
+
 .row {
 	display: flex;
 	gap: 0.5em;
