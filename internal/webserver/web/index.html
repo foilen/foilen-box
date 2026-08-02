@@ -391,7 +391,7 @@
 			group's private key automatically receives and stays in sync with its maps.</p>
 		<div class="table-scroll">
 			<table id="realm-maps-table">
-				<thead><tr><th>Group</th><th>Store Name</th><th>Entries</th><th>Updated</th><th>Auto-delete (hours)</th><th></th></tr></thead>
+				<thead><tr><th>Group</th><th>Store Name</th><th>Entries</th><th>Updated</th><th>Auto-delete (hours)</th><th>Encrypted</th><th></th></tr></thead>
 				<tbody id="realm-maps-tbody"></tbody>
 			</table>
 		</div>
@@ -401,21 +401,30 @@
 			</label>
 			<md-outlined-text-field label="Store name" id="realm-new-map-store-name"></md-outlined-text-field>
 			<md-outlined-text-field label="Auto-delete entries (hours, optional)" type="number" id="realm-new-map-auto-delete-hours"></md-outlined-text-field>
+			<label>Encrypt to identity (optional):
+				<md-outlined-select id="realm-new-map-identity">
+					<md-select-option value=""><div slot="headline">None (unencrypted)</div></md-select-option>
+				</md-outlined-select>
+			</label>
 			<md-filled-tonal-button id="realm-create-map-button">Create Map</md-filled-tonal-button>
 		</div>
 
 		<div id="realm-map-detail" class="hidden">
 			<h3 id="realm-map-detail-title">Map</h3>
-			<div class="table-scroll">
-				<table id="realm-map-detail-table">
-					<thead><tr><th>Key</th><th>Value</th><th></th></tr></thead>
-					<tbody id="realm-map-detail-tbody"></tbody>
-				</table>
-			</div>
-			<div class="row">
-				<md-outlined-text-field label="Key" id="realm-map-new-key"></md-outlined-text-field>
-				<md-outlined-text-field label="Value" id="realm-map-new-value"></md-outlined-text-field>
-				<md-filled-tonal-button id="realm-map-add-value-button">Set Value</md-filled-tonal-button>
+			<p id="realm-map-detail-locked" class="hint hidden">This map is encrypted and the identity required to
+				decrypt it isn't available locally, but its (opaque) entries are still being replicated.</p>
+			<div id="realm-map-detail-unlocked">
+				<div class="table-scroll">
+					<table id="realm-map-detail-table">
+						<thead><tr><th>Key</th><th>Value</th><th></th></tr></thead>
+						<tbody id="realm-map-detail-tbody"></tbody>
+					</table>
+				</div>
+				<div class="row">
+					<md-outlined-text-field label="Key" id="realm-map-new-key"></md-outlined-text-field>
+					<md-outlined-text-field label="Value" id="realm-map-new-value"></md-outlined-text-field>
+					<md-filled-tonal-button id="realm-map-add-value-button">Set Value</md-filled-tonal-button>
+				</div>
 			</div>
 			<md-text-button id="realm-map-close-detail-button">Close</md-text-button>
 		</div>

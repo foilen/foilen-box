@@ -13,10 +13,13 @@ export function initRealmMaps(api, output, renderConfig) {
 	const groupSelect = document.getElementById("realm-new-map-group");
 	const storeNameInput = document.getElementById("realm-new-map-store-name");
 	const autoDeleteHoursInput = document.getElementById("realm-new-map-auto-delete-hours");
+	const identitySelect = document.getElementById("realm-new-map-identity");
 	const createButton = document.getElementById("realm-create-map-button");
 
 	const detail = document.getElementById("realm-map-detail");
 	const detailTitle = document.getElementById("realm-map-detail-title");
+	const detailLocked = document.getElementById("realm-map-detail-locked");
+	const detailUnlocked = document.getElementById("realm-map-detail-unlocked");
 	const detailBody = document.getElementById("realm-map-detail-tbody");
 	const newKeyInput = document.getElementById("realm-map-new-key");
 	const newValueInput = document.getElementById("realm-map-new-value");
@@ -24,7 +27,13 @@ export function initRealmMaps(api, output, renderConfig) {
 	const closeDetailButton = document.getElementById("realm-map-close-detail-button");
 
 	let groups = [];
+	let identities = [];
 	let selected = null; // { groupId, storeName } | null
+
+	function identityLabel(identityId) {
+		const identity = identities.find((i) => i.id === identityId);
+		return identity ? identity.name : identityId;
+	}
 
 	function renderGroupOptions() {
 		groupSelect.innerHTML = "";
@@ -33,6 +42,20 @@ export function initRealmMaps(api, output, renderConfig) {
 			option.value = group.id;
 			option.innerHTML = `<div slot="headline">${formatGroupLabel(group)}</div>`;
 			groupSelect.appendChild(option);
+		}
+	}
+
+	function renderIdentityOptions() {
+		identitySelect.innerHTML = "";
+		const noneOption = document.createElement("md-select-option");
+		noneOption.value = "";
+		noneOption.innerHTML = `<div slot="headline">None (unencrypted)</div>`;
+		identitySelect.appendChild(noneOption);
+		for (const identity of identities) {
+			const option = document.createElement("md-select-option");
+			option.value = identity.id;
+			option.innerHTML = `<div slot="headline">${identity.name}</div>`;
+			identitySelect.appendChild(option);
 		}
 	}
 
@@ -47,6 +70,7 @@ export function initRealmMaps(api, output, renderConfig) {
 				["Entries", m.entryCount],
 				["Updated", m.updatedAtUnixMillis ? new Date(m.updatedAtUnixMillis).toLocaleString() : "never"],
 				["Auto-delete (hours)", m.autoDeleteEntriesHours || "never"],
+				["Encrypted", m.encryptionIdentityId ? `🔒 ${identityLabel(m.encryptionIdentityId)}` : "-"],
 			];
 			for (const [label, value] of cells) {
 				const cell = document.createElement("td");
@@ -87,7 +111,16 @@ export function initRealmMaps(api, output, renderConfig) {
 	}
 
 	function renderDetail(map) {
-		detailTitle.textContent = `Map: ${map.storeName}`;
+		const locked = map.encrypted && !map.encryptionAvailable;
+		detailTitle.textContent = locked
+			? `Map: ${map.storeName} 🔒 (requires identity ${identityLabel(map.encryptionIdentityId)})`
+			: map.encrypted
+				? `Map: ${map.storeName} 🔒 ${identityLabel(map.encryptionIdentityId)}`
+				: `Map: ${map.storeName}`;
+		detailLocked.classList.toggle("hidden", !locked);
+		detailUnlocked.classList.toggle("hidden", locked);
+		if (locked) return;
+
 		detailBody.innerHTML = "";
 		const keys = Object.keys(map.entries).sort();
 		for (const key of keys) {
@@ -160,7 +193,8 @@ export function initRealmMaps(api, output, renderConfig) {
 			const storeName = storeNameInput.value.trim();
 			const autoDeleteEntriesHoursRaw = autoDeleteHoursInput.value.trim();
 			const autoDeleteEntriesHours = autoDeleteEntriesHoursRaw ? Number(autoDeleteEntriesHoursRaw) : 0;
-			console.log("[action] create map", { groupId, storeName, autoDeleteEntriesHours });
+			const encryptToIdentityId = identitySelect.value;
+			console.log("[action] create map", { groupId, storeName, autoDeleteEntriesHours, encryptToIdentityId });
 			if (!groupId) {
 				output.textContent = "No group selected — create a group first.";
 				return;
@@ -169,10 +203,11 @@ export function initRealmMaps(api, output, renderConfig) {
 				output.textContent = "Please enter a store name.";
 				return;
 			}
-			const result = await api.call("realm.createMap", { groupId, storeName, autoDeleteEntriesHours });
+			const result = await api.call("realm.createMap", { groupId, storeName, autoDeleteEntriesHours, encryptToIdentityId });
 			renderMaps(result.maps);
 			storeNameInput.value = "";
 			autoDeleteHoursInput.value = "";
+			identitySelect.value = "";
 			output.textContent = `Map "${storeName}" created.`;
 		})
 	);
@@ -206,7 +241,9 @@ export function initRealmMaps(api, output, renderConfig) {
 	return {
 		onConfigUpdate: (cfg) => {
 			groups = cfg.groups || [];
+			identities = cfg.identities || [];
 			renderGroupOptions();
+			renderIdentityOptions();
 		},
 		onSubtabActivated: refreshMaps,
 	};

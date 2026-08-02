@@ -78,6 +78,11 @@ type featurePair struct {
 
 func newConnectedFeaturePair(t *testing.T) *featurePair {
 	t.Helper()
+	return newConnectedFeaturePairWithIdentities(t, nil, nil)
+}
+
+func newConnectedFeaturePairWithIdentities(t *testing.T, identities1, identities2 []model.Identity) *featurePair {
+	t.Helper()
 
 	group := testGroup(t)
 	kp1, err := keypair.Generate()
@@ -113,8 +118,8 @@ func newConnectedFeaturePair(t *testing.T) *featurePair {
 	e1.Register(f1)
 	e2.Register(f2)
 
-	cfg1 := model.Config{PeerID: kp1, DhtMode: model.DhtModeClient, Groups: []model.Group{group}}
-	cfg2 := model.Config{PeerID: kp2, DhtMode: model.DhtModeClient, Groups: []model.Group{group}}
+	cfg1 := model.Config{PeerID: kp1, DhtMode: model.DhtModeClient, Groups: []model.Group{group}, Identities: identities1}
+	cfg2 := model.Config{PeerID: kp2, DhtMode: model.DhtModeClient, Groups: []model.Group{group}, Identities: identities2}
 	if err := e1.Start(cfg1); err != nil {
 		t.Fatalf("e1.Start: %v", err)
 	}
@@ -265,7 +270,7 @@ func TestPeerDisconnectedClearsIncomingSubscriptions(t *testing.T) {
 func TestRemovingRealmMapsKeyTriggersUnsubscribeAndLocalPurgeOnSubscriber(t *testing.T) {
 	p := newConnectedFeaturePair(t)
 
-	if err := p.f1.CreateMap(p.groupID, "mystore", model.RealmMapConfig{}); err != nil {
+	if err := p.f1.CreateMap(p.groupID, "mystore", model.RealmMapConfig{}, ""); err != nil {
 		t.Fatalf("CreateMap: %v", err)
 	}
 	if err := p.f1.SetValue(p.groupID, "mystore", "k1", "v1"); err != nil {
@@ -299,4 +304,119 @@ func TestRemovingRealmMapsKeyTriggersUnsubscribeAndLocalPurgeOnSubscriber(t *tes
 		}
 		return true
 	})
+}
+
+func testIdentity(t *testing.T) model.Identity {
+	t.Helper()
+	kp, err := keypair.Generate()
+	if err != nil {
+		t.Fatalf("keypair.Generate: %v", err)
+	}
+	return model.Identity{Name: "identity1", KeyPair: kp}
+}
+
+func TestEncryptedMapRoundTrip(t *testing.T) {
+	identity := testIdentity(t)
+	// f1 does not hold the identity; f2 does.
+	p := newConnectedFeaturePairWithIdentities(t, nil, []model.Identity{identity})
+
+	if err := p.f1.CreateMap(p.groupID, "secrets", model.RealmMapConfig{}, identity.KeyPair.ID); err != nil {
+		t.Fatalf("CreateMap: %v", err)
+	}
+
+	// f1 (no identity) cannot write meaningful values to an encrypted map.
+	if err := p.f1.SetValue(p.groupID, "secrets", "apiKey", "s3cr3t"); err == nil {
+		t.Fatal("expected SetValue to fail without the target identity available locally")
+	}
+
+	// Drive f2's subscribe to f1 (see
+	// TestRemovingRealmMapsKeyTriggersUnsubscribeAndLocalPurgeOnSubscriber)
+	// so f2 learns the map's (unencrypted) _realmMaps config -- including
+	// that it's encrypted -- before writing to it.
+	p.f2.onPeerAvailable(p.f2.registrar(), p.peerID1, p.group)
+	waitFor(t, 2*time.Second, func() bool {
+		return p.f2.configForStore(p.groupID, "secrets").Encryption != nil
+	})
+
+	// f2 (holds identity) can write.
+	if err := p.f2.SetValue(p.groupID, "secrets", "apiKey", "s3cr3t"); err != nil {
+		t.Fatalf("SetValue: %v", err)
+	}
+
+	// Drive f1's subscribe to f2 so the (opaque, encrypted) entry actually
+	// replicates back to f1.
+	p.f1.onPeerAvailable(p.f1.registrar(), p.peerID2, p.group)
+	waitFor(t, 2*time.Second, func() bool {
+		return len(p.f1.store.GetMap(p.groupID, "secrets").Entries) > 0
+	})
+
+	// f1 sees the map exists (encrypted) but can't decrypt it.
+	rm1, encrypted1, available1 := p.f1.GetMap(p.groupID, "secrets")
+	if !encrypted1 {
+		t.Fatal("f1: expected map to be reported as encrypted")
+	}
+	if available1 {
+		t.Fatal("f1: expected map to be unavailable (no identity)")
+	}
+	if len(rm1.Entries) != 0 {
+		t.Fatalf("f1: expected no readable entries, got %+v", rm1.Entries)
+	}
+
+	// f1's raw local copy must be opaque: neither the real key nor the real
+	// value appear anywhere in storage.
+	raw := p.f1.store.GetMap(p.groupID, "secrets")
+	if len(raw.Entries) == 0 {
+		t.Fatal("f1: expected the (opaque) entry to have replicated")
+	}
+	for k, e := range raw.Entries {
+		if k == "apiKey" {
+			t.Fatalf("real key %q leaked into storage key", k)
+		}
+		if e.Value == "s3cr3t" {
+			t.Fatalf("real value leaked into storage: %+v", e)
+		}
+	}
+
+	// f2 (holds identity) can decrypt.
+	rm2, encrypted2, available2 := p.f2.GetMap(p.groupID, "secrets")
+	if !encrypted2 || !available2 {
+		t.Fatalf("f2: expected encrypted=true available=true, got encrypted=%v available=%v", encrypted2, available2)
+	}
+	if got := rm2.Entries["apiKey"].Value; got != "s3cr3t" {
+		t.Fatalf("f2: decrypted value = %q, want s3cr3t", got)
+	}
+}
+
+func TestEncryptedMapRejectsTamperedIdentitySignature(t *testing.T) {
+	identity := testIdentity(t)
+	p := newConnectedFeaturePairWithIdentities(t, nil, []model.Identity{identity})
+
+	if err := p.f2.CreateMap(p.groupID, "secrets", model.RealmMapConfig{}, identity.KeyPair.ID); err != nil {
+		t.Fatalf("CreateMap: %v", err)
+	}
+	if err := p.f2.SetValue(p.groupID, "secrets", "apiKey", "s3cr3t"); err != nil {
+		t.Fatalf("SetValue: %v", err)
+	}
+
+	rm := p.f2.store.GetMap(p.groupID, "secrets")
+	var storageKey string
+	var entry model.MapEntry
+	for k, e := range rm.Entries {
+		storageKey, entry = k, e
+	}
+	if storageKey == "" {
+		t.Fatal("expected exactly one entry")
+	}
+	entry.IdentitySignature = "dGFtcGVyZWQ=" // "tampered", base64
+	if _, err := p.f2.store.ApplyEvent(p.groupID, "secrets", storageKey, entry); err != nil {
+		t.Fatal(err)
+	}
+
+	rm2, encrypted, available := p.f2.GetMap(p.groupID, "secrets")
+	if !encrypted || !available {
+		t.Fatalf("expected encrypted=true available=true, got encrypted=%v available=%v", encrypted, available)
+	}
+	if len(rm2.Entries) != 0 {
+		t.Fatalf("expected the tampered entry to be dropped, got %+v", rm2.Entries)
+	}
 }

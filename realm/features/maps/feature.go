@@ -373,13 +373,92 @@ func (f *Feature) ListSummaries() []model.RealmMapSummary {
 			continue
 		}
 		summaries[i].AutoDeleteEntriesHours = cfg.AutoDeleteEntriesHours
+		if cfg.Encryption != nil {
+			summaries[i].EncryptionIdentityID = cfg.Encryption.IdentityID
+		}
 	}
 	return summaries
 }
 
-// GetMap returns groupID/storeName's current entries.
-func (f *Feature) GetMap(groupID, storeName string) model.RealmMap {
-	return f.store.GetMap(groupID, storeName)
+// EncryptionIdentityID returns the identityId groupID/storeName is
+// encrypted to, or "" if it isn't encrypted.
+func (f *Feature) EncryptionIdentityID(groupID, storeName string) string {
+	cfg := f.configForStore(groupID, storeName)
+	if cfg.Encryption == nil {
+		return ""
+	}
+	return cfg.Encryption.IdentityID
+}
+
+// configForStore returns storeName's RealmMapConfig within groupID's
+// _realmMaps system store (see SystemConfigStoreName), or a zero-value
+// config if none is set yet (e.g. storeName is itself SystemConfigStoreName,
+// or SetValue was somehow called before CreateMap).
+func (f *Feature) configForStore(groupID, storeName string) model.RealmMapConfig {
+	cfgMap := f.store.GetMap(groupID, SystemConfigStoreName)
+	entry, ok := cfgMap.Entries[storeName]
+	if !ok {
+		return model.RealmMapConfig{}
+	}
+	var cfg model.RealmMapConfig
+	if err := json.Unmarshal([]byte(entry.Value), &cfg); err != nil {
+		return model.RealmMapConfig{}
+	}
+	return cfg
+}
+
+// GetMap returns groupID/storeName's current entries. For an encrypted map
+// (see RealmMapConfig.Encryption), entries are only decrypted -- and
+// returned keyed by their real keys, with plaintext values -- if the target
+// identity is configured locally; encrypted reports whether the map is
+// encrypted at all, and available reports whether decryption was actually
+// possible. encrypted&&!available means the caller can see the map exists
+// (and is replicating/copying it, per the group signature) but not read it.
+func (f *Feature) GetMap(groupID, storeName string) (rm model.RealmMap, encrypted bool, available bool) {
+	raw := f.store.GetMap(groupID, storeName)
+
+	cfg := f.configForStore(groupID, storeName)
+	if cfg.Encryption == nil {
+		return raw, false, true
+	}
+
+	locked := model.RealmMap{GroupID: groupID, StoreName: storeName, Entries: map[string]model.MapEntry{}}
+
+	reg := f.registrar()
+	if reg == nil {
+		return locked, true, false
+	}
+	identity, ok := findIdentityByID(reg.Config().Identities, cfg.Encryption.IdentityID)
+	if !ok {
+		return locked, true, false
+	}
+	identityPriv, err := keypair.PrivateKey(identity.KeyPair)
+	if err != nil {
+		log.Printf("realm maps: failed to load identity %q private key: %v", identity.Name, err)
+		return locked, true, false
+	}
+	symmetricKey, err := openSymmetricKey(cfg.Encryption.EncryptedSymmetricKey, identityPriv)
+	if err != nil {
+		log.Printf("realm maps: failed to unlock symmetric key for %s/%s: %v", groupID, storeName, err)
+		return locked, true, false
+	}
+	identityPub := identityPriv.GetPublic()
+
+	decrypted := model.RealmMap{GroupID: groupID, StoreName: storeName, Entries: map[string]model.MapEntry{}}
+	for storageKey, entry := range raw.Entries {
+		ev := model.MapEvent{GroupID: groupID, StoreName: storeName, Key: storageKey, Value: entry.Value, Deleted: entry.Deleted, UpdatedAtUnixMillis: entry.UpdatedAtUnixMillis, OriginPeerID: entry.OriginPeerID, Nonce: entry.Nonce, IdentitySignature: entry.IdentitySignature}
+		if !verifyEncryptedEvent(identityPub, ev) {
+			log.Printf("realm maps: dropping entry with invalid identity signature in %s/%s", groupID, storeName)
+			continue
+		}
+		realKey, value, err := decryptEntry(entry.Value, entry.Nonce, symmetricKey)
+		if err != nil {
+			log.Printf("realm maps: failed to decrypt entry in %s/%s: %v", groupID, storeName, err)
+			continue
+		}
+		decrypted.Entries[realKey] = model.MapEntry{Value: value, UpdatedAtUnixMillis: entry.UpdatedAtUnixMillis, OriginPeerID: entry.OriginPeerID}
+	}
+	return decrypted, true, true
 }
 
 // CreateMap ensures an (initially empty) map exists locally for
@@ -387,9 +466,27 @@ func (f *Feature) GetMap(groupID, storeName string) model.RealmMap {
 // and writes config into _realmMaps — which is what makes the store show up
 // as a live key other peers watching this group will subscribe to.
 // Re-creating an existing map updates its config.
-func (f *Feature) CreateMap(groupID, storeName string, config model.RealmMapConfig) error {
+//
+// If encryptToIdentityID is non-empty, the map's entries become
+// confidential to that identity: a random symmetric key is generated and
+// sealed to the identity's public key, which is derivable from
+// encryptToIdentityID alone (see identityPubKeyFromID) — the caller doesn't
+// need to hold that identity locally just to create the map, only to later
+// write to or read it.
+func (f *Feature) CreateMap(groupID, storeName string, config model.RealmMapConfig, encryptToIdentityID string) error {
 	if _, err := f.groupFor(groupID); err != nil {
 		return err
+	}
+	if encryptToIdentityID != "" {
+		pub, err := identityPubKeyFromID(encryptToIdentityID)
+		if err != nil {
+			return err
+		}
+		encryptedSymmetricKey, _, err := sealSymmetricKey(pub)
+		if err != nil {
+			return err
+		}
+		config.Encryption = &model.MapEncryptionConfig{IdentityID: encryptToIdentityID, EncryptedSymmetricKey: encryptedSymmetricKey}
 	}
 	if err := f.store.CreateMap(groupID, storeName); err != nil {
 		return err
@@ -438,11 +535,19 @@ func (f *Feature) mutate(groupID, storeName, key string, entry model.MapEntry) e
 	entry.UpdatedAtUnixMillis = time.Now().UnixMilli()
 	entry.OriginPeerID = reg.Config().PeerID.ID
 
-	if _, err := f.store.ApplyEvent(groupID, storeName, key, entry); err != nil {
+	storageKey := key
+	if cfg := f.configForStore(groupID, storeName); cfg.Encryption != nil {
+		storageKey, entry, err = f.encryptMutation(reg, cfg.Encryption, groupID, storeName, key, entry)
+		if err != nil {
+			return err
+		}
+	}
+
+	if _, err := f.store.ApplyEvent(groupID, storeName, storageKey, entry); err != nil {
 		return err
 	}
 
-	ev := model.MapEvent{GroupID: groupID, StoreName: storeName, Key: key, Value: entry.Value, Deleted: entry.Deleted, UpdatedAtUnixMillis: entry.UpdatedAtUnixMillis, OriginPeerID: entry.OriginPeerID}
+	ev := model.MapEvent{GroupID: groupID, StoreName: storeName, Key: storageKey, Value: entry.Value, Deleted: entry.Deleted, UpdatedAtUnixMillis: entry.UpdatedAtUnixMillis, OriginPeerID: entry.OriginPeerID, Nonce: entry.Nonce, IdentitySignature: entry.IdentitySignature}
 	env, err := signEvent(group, ev)
 	if err != nil {
 		return err
@@ -450,6 +555,52 @@ func (f *Feature) mutate(groupID, storeName, key string, entry model.MapEntry) e
 	log.Printf("realm maps: local write to %s/%s key=%q deleted=%v", group.Name, storeName, key, entry.Deleted)
 	f.broadcast(reg, group, storeName, env)
 	return nil
+}
+
+// encryptMutation transforms a plaintext mutation (real key, and for
+// non-deletes a real Value) for an encrypted map into its wire form: the
+// storage key becomes hashKey(identityID, key) so the real key never leaves
+// this function, Value becomes ciphertext (a delete tombstone carries no
+// Value — there's nothing about it worth hiding), and the result is signed
+// with the target identity's private key. Requires that identity to be
+// configured locally — without it, writing to an encrypted map isn't
+// possible, matching that only identity holders can meaningfully write.
+func (f *Feature) encryptMutation(reg *realm.Registrar, enc *model.MapEncryptionConfig, groupID, storeName, key string, entry model.MapEntry) (string, model.MapEntry, error) {
+	identity, ok := findIdentityByID(reg.Config().Identities, enc.IdentityID)
+	if !ok {
+		return "", model.MapEntry{}, fmt.Errorf("realm maps: %s/%s is encrypted to identity %q, which is not available locally", groupID, storeName, enc.IdentityID)
+	}
+	identityPriv, err := keypair.PrivateKey(identity.KeyPair)
+	if err != nil {
+		return "", model.MapEntry{}, fmt.Errorf("realm maps: failed to load identity %q private key: %w", identity.Name, err)
+	}
+
+	storageKey := hashKey(enc.IdentityID, key)
+
+	if entry.Deleted {
+		entry.Value = ""
+		entry.Nonce = ""
+	} else {
+		symmetricKey, err := openSymmetricKey(enc.EncryptedSymmetricKey, identityPriv)
+		if err != nil {
+			return "", model.MapEntry{}, fmt.Errorf("realm maps: failed to unlock symmetric key for %s/%s: %w", groupID, storeName, err)
+		}
+		ciphertext, nonce, err := encryptEntry(key, entry.Value, symmetricKey)
+		if err != nil {
+			return "", model.MapEntry{}, err
+		}
+		entry.Value = ciphertext
+		entry.Nonce = nonce
+	}
+
+	ev := model.MapEvent{GroupID: groupID, StoreName: storeName, Key: storageKey, Value: entry.Value, Deleted: entry.Deleted, UpdatedAtUnixMillis: entry.UpdatedAtUnixMillis, OriginPeerID: entry.OriginPeerID, Nonce: entry.Nonce}
+	sig, err := signEncryptedEvent(identityPriv, ev)
+	if err != nil {
+		return "", model.MapEntry{}, err
+	}
+	entry.IdentitySignature = sig
+
+	return storageKey, entry, nil
 }
 
 // groupFor returns the locally-configured group whose public id is
@@ -596,7 +747,7 @@ func (f *Feature) applyVerified(group model.Group, env model.MapEventEnvelope) {
 		log.Printf("realm maps: dropping event for group %q with invalid signature", env.GroupID)
 		return
 	}
-	entry := model.MapEntry{Value: env.Value, Deleted: env.Deleted, UpdatedAtUnixMillis: env.UpdatedAtUnixMillis, OriginPeerID: env.OriginPeerID}
+	entry := model.MapEntry{Value: env.Value, Deleted: env.Deleted, UpdatedAtUnixMillis: env.UpdatedAtUnixMillis, OriginPeerID: env.OriginPeerID, Nonce: env.Nonce, IdentitySignature: env.IdentitySignature}
 	if _, err := f.store.ApplyEvent(env.GroupID, env.StoreName, env.Key, entry); err != nil {
 		log.Printf("realm maps: failed to persist event for group %q: %v", env.GroupID, err)
 		return
@@ -856,4 +1007,15 @@ func findGroupByName(groups []model.Group, name string) (model.Group, bool) {
 		}
 	}
 	return model.Group{}, false
+}
+
+// findIdentityByID returns the locally-configured identity whose public id
+// (KeyPair.ID) matches id.
+func findIdentityByID(identities []model.Identity, id string) (model.Identity, bool) {
+	for _, idn := range identities {
+		if idn.KeyPair.ID == id {
+			return idn, true
+		}
+	}
+	return model.Identity{}, false
 }

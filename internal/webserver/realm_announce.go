@@ -191,7 +191,7 @@ func (a *realmAnnounce) RunPeriodic(reg *realm.Registrar) {
 // creates stores implicitly). Doesn't stomp an existing entry, so a user
 // override (or a default already seeded by another peer) is left alone.
 func (a *realmAnnounce) seedCommonConfig(group realmmodel.Group) {
-	cfgMap := a.mapsFeature.GetMap(group.KeyPair.ID, realmmaps.SystemConfigStoreName)
+	cfgMap, _, _ := a.mapsFeature.GetMap(group.KeyPair.ID, realmmaps.SystemConfigStoreName)
 	if _, ok := cfgMap.Entries[announceStoreName]; ok {
 		return
 	}
@@ -256,7 +256,7 @@ func (a *realmAnnounce) consumePeerInfo(reg *realm.Registrar, cfg realmmodel.Con
 		return
 	}
 	for _, group := range cfg.Groups {
-		rm := a.mapsFeature.GetMap(group.KeyPair.ID, announceStoreName)
+		rm, _, _ := a.mapsFeature.GetMap(group.KeyPair.ID, announceStoreName)
 		for key, entry := range rm.Entries {
 			if len(key) <= len(peersKeyPrefix) || key[:len(peersKeyPrefix)] != peersKeyPrefix {
 				continue

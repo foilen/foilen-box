@@ -6,11 +6,22 @@ import "fmt"
 // externally by RealmMap.Entries. Deleted is a tombstone (rather than
 // simply removing the key) so a delete can itself be replicated to peers
 // and merged with last-write-wins, the same as any other mutation.
+//
+// Nonce and IdentitySignature are populated only when the owning map is
+// encrypted (see RealmMapConfig.Encryption): Value is then ciphertext
+// (base64) of a {key,value} pair rather than the plaintext value, the
+// external key (RealmMap.Entries' key) is hash(identityId+realKey) rather
+// than the real key, Nonce (base64) is the secretbox nonce used to encrypt
+// it, and IdentitySignature (base64) is an Ed25519 signature made with the
+// target identity's private key over EncryptedSigningBytes — proving the
+// entry was produced by an identity holder, not just any group member.
 type MapEntry struct {
 	Value               string `json:"value"`
 	Deleted             bool   `json:"deleted,omitempty"`
 	UpdatedAtUnixMillis int64  `json:"updatedAtUnixMillis"`
 	OriginPeerID        string `json:"originPeerId"`
+	Nonce               string `json:"nonce,omitempty"`
+	IdentitySignature   string `json:"identitySignature,omitempty"`
 }
 
 // RealmMap is one shared key-value store: GroupID is the public id of the
@@ -25,9 +36,25 @@ type RealmMap struct {
 
 // RealmMapConfig is the per-map settings blob stored as the Value of each
 // entry in the reserved _realmMaps config store (see
-// features/maps.SystemConfigStoreName) — one entry per map name.
+// features/maps.SystemConfigStoreName) — one entry per map name. Like the
+// rest of _realmMaps, this is never itself encrypted: every group member
+// can see whether a map is encrypted and by which identity, without being
+// able to read it.
 type RealmMapConfig struct {
-	AutoDeleteEntriesHours int64 `json:"autoDeleteEntriesHours,omitempty"`
+	AutoDeleteEntriesHours int64                `json:"autoDeleteEntriesHours,omitempty"`
+	Encryption             *MapEncryptionConfig `json:"encryption,omitempty"`
+}
+
+// MapEncryptionConfig makes a map's entries confidential to one Identity
+// (see model.Identity): IdentityID is that identity's KeyPair.ID, and
+// EncryptedSymmetricKey is the map's random 32-byte symmetric key, sealed
+// (anonymous public-key encryption, libsodium crypto_box_seal-style) to that
+// identity's public key — base64 of the ephemeral X25519 public key (32
+// bytes) followed by the sealed-box ciphertext. Only a peer holding the
+// identity's private key can recover the symmetric key.
+type MapEncryptionConfig struct {
+	IdentityID            string `json:"identityId"`
+	EncryptedSymmetricKey string `json:"encryptedSymmetricKey"`
 }
 
 // RealmMapSummary is one list-view row: a (GroupID, StoreName) pair with
@@ -41,11 +68,13 @@ type RealmMapSummary struct {
 	EntryCount             int    `json:"entryCount"`
 	UpdatedAtUnixMillis    int64  `json:"updatedAtUnixMillis"`
 	AutoDeleteEntriesHours int64  `json:"autoDeleteEntriesHours,omitempty"`
+	EncryptionIdentityID   string `json:"encryptionIdentityId,omitempty"`
 }
 
 // MapEvent is one mutation, flat/list-shaped (as opposed to MapEntry, which
 // is keyed externally by a RealmMap's Entries) — the on-disk shape of each
 // map's event-log file and the unsigned payload EventsSinceForStore returns.
+// See MapEntry's doc for Nonce/IdentitySignature.
 type MapEvent struct {
 	GroupID             string `json:"groupId"`
 	StoreName           string `json:"storeName"`
@@ -54,15 +83,32 @@ type MapEvent struct {
 	Deleted             bool   `json:"deleted,omitempty"`
 	UpdatedAtUnixMillis int64  `json:"updatedAtUnixMillis"`
 	OriginPeerID        string `json:"originPeerId"`
+	Nonce               string `json:"nonce,omitempty"`
+	IdentitySignature   string `json:"identitySignature,omitempty"`
 }
 
-// SigningBytes returns the canonical bytes signed/verified for the event.
+// SigningBytes returns the canonical bytes signed/verified with the group's
+// key. It includes Nonce and IdentitySignature (empty string for
+// unencrypted entries) so the group signature transitively binds them too —
+// neither can be swapped onto a different event without invalidating the
+// group signature.
 func (e MapEvent) SigningBytes() []byte {
 	deleted := "0"
 	if e.Deleted {
 		deleted = "1"
 	}
-	return []byte(fmt.Sprintf("%s|%s|%s|%s|%s|%d|%s", e.GroupID, e.StoreName, e.Key, e.Value, deleted, e.UpdatedAtUnixMillis, e.OriginPeerID))
+	return []byte(fmt.Sprintf("%s|%s|%s|%s|%s|%s|%d|%s|%s", e.GroupID, e.StoreName, e.Key, e.Value, e.Nonce, deleted, e.UpdatedAtUnixMillis, e.OriginPeerID, e.IdentitySignature))
+}
+
+// EncryptedSigningBytes returns the canonical bytes signed/verified with an
+// identity's key for an encrypted entry: the same as SigningBytes minus
+// IdentitySignature, which doesn't exist yet at the point the identity signs.
+func (e MapEvent) EncryptedSigningBytes() []byte {
+	deleted := "0"
+	if e.Deleted {
+		deleted = "1"
+	}
+	return []byte(fmt.Sprintf("%s|%s|%s|%s|%s|%s|%d|%s", e.GroupID, e.StoreName, e.Key, e.Value, e.Nonce, deleted, e.UpdatedAtUnixMillis, e.OriginPeerID))
 }
 
 // MapEventEnvelope is a MapEvent plus its signature (made with the group's
