@@ -185,7 +185,15 @@ func (a *api) importPushedIdentity(name string, kp realmmodel.KeyPair) error {
 	_, err := a.updateRealmConfig(func(c *realmmodel.Config) {
 		c.Identities = append(c.Identities, realmmodel.Identity{Name: unique, KeyPair: kp})
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	if unique != name {
+		log.Printf("realm identity: saved pushed identity %q as %q (name already in use)", name, unique)
+	} else {
+		log.Printf("realm identity: saved pushed identity %q", unique)
+	}
+	return nil
 }
 
 // resolveHostname returns override if set, falling back to the OS-reported

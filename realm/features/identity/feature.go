@@ -171,6 +171,7 @@ func (f *Feature) handlePushStream(reg *realm.Registrar) network.StreamHandler {
 			return
 		}
 
+		log.Printf("realm identity: imported identity %q pushed from %s", req.Name, remote)
 		_ = json.NewEncoder(s).Encode(pushAck{Imported: true})
 	}
 }

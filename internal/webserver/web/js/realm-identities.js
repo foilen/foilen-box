@@ -1,10 +1,15 @@
 import { report, formatPeerLabel, syncList, syncCells } from "./util.js";
 import { initQrModal, initScanModal } from "./realm-qr.js";
 
+const IDENTITIES_POLL_INTERVAL_MS = 5000;
+
 // initRealmIdentities wires the Identities subtab: listing, generating,
 // importing, exporting, deleting, and pushing standalone identities.
 // renderConfig is the top-level fan-out (see realm.js) called after any
-// mutation, since the backend returns the full config on every change.
+// mutation, since the backend returns the full config on every change. It's
+// also polled here (like realm-peers.js/realm-maps.js poll their own state)
+// so an identity another peer pushes to us shows up without a manual page
+// reload, since there's no server->client push channel in this app.
 export function initRealmIdentities(api, output, renderConfig) {
 	const identitiesBody = document.getElementById("realm-identities-tbody");
 	const identitiesCount = document.getElementById("realm-identities-count");
@@ -219,6 +224,8 @@ export function initRealmIdentities(api, output, renderConfig) {
 			output.textContent = `Pushed identity "${name}" to ${peerId}.`;
 		})
 	);
+
+	setInterval(() => api.call("realm.loadConfig").then(renderConfig), IDENTITIES_POLL_INTERVAL_MS);
 
 	return {
 		renderIdentities,
