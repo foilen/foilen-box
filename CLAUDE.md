@@ -87,9 +87,13 @@ a pluggable **Feature**.
   default permission check), `Peers()`.
 - **Built-in features** (`realm/features/`): `maps` (realm map/location sharing), `scripts` (remote script
   execution), `services` (proxying — implements `PeerRemovedHook`/`PeerInUseHook` to keep a peer connected
-  while actively proxying).
+  while actively proxying), `identity` (push a standalone Identity keypair to a peer), `announce` (periodic
+  hook that publishes services/scripts/spec/reachability into `maps` and populates the known-peers store
+  from peers' own announce entries — how peers discover each other well enough to reconnect).
 - See `docs/features.md` for the full step-by-step guide to adding a new feature, including the wire-
-  protocol conventions used by existing features (worth reading in full before adding one).
+  protocol conventions used by existing features (worth reading in full before adding one) — its "Core
+  library features vs. Foilen Box–specific features" section at the top lists every current feature and
+  where it lives.
 
 ### Other `internal/` packages
 

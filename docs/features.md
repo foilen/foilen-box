@@ -1,11 +1,33 @@
 # Writing a Realm feature
 
+## Core library features vs. Foilen Box–specific features
+
+**Core** (`realm/features/`, namespace `common/*`) — general-purpose, reusable by any Realm-based app:
+
+- `maps` (`common/maps`) — group key/value map replication (realm map/location sharing)
+- `scripts` (`common/scripts`) — remote script execution
+- `services` (`common/services`) — proxying; implements `PeerRemovedHook`/`PeerInUseHook` to stay
+  connected while actively proxying
+- `identity` (`common/identity`) — push a standalone Identity keypair to a peer, auto-imported on receipt
+- `announce` (`common/announce`) — periodic hook that publishes this peer's services/scripts/spec/
+  reachability info into the `maps` feature and consumes peers' own announce entries to populate the
+  known-peers store; this is how peers discover each other well enough to reconnect (see "Connection
+  shaping" below), replacing the old direct peer-to-peer gossip protocol
+
+**Foilen Box–specific** — implement the `Feature` interface but live under `internal/`, not
+`realm/features/`, since they're specific to this app rather than something every Realm-based application
+would want:
+
+- `internal/speedtest` (`box/speedtest`) — peer-to-peer download/upload throughput test
+- `internal/sms/manager.go` (`box/sms`) — SMS sync built on top of the `maps` feature (registers no
+  actions/handlers of its own — it satisfies `Feature` mainly to hook into the engine's periodic tick)
+
 Realm (module `foilen-realm`, at `realm/`) is a standalone libp2p library:
 peer identity, group membership, discovery (mDNS/DHT), and a permission
 system, with everything a peer can actually *do* implemented as a pluggable
 **Feature**. Foilen Box (the `foilen-box` module) is just one consumer of
 this library — it happens to register every built-in feature
-(`common/maps`, `common/scripts`, `common/services`), but any application
+(`common/maps`, `common/scripts`, `common/services`, `common/identity`, `common/announce`), but any application
 can register only the ones it needs.
 
 This doc explains how to add a new feature.
@@ -233,29 +255,30 @@ further wiring.
 
 ## Where the built-in features live
 
-`realm/features/maps`, `realm/features/spec`, and
-`realm/features/scripts` are all real, non-trivial examples to crib from —
-in particular:
+`realm/features/maps`, `realm/features/announce`, and `realm/features/scripts` are all real, non-trivial
+examples to crib from — in particular:
 
 - `maps` shows a signed wire payload and a `PeerConnectedHook`/
   `GroupConfirmedHook` pair that drives a per-store subscribe/unsubscribe
   protocol: a peer only receives pushes for the stores it has explicitly
   subscribed to (tracked via a reserved `_realmMaps` config store), rather
   than syncing everything under a shared group indiscriminately.
-- `spec` shows a `TextProvider func() string` constructor argument, used to
-  keep an application-specific concern (foilen-box's own
-  `internal/spec.Report` machine-info dump) out of the library — a feature
-  that needs a piece of app-specific behavior should take it as a
-  constructor argument like this, not import the app's code.
+- `announce` shows `PeriodicHook` plus constructor-injected callbacks
+  (`specText func() string`, `specSummary func() SpecSummary`, `hostname
+  func() string`, `appVersion func() string`) used to keep an
+  application-specific concern (foilen-box's own `internal/spec` machine-info
+  dump) out of the library — a feature that needs a piece of app-specific
+  behavior should take it as a constructor argument like this, not import
+  the app's code.
 - `scripts` shows a feature reading its data (the list of runnable
   scripts) out of `reg.Config()` rather than its own constructor, since
   `model.Config.Scripts` is already part of the shared config shape.
 
 ## How foilen-box wires features up
 
-See `internal/webserver/api.go`'s `newAPI`: it constructs one `realm.Engine`
-and registers `maps.New(...)`, `spec.New(...)`, and `scripts.New()` against
-it, then stores each feature instance on the `api` struct so the WebSocket
-handlers in `internal/webserver/api_realm.go` can call their public methods
-directly (`a.realmMapsFeature.CreateMap(...)`, `a.realmSpecFeature.RequestSpec(...)`,
+See `internal/webserver/api.go`'s `newAPI`: it constructs one `realm.Engine` and registers
+`maps.New(...)`, `scripts.New()`, `services.New(...)`, `identity.New(...)`, and `announce.New(...)`
+(the core features) plus `speedtest.New()` and `sms.NewManager(...)` (the app-specific ones) against it,
+then stores each feature instance on the `api` struct so the WebSocket handlers in
+`internal/webserver/api_realm.go` can call their public methods directly (`a.realmMapsFeature.CreateMap(...)`,
 `a.realmScripts.ListScripts(...)`, etc.) instead of going through `Engine`.
