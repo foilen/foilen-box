@@ -19,6 +19,7 @@ export function initRealmSpecs(api) {
 		return [
 			["Peer", formatKnownPeerLabel(knownPeers, s.peerId)],
 			["Fetched", s.fetchedAt ? new Date(s.fetchedAt).toLocaleString() : ""],
+			["OS", s.os || ""],
 			["CPU", s.cpu || ""],
 			["Mem", s.mem || ""],
 			["Battery", s.battery || ""],
@@ -75,6 +76,7 @@ export function initRealmSpecs(api) {
 				specsByPeer.set(peerId, {
 					peerId,
 					text: parsed.text || "",
+					os: parsed.os || "",
 					cpu: parsed.cpu || "",
 					mem: parsed.mem || "",
 					battery: parsed.battery || "",

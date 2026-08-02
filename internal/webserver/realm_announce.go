@@ -102,6 +102,7 @@ func (a *realmAnnounce) RunPeriodic(reg *realm.Registrar) {
 		peerSpec := realmmodel.PeerSpec{
 			PeerID:    cfg.PeerID.ID,
 			Text:      a.specText(),
+			OS:        summary.OS,
 			CPU:       summary.CPU,
 			Mem:       summary.Mem,
 			Battery:   summary.Battery,

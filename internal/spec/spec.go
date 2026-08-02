@@ -19,6 +19,7 @@ import (
 // text dump. Any field is left empty if that piece of information couldn't
 // be determined.
 type Summary struct {
+	OS      string `json:"os"`
 	CPU     string `json:"cpu"`
 	Mem     string `json:"mem"`
 	Battery string `json:"battery"`
@@ -31,6 +32,8 @@ type Summary struct {
 // statted (e.g. Android's sandboxed app storage).
 func GetSummary(extraPath string) Summary {
 	var s Summary
+
+	s.OS = osName()
 
 	if infos, err := cpu.Info(); err == nil && len(infos) > 0 {
 		info := infos[0]
@@ -85,7 +88,8 @@ func Report(extraPath string) string {
 	var sb strings.Builder
 
 	sb.WriteString("=== Operating System ===\n")
-	fmt.Fprintf(&sb, "Name:         %s\n", runtime.GOOS)
+	fmt.Fprintf(&sb, "Name:         %s\n", osName())
+	fmt.Fprintf(&sb, "Platform:     %s\n", runtime.GOOS)
 	fmt.Fprintf(&sb, "Architecture: %s\n", runtime.GOARCH)
 	sb.WriteString("\n")
 

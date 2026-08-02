@@ -50,7 +50,7 @@ class RealmForegroundService : Service() {
 		acquireMulticastLock()
 		Thread {
 			try {
-				Mobile.startServer(filesDir.absolutePath, deviceName(), null, null, null)
+				Mobile.startServer(filesDir.absolutePath, deviceName(), Build.VERSION.RELEASE, null, null, null)
 			} catch (e: Exception) {
 				Log.e(TAG, "failed to start server", e)
 			}

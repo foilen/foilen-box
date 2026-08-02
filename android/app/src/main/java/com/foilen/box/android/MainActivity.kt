@@ -157,7 +157,7 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 		// the server URL and reload if it no longer matches what's loaded.
 		Thread {
 			try {
-				val url = Mobile.startServer(filesDir.absolutePath, deviceName(), this, this, this)
+				val url = Mobile.startServer(filesDir.absolutePath, deviceName(), Build.VERSION.RELEASE, this, this, this)
 				val currentUrl = webView.url
 				if (currentUrl == null || !currentUrl.startsWith(url)) {
 					runOnUiThread { webView.loadUrl("$url?platform=android") }
@@ -190,7 +190,7 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 		val smsDeepLink = intent.getStringExtra(EXTRA_SMS_DEEP_LINK)
 		Thread {
 			try {
-				val url = Mobile.startServer(filesDir.absolutePath, deviceName(), this, this, this)
+				val url = Mobile.startServer(filesDir.absolutePath, deviceName(), Build.VERSION.RELEASE, this, this, this)
 				val target = if (smsDeepLink != null) {
 					"$url?platform=android#realm/realm-sms-subtab/${Uri.encode(smsDeepLink)}"
 				} else {
