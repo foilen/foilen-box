@@ -1,4 +1,4 @@
-import { report, formatPeerLabel, syncList, syncCells } from "./util.js";
+import { report, formatPeerLabel, formatIdentityLabel, syncList, syncCells } from "./util.js";
 import { initQrModal, initScanModal } from "./realm-qr.js";
 
 const IDENTITIES_POLL_INTERVAL_MS = 5000;
@@ -64,7 +64,7 @@ export function initRealmIdentities(api, output, renderConfig) {
 	}
 
 	function renderPushIdentityOptions() {
-		syncOptions(pushIdentitySelect, identities.map((identity) => [identity.name, identity.name]));
+		syncOptions(pushIdentitySelect, identities.map((identity) => [identity.name, formatIdentityLabel(identity)]));
 	}
 
 	function renderPushPeerOptions() {
@@ -83,10 +83,7 @@ export function initRealmIdentities(api, output, renderConfig) {
 			(identity) => identity.name,
 			(identity) => {
 				const row = document.createElement("tr");
-				syncCells(row, [
-					["Name", identity.name],
-					["ID", identity.id],
-				]);
+				syncCells(row, [["ID", formatIdentityLabel(identity)]]);
 
 				const exportCell = document.createElement("td");
 				exportCell.dataset.label = "Export";
@@ -139,11 +136,7 @@ export function initRealmIdentities(api, output, renderConfig) {
 
 				return row;
 			},
-			(row, identity) =>
-				syncCells(row, [
-					["Name", identity.name],
-					["ID", identity.id],
-				])
+			(row, identity) => syncCells(row, [["ID", formatIdentityLabel(identity)]])
 		);
 		renderPushIdentityOptions();
 	}

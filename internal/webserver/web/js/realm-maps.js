@@ -1,4 +1,4 @@
-import { report, formatGroupLabel, syncList, syncCells } from "./util.js";
+import { report, formatGroupLabel, formatIdentityLabel, syncList, syncCells } from "./util.js";
 
 const MAPS_POLL_INTERVAL_MS = 5000;
 
@@ -32,7 +32,7 @@ export function initRealmMaps(api, output, renderConfig) {
 
 	function identityLabel(identityId) {
 		const identity = identities.find((i) => i.id === identityId);
-		return identity ? identity.name : identityId;
+		return identity ? formatIdentityLabel(identity) : identityId;
 	}
 
 	// syncOptions reconciles an <md-outlined-select>'s <md-select-option>
@@ -65,7 +65,10 @@ export function initRealmMaps(api, output, renderConfig) {
 	}
 
 	function renderIdentityOptions() {
-		syncOptions(identitySelect, [["", "None (unencrypted)"], ...identities.map((identity) => [identity.id, identity.name])]);
+		syncOptions(identitySelect, [
+			["", "None (unencrypted)"],
+			...identities.map((identity) => [identity.id, formatIdentityLabel(identity)]),
+		]);
 	}
 
 	function mapCells(m) {

@@ -30,6 +30,11 @@ export function formatGroupLabel(group) {
 	return `${group.name} ${shortId(group.id)}`;
 }
 
+// formatIdentityLabel renders an identity as "name [last 6 chars of id]".
+export function formatIdentityLabel(identity) {
+	return `${identity.name} ${shortId(identity.id)}`;
+}
+
 // formatKnownPeerLabel renders peerId via formatPeerLabel when it's found in
 // knownPeers, falling back to just the shortened id (rather than the full raw
 // id) when the peer isn't known yet, e.g. a peer that has posted into a
