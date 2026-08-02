@@ -1,4 +1,4 @@
-import { report, formatPeerLabel } from "./util.js";
+import { report, formatPeerLabel, syncList } from "./util.js";
 import { actionLabel } from "./realm-actions.js";
 
 // initRealmPermissions wires the Permissions subtab: a checkbox matrix per
@@ -31,38 +31,63 @@ export function initRealmPermissions(api, output, renderConfig) {
 		});
 	}
 
-	function renderEntityCheckboxes(container, entities, labelFor, targetFor) {
-		container.innerHTML = "";
-		for (const entity of entities) {
-			const block = document.createElement("div");
-			block.className = "permission-entity";
+	function renderEntityCheckboxes(container, entities, keyFor, labelFor, targetFor) {
+		syncList(
+			container,
+			entities,
+			keyFor,
+			(entity) => {
+				const block = document.createElement("div");
+				block.className = "permission-entity";
 
-			const heading = document.createElement("strong");
-			heading.textContent = labelFor(entity);
-			block.appendChild(heading);
+				const heading = document.createElement("strong");
+				heading.textContent = labelFor(entity);
+				block.appendChild(heading);
 
-			const list = document.createElement("div");
-			list.className = "checkbox-list";
-			const target = targetFor(entity);
-			for (const action of latestCfg.availableActions) {
+				const list = document.createElement("div");
+				list.className = "checkbox-list";
+				block.appendChild(list);
+				syncActionCheckboxes(list, targetFor(entity));
+
+				return block;
+			},
+			(block, entity) => {
+				const heading = block.querySelector("strong");
+				const label = labelFor(entity);
+				if (heading.textContent !== label) heading.textContent = label;
+				syncActionCheckboxes(block.querySelector(".checkbox-list"), targetFor(entity));
+			}
+		);
+	}
+
+	// syncActionCheckboxes reconciles the per-action checkbox row for one
+	// entity (group or peer), keeping each <md-checkbox> node stable across
+	// re-renders so mid-click state / focus isn't lost when this runs on
+	// every peers poll.
+	function syncActionCheckboxes(list, target) {
+		syncList(
+			list,
+			latestCfg.availableActions,
+			(action) => action,
+			(action) => {
 				const label = document.createElement("label");
 				const checkbox = document.createElement("md-checkbox");
 				checkbox.checked = hasPermission(action, target);
 				checkbox.addEventListener("change", () => togglePermission(action, target, checkbox.checked));
 				label.appendChild(checkbox);
 				label.appendChild(document.createTextNode(" " + actionLabel(action)));
-				list.appendChild(label);
+				return label;
+			},
+			(label, action) => {
+				label.querySelector("md-checkbox").checked = hasPermission(action, target);
 			}
-			block.appendChild(list);
-
-			container.appendChild(block);
-		}
+		);
 	}
 
 	function render() {
 		permissionsCount.textContent = latestCfg.permissions.length;
-		renderEntityCheckboxes(groupsContainer, latestCfg.groups, (group) => group.name, (group) => ({ groupName: group.name }));
-		renderEntityCheckboxes(peersContainer, latestPeers, formatPeerLabel, (peer) => ({ peerId: peer.id }));
+		renderEntityCheckboxes(groupsContainer, latestCfg.groups, (group) => group.name, (group) => group.name, (group) => ({ groupName: group.name }));
+		renderEntityCheckboxes(peersContainer, latestPeers, (peer) => peer.id, formatPeerLabel, (peer) => ({ peerId: peer.id }));
 	}
 
 	function renderPermissions(cfg) {

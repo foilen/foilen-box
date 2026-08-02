@@ -1,4 +1,4 @@
-import { report, formatKnownPeerLabel } from "./util.js";
+import { report, formatKnownPeerLabel, syncList, syncCells } from "./util.js";
 
 const RUNS_POLL_INTERVAL_MS = 3000;
 // How long to keep polling for a completion before giving up on a run and
@@ -39,41 +39,44 @@ export function initRealmScripts(api, output, renderConfig) {
 	let knownPeers = [];
 	let groups = [];
 
+	function scriptCells(script) {
+		return [
+			["Name", script.name],
+			["Description", script.description || ""],
+			["Command", script.command],
+			["Args", (script.args || []).join(" ")],
+			["Working Directory", script.workingDirectory || ""],
+		];
+	}
+
 	function renderMyScripts(cfg) {
 		const scripts = cfg.scripts || [];
 		myScriptsCount.textContent = scripts.length;
-		myScriptsBody.innerHTML = "";
-		for (const script of scripts) {
-			const row = document.createElement("tr");
-			const cells = [
-				["Name", script.name],
-				["Description", script.description || ""],
-				["Command", script.command],
-				["Args", (script.args || []).join(" ")],
-				["Working Directory", script.workingDirectory || ""],
-			];
-			for (const [label, value] of cells) {
-				const cell = document.createElement("td");
-				cell.textContent = value;
-				cell.dataset.label = label;
-				row.appendChild(cell);
-			}
+		syncList(
+			myScriptsBody,
+			scripts,
+			(script) => script.name,
+			(script) => {
+				const row = document.createElement("tr");
+				syncCells(row, scriptCells(script));
 
-			const deleteCell = document.createElement("td");
-			const deleteButton = document.createElement("md-text-button");
-			deleteButton.textContent = "Delete";
-			deleteButton.addEventListener("click", () =>
-				report(output, async () => {
-					console.log("[action] delete script", { name: script.name });
-					if (!confirm(`Delete script "${script.name}"?`)) return;
-					renderConfig(await api.call("realm.deleteScript", { name: script.name }));
-				})
-			);
-			deleteCell.appendChild(deleteButton);
-			row.appendChild(deleteCell);
+				const deleteCell = document.createElement("td");
+				const deleteButton = document.createElement("md-text-button");
+				deleteButton.textContent = "Delete";
+				deleteButton.addEventListener("click", () =>
+					report(output, async () => {
+						console.log("[action] delete script", { name: script.name });
+						if (!confirm(`Delete script "${script.name}"?`)) return;
+						renderConfig(await api.call("realm.deleteScript", { name: script.name }));
+					})
+				);
+				deleteCell.appendChild(deleteButton);
+				row.appendChild(deleteCell);
 
-			myScriptsBody.appendChild(row);
-		}
+				return row;
+			},
+			(row, script) => syncCells(row, scriptCells(script))
+		);
 	}
 
 	addButton.addEventListener("click", () =>
@@ -125,47 +128,51 @@ export function initRealmScripts(api, output, renderConfig) {
 		});
 	}
 
+	function peerScriptCells(script) {
+		return [
+			["Peer", formatKnownPeerLabel(knownPeers, script.peerId)],
+			["Name", script.name],
+			["Description", script.description || ""],
+		];
+	}
+
+	// The Status cell is intentionally left untouched on update: it's driven
+	// by execute-click + pollRuns (via pendingRuns, keyed by the row's own
+	// status <td>), not by the peer-scripts data refresh. Keeping the same
+	// row (and thus the same <td>) across refreshes — instead of rebuilding
+	// it — is what keeps pendingRuns' cell reference valid.
 	function renderPeerScriptsTable() {
-		peerScriptsBody.innerHTML = "";
-		for (const script of peerScripts) {
-			const row = document.createElement("tr");
+		syncList(
+			peerScriptsBody,
+			peerScripts,
+			(script) => `${script.peerId}|${script.name}`,
+			(script) => {
+				const row = document.createElement("tr");
+				syncCells(row, peerScriptCells(script));
 
-			const peerCell = document.createElement("td");
-			peerCell.textContent = formatKnownPeerLabel(knownPeers, script.peerId);
-			peerCell.dataset.label = "Peer";
-			row.appendChild(peerCell);
+				const statusCell = document.createElement("td");
+				statusCell.dataset.label = "Status";
+				row.appendChild(statusCell);
 
-			const nameCell = document.createElement("td");
-			nameCell.textContent = script.name;
-			nameCell.dataset.label = "Name";
-			row.appendChild(nameCell);
+				const executeCell = document.createElement("td");
+				const executeButton = document.createElement("md-text-button");
+				executeButton.textContent = "Execute";
+				executeButton.addEventListener("click", () =>
+					report(output, async () => {
+						console.log("[action] run peer script", { peerId: script.peerId, name: script.name });
+						const result = await api.call("realm.runPeerScript", { peerId: script.peerId, name: script.name });
+						statusCell.textContent = "Started";
+						pendingRuns.set(result.runId, { cell: statusCell, startedAt: Date.now() });
+						output.textContent = `Started "${script.name}" on ${script.peerId}.`;
+					})
+				);
+				executeCell.appendChild(executeButton);
+				row.appendChild(executeCell);
 
-			const descriptionCell = document.createElement("td");
-			descriptionCell.textContent = script.description || "";
-			descriptionCell.dataset.label = "Description";
-			row.appendChild(descriptionCell);
-
-			const statusCell = document.createElement("td");
-			statusCell.dataset.label = "Status";
-			row.appendChild(statusCell);
-
-			const executeCell = document.createElement("td");
-			const executeButton = document.createElement("md-text-button");
-			executeButton.textContent = "Execute";
-			executeButton.addEventListener("click", () =>
-				report(output, async () => {
-					console.log("[action] run peer script", { peerId: script.peerId, name: script.name });
-					const result = await api.call("realm.runPeerScript", { peerId: script.peerId, name: script.name });
-					statusCell.textContent = "Started";
-					pendingRuns.set(result.runId, { cell: statusCell, startedAt: Date.now() });
-					output.textContent = `Started "${script.name}" on ${script.peerId}.`;
-				})
-			);
-			executeCell.appendChild(executeButton);
-			row.appendChild(executeCell);
-
-			peerScriptsBody.appendChild(row);
-		}
+				return row;
+			},
+			(row, script) => syncCells(row, peerScriptCells(script))
+		);
 	}
 
 	async function refreshPeerScripts() {

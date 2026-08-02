@@ -1,4 +1,4 @@
-import { report, formatGroupLabel } from "./util.js";
+import { report, formatGroupLabel, syncList, syncCells } from "./util.js";
 
 const MAPS_POLL_INTERVAL_MS = 5000;
 
@@ -35,79 +35,91 @@ export function initRealmMaps(api, output, renderConfig) {
 		return identity ? identity.name : identityId;
 	}
 
+	// syncOptions reconciles an <md-outlined-select>'s <md-select-option>
+	// children in place (keyed by option value) instead of clearing and
+	// rebuilding them, so the currently-selected option's node survives a
+	// refresh — avoiding md-outlined-select's async re-processing of a fresh
+	// option list, which can otherwise desync the shown value.
+	function syncOptions(select, entries) {
+		const previousValue = select.value;
+		syncList(
+			select,
+			entries,
+			([value]) => value,
+			([value, label]) => {
+				const option = document.createElement("md-select-option");
+				option.value = value;
+				option.innerHTML = `<div slot="headline">${label}</div>`;
+				return option;
+			},
+			(option, [, label]) => {
+				const headline = option.querySelector('[slot="headline"]');
+				if (headline.textContent !== label) headline.textContent = label;
+			}
+		);
+		select.value = previousValue;
+	}
+
 	function renderGroupOptions() {
-		groupSelect.innerHTML = "";
-		for (const group of groups) {
-			const option = document.createElement("md-select-option");
-			option.value = group.id;
-			option.innerHTML = `<div slot="headline">${formatGroupLabel(group)}</div>`;
-			groupSelect.appendChild(option);
-		}
+		syncOptions(groupSelect, groups.map((group) => [group.id, formatGroupLabel(group)]));
 	}
 
 	function renderIdentityOptions() {
-		identitySelect.innerHTML = "";
-		const noneOption = document.createElement("md-select-option");
-		noneOption.value = "";
-		noneOption.innerHTML = `<div slot="headline">None (unencrypted)</div>`;
-		identitySelect.appendChild(noneOption);
-		for (const identity of identities) {
-			const option = document.createElement("md-select-option");
-			option.value = identity.id;
-			option.innerHTML = `<div slot="headline">${identity.name}</div>`;
-			identitySelect.appendChild(option);
-		}
+		syncOptions(identitySelect, [["", "None (unencrypted)"], ...identities.map((identity) => [identity.id, identity.name])]);
+	}
+
+	function mapCells(m) {
+		return [
+			["Group", formatGroupLabel({ id: m.groupId, name: m.groupName })],
+			["Store Name", m.storeName],
+			["Entries", m.entryCount],
+			["Updated", m.updatedAtUnixMillis ? new Date(m.updatedAtUnixMillis).toLocaleString() : "never"],
+			["Auto-delete (hours)", m.autoDeleteEntriesHours || "never"],
+			["Encrypted", m.encryptionIdentityId ? `🔒 ${identityLabel(m.encryptionIdentityId)}` : "-"],
+		];
 	}
 
 	function renderMaps(maps) {
 		mapsCount.textContent = maps.length;
-		mapsBody.innerHTML = "";
-		for (const m of maps) {
-			const row = document.createElement("tr");
-			const cells = [
-				["Group", formatGroupLabel({ id: m.groupId, name: m.groupName })],
-				["Store Name", m.storeName],
-				["Entries", m.entryCount],
-				["Updated", m.updatedAtUnixMillis ? new Date(m.updatedAtUnixMillis).toLocaleString() : "never"],
-				["Auto-delete (hours)", m.autoDeleteEntriesHours || "never"],
-				["Encrypted", m.encryptionIdentityId ? `🔒 ${identityLabel(m.encryptionIdentityId)}` : "-"],
-			];
-			for (const [label, value] of cells) {
-				const cell = document.createElement("td");
-				cell.textContent = value;
-				cell.dataset.label = label;
-				row.appendChild(cell);
-			}
+		syncList(
+			mapsBody,
+			maps,
+			(m) => `${m.groupId}|${m.storeName}`,
+			(m) => {
+				const row = document.createElement("tr");
+				syncCells(row, mapCells(m));
 
-			const actionsCell = document.createElement("td");
-			const selectButton = document.createElement("md-text-button");
-			selectButton.textContent = "Open";
-			selectButton.addEventListener("click", () =>
-				report(output, async () => {
-					console.log("[action] open map", { groupId: m.groupId, storeName: m.storeName });
-					await openMap(m.groupId, m.storeName);
-				})
-			);
-			actionsCell.appendChild(selectButton);
+				const actionsCell = document.createElement("td");
+				const selectButton = document.createElement("md-text-button");
+				selectButton.textContent = "Open";
+				selectButton.addEventListener("click", () =>
+					report(output, async () => {
+						console.log("[action] open map", { groupId: m.groupId, storeName: m.storeName });
+						await openMap(m.groupId, m.storeName);
+					})
+				);
+				actionsCell.appendChild(selectButton);
 
-			const deleteButton = document.createElement("md-text-button");
-			deleteButton.textContent = "Delete";
-			deleteButton.addEventListener("click", () =>
-				report(output, async () => {
-					console.log("[action] delete map", { groupId: m.groupId, storeName: m.storeName });
-					if (!confirm(`Delete map "${m.storeName}"?`)) return;
-					const result = await api.call("realm.deleteMap", { groupId: m.groupId, storeName: m.storeName });
-					renderMaps(result.maps);
-					if (selected && selected.groupId === m.groupId && selected.storeName === m.storeName) {
-						closeDetail();
-					}
-				})
-			);
-			actionsCell.appendChild(deleteButton);
+				const deleteButton = document.createElement("md-text-button");
+				deleteButton.textContent = "Delete";
+				deleteButton.addEventListener("click", () =>
+					report(output, async () => {
+						console.log("[action] delete map", { groupId: m.groupId, storeName: m.storeName });
+						if (!confirm(`Delete map "${m.storeName}"?`)) return;
+						const result = await api.call("realm.deleteMap", { groupId: m.groupId, storeName: m.storeName });
+						renderMaps(result.maps);
+						if (selected && selected.groupId === m.groupId && selected.storeName === m.storeName) {
+							closeDetail();
+						}
+					})
+				);
+				actionsCell.appendChild(deleteButton);
 
-			row.appendChild(actionsCell);
-			mapsBody.appendChild(row);
-		}
+				row.appendChild(actionsCell);
+				return row;
+			},
+			(row, m) => syncCells(row, mapCells(m))
+		);
 	}
 
 	function renderDetail(map) {
@@ -121,49 +133,56 @@ export function initRealmMaps(api, output, renderConfig) {
 		detailUnlocked.classList.toggle("hidden", locked);
 		if (locked) return;
 
-		detailBody.innerHTML = "";
 		const keys = Object.keys(map.entries).sort();
-		for (const key of keys) {
-			const entry = map.entries[key];
-			const row = document.createElement("tr");
+		syncList(
+			detailBody,
+			keys,
+			(key) => key,
+			(key) => {
+				const entry = map.entries[key];
+				const row = document.createElement("tr");
+				row.dataset.value = entry.value;
+				syncCells(row, [
+					["Key", key],
+					["Value", entry.value],
+				]);
 
-			const keyCell = document.createElement("td");
-			keyCell.textContent = key;
-			keyCell.dataset.label = "Key";
-			row.appendChild(keyCell);
+				const actionsCell = document.createElement("td");
+				const editButton = document.createElement("md-text-button");
+				editButton.textContent = "Edit";
+				editButton.addEventListener("click", () => {
+					newKeyInput.value = key;
+					newValueInput.value = row.dataset.value;
+				});
+				actionsCell.appendChild(editButton);
 
-			const valueCell = document.createElement("td");
-			valueCell.textContent = entry.value;
-			valueCell.dataset.label = "Value";
-			row.appendChild(valueCell);
+				const deleteButton = document.createElement("md-text-button");
+				deleteButton.textContent = "Delete";
+				deleteButton.addEventListener("click", () =>
+					report(output, async () => {
+						console.log("[action] delete map value", { groupId: map.groupId, storeName: map.storeName, key });
+						const result = await api.call("realm.deleteMapValue", {
+							groupId: map.groupId,
+							storeName: map.storeName,
+							key,
+						});
+						renderDetail(result);
+					})
+				);
+				actionsCell.appendChild(deleteButton);
 
-			const actionsCell = document.createElement("td");
-			const editButton = document.createElement("md-text-button");
-			editButton.textContent = "Edit";
-			editButton.addEventListener("click", () => {
-				newKeyInput.value = key;
-				newValueInput.value = entry.value;
-			});
-			actionsCell.appendChild(editButton);
-
-			const deleteButton = document.createElement("md-text-button");
-			deleteButton.textContent = "Delete";
-			deleteButton.addEventListener("click", () =>
-				report(output, async () => {
-					console.log("[action] delete map value", { groupId: map.groupId, storeName: map.storeName, key });
-					const result = await api.call("realm.deleteMapValue", {
-						groupId: map.groupId,
-						storeName: map.storeName,
-						key,
-					});
-					renderDetail(result);
-				})
-			);
-			actionsCell.appendChild(deleteButton);
-
-			row.appendChild(actionsCell);
-			detailBody.appendChild(row);
-		}
+				row.appendChild(actionsCell);
+				return row;
+			},
+			(row, key) => {
+				const entry = map.entries[key];
+				row.dataset.value = entry.value;
+				syncCells(row, [
+					["Key", key],
+					["Value", entry.value],
+				]);
+			}
+		);
 	}
 
 	async function openMap(groupId, storeName) {

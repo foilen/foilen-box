@@ -1,4 +1,4 @@
-import { report, formatGroupLabel } from "./util.js";
+import { report, formatGroupLabel, syncList, syncCells } from "./util.js";
 import { renderActionCheckboxes, checkedActions } from "./realm-actions.js";
 import { initQrModal, initScanModal } from "./realm-qr.js";
 
@@ -32,79 +32,80 @@ export function initRealmGroups(api, output, renderConfig) {
 		renderActionCheckboxes(newGroupActions, availableActions);
 		renderActionCheckboxes(importActions, availableActions);
 
-		groupsBody.innerHTML = "";
 		groupsCount.textContent = cfg.groups.length;
-		for (const group of cfg.groups) {
-			const row = document.createElement("tr");
+		syncList(
+			groupsBody,
+			cfg.groups,
+			(group) => group.name,
+			(group) => {
+				const row = document.createElement("tr");
+				syncCells(row, [["ID", formatGroupLabel(group)]]);
 
-			const idCell = document.createElement("td");
-			idCell.textContent = formatGroupLabel(group);
-			idCell.dataset.label = "ID";
-			row.appendChild(idCell);
+				const keyCell = document.createElement("td");
+				keyCell.dataset.label = "Private Key";
+				const keyButton = document.createElement("md-text-button");
+				keyButton.textContent = "Copy Key";
+				keyButton.addEventListener("click", () => {
+					console.log("[action] copy group private key", { group: group.name });
+					navigator.clipboard.writeText(group.privateKeyBase64);
+					output.textContent = `Copied the private key for group "${group.name}" — share it with other peers to join.`;
+				});
+				keyCell.appendChild(keyButton);
+				row.appendChild(keyCell);
 
-			const keyCell = document.createElement("td");
-			keyCell.dataset.label = "Private Key";
-			const keyButton = document.createElement("md-text-button");
-			keyButton.textContent = "Copy Key";
-			keyButton.addEventListener("click", () => {
-				console.log("[action] copy group private key", { group: group.name });
-				navigator.clipboard.writeText(group.privateKeyBase64);
-				output.textContent = `Copied the private key for group "${group.name}" — share it with other peers to join.`;
-			});
-			keyCell.appendChild(keyButton);
-			row.appendChild(keyCell);
+				const exportCell = document.createElement("td");
+				exportCell.dataset.label = "Export";
+				const exportButton = document.createElement("md-text-button");
+				exportButton.textContent = "Export";
+				exportButton.addEventListener("click", () =>
+					report(output, async () => {
+						console.log("[action] export group", { group: group.name });
+						const data = await api.call("realm.exportGroup", { name: group.name });
+						const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+						const url = URL.createObjectURL(blob);
+						const link = document.createElement("a");
+						link.href = url;
+						link.download = `${group.name}.json`;
+						link.click();
+						URL.revokeObjectURL(url);
+						output.textContent = `Exported group "${group.name}".`;
+					})
+				);
+				exportCell.appendChild(exportButton);
+				row.appendChild(exportCell);
 
-			const exportCell = document.createElement("td");
-			exportCell.dataset.label = "Export";
-			const exportButton = document.createElement("md-text-button");
-			exportButton.textContent = "Export";
-			exportButton.addEventListener("click", () =>
-				report(output, async () => {
-					console.log("[action] export group", { group: group.name });
-					const data = await api.call("realm.exportGroup", { name: group.name });
-					const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-					const url = URL.createObjectURL(blob);
-					const link = document.createElement("a");
-					link.href = url;
-					link.download = `${group.name}.json`;
-					link.click();
-					URL.revokeObjectURL(url);
-					output.textContent = `Exported group "${group.name}".`;
-				})
-			);
-			exportCell.appendChild(exportButton);
-			row.appendChild(exportCell);
+				const qrCell = document.createElement("td");
+				qrCell.dataset.label = "QR";
+				const qrButton = document.createElement("md-text-button");
+				qrButton.textContent = "Show QR";
+				qrButton.addEventListener("click", () =>
+					report(output, async () => {
+						console.log("[action] show group qr", { group: group.name });
+						const data = await api.call("realm.exportGroup", { name: group.name });
+						showQrCode(`Group "${group.name}"`, { name: data.name, privateKeyBase64: data.privateKeyBase64 });
+					})
+				);
+				qrCell.appendChild(qrButton);
+				row.appendChild(qrCell);
 
-			const qrCell = document.createElement("td");
-			qrCell.dataset.label = "QR";
-			const qrButton = document.createElement("md-text-button");
-			qrButton.textContent = "Show QR";
-			qrButton.addEventListener("click", () =>
-				report(output, async () => {
-					console.log("[action] show group qr", { group: group.name });
-					const data = await api.call("realm.exportGroup", { name: group.name });
-					showQrCode(`Group "${group.name}"`, { name: data.name, privateKeyBase64: data.privateKeyBase64 });
-				})
-			);
-			qrCell.appendChild(qrButton);
-			row.appendChild(qrCell);
+				const deleteCell = document.createElement("td");
+				deleteCell.dataset.label = "Delete";
+				const deleteButton = document.createElement("md-text-button");
+				deleteButton.textContent = "Delete";
+				deleteButton.addEventListener("click", () =>
+					report(output, async () => {
+						console.log("[action] delete group", { group: group.name });
+						if (!confirm(`Delete group "${group.name}"?`)) return;
+						renderConfig(await api.call("realm.deleteGroup", { name: group.name }));
+					})
+				);
+				deleteCell.appendChild(deleteButton);
+				row.appendChild(deleteCell);
 
-			const deleteCell = document.createElement("td");
-			deleteCell.dataset.label = "Delete";
-			const deleteButton = document.createElement("md-text-button");
-			deleteButton.textContent = "Delete";
-			deleteButton.addEventListener("click", () =>
-				report(output, async () => {
-					console.log("[action] delete group", { group: group.name });
-					if (!confirm(`Delete group "${group.name}"?`)) return;
-					renderConfig(await api.call("realm.deleteGroup", { name: group.name }));
-				})
-			);
-			deleteCell.appendChild(deleteButton);
-			row.appendChild(deleteCell);
-
-			groupsBody.appendChild(row);
-		}
+				return row;
+			},
+			(row, group) => syncCells(row, [["ID", formatGroupLabel(group)]])
+		);
 	}
 
 	addGroupButton.addEventListener("click", () =>

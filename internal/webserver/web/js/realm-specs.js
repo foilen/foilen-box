@@ -1,4 +1,4 @@
-import { formatKnownPeerLabel } from "./util.js";
+import { formatKnownPeerLabel, syncList, syncCells } from "./util.js";
 
 const SPECS_POLL_INTERVAL_MS = 5000;
 const SPECS_STORE_NAME = "common";
@@ -15,41 +15,46 @@ export function initRealmSpecs(api) {
 	let knownPeers = [];
 	let groups = [];
 
+	function specCells(s) {
+		return [
+			["Peer", formatKnownPeerLabel(knownPeers, s.peerId)],
+			["Fetched", s.fetchedAt ? new Date(s.fetchedAt).toLocaleString() : ""],
+			["CPU", s.cpu || ""],
+			["Mem", s.mem || ""],
+			["Battery", s.battery || ""],
+			["GPU", s.gpu || ""],
+			["Disk", s.disk || ""],
+		];
+	}
+
 	function renderSpecs(specs) {
-		specsBody.innerHTML = "";
-		for (const s of specs) {
-			const row = document.createElement("tr");
+		syncList(
+			specsBody,
+			specs,
+			(s) => s.peerId,
+			(s) => {
+				const row = document.createElement("tr");
+				row.dataset.text = s.text;
+				syncCells(row, specCells(s));
 
-			const peerCell = document.createElement("td");
-			peerCell.textContent = formatKnownPeerLabel(knownPeers, s.peerId);
-			peerCell.dataset.label = "Peer";
-			row.appendChild(peerCell);
+				const viewCell = document.createElement("td");
+				viewCell.dataset.label = "View";
+				const viewButton = document.createElement("md-text-button");
+				viewButton.textContent = "View";
+				viewButton.addEventListener("click", () => {
+					console.log("[action] view peer spec", { peer: s.peerId });
+					output.textContent = row.dataset.text;
+				});
+				viewCell.appendChild(viewButton);
+				row.appendChild(viewCell);
 
-			const fetchedCell = document.createElement("td");
-			fetchedCell.textContent = s.fetchedAt ? new Date(s.fetchedAt).toLocaleString() : "";
-			fetchedCell.dataset.label = "Fetched";
-			row.appendChild(fetchedCell);
-
-			for (const [label, value] of [["CPU", s.cpu], ["Mem", s.mem], ["Battery", s.battery], ["GPU", s.gpu], ["Disk", s.disk]]) {
-				const cell = document.createElement("td");
-				cell.textContent = value || "";
-				cell.dataset.label = label;
-				row.appendChild(cell);
+				return row;
+			},
+			(row, s) => {
+				row.dataset.text = s.text;
+				syncCells(row, specCells(s));
 			}
-
-			const viewCell = document.createElement("td");
-			viewCell.dataset.label = "View";
-			const viewButton = document.createElement("md-text-button");
-			viewButton.textContent = "View";
-			viewButton.addEventListener("click", () => {
-				console.log("[action] view peer spec", { peer: s.peerId });
-				output.textContent = s.text;
-			});
-			viewCell.appendChild(viewButton);
-			row.appendChild(viewCell);
-
-			specsBody.appendChild(row);
-		}
+		);
 	}
 
 	async function refreshSpecs() {

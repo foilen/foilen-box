@@ -1,4 +1,4 @@
-import { report, formatKnownPeerLabel } from "./util.js";
+import { report, formatKnownPeerLabel, syncList, syncCells } from "./util.js";
 
 const PEER_SERVICES_POLL_INTERVAL_MS = 5000;
 const SERVICES_STORE_NAME = "common";
@@ -37,41 +37,44 @@ export function initRealmServices(api, output, renderConfig) {
 	let groups = [];
 	let ownPeerId = "";
 
+	function myServiceCells(service) {
+		return [
+			["Name", service.name],
+			["Description", service.description || ""],
+			["Hostname", service.hostname],
+			["Type", service.type],
+			["Port", service.port],
+		];
+	}
+
 	function renderMyServices(cfg) {
 		const services = cfg.services || [];
 		myServicesCount.textContent = services.length;
-		myServicesBody.innerHTML = "";
-		for (const service of services) {
-			const row = document.createElement("tr");
-			const cells = [
-				["Name", service.name],
-				["Description", service.description || ""],
-				["Hostname", service.hostname],
-				["Type", service.type],
-				["Port", service.port],
-			];
-			for (const [label, value] of cells) {
-				const cell = document.createElement("td");
-				cell.textContent = value;
-				cell.dataset.label = label;
-				row.appendChild(cell);
-			}
+		syncList(
+			myServicesBody,
+			services,
+			(service) => service.name,
+			(service) => {
+				const row = document.createElement("tr");
+				syncCells(row, myServiceCells(service));
 
-			const deleteCell = document.createElement("td");
-			const deleteButton = document.createElement("md-text-button");
-			deleteButton.textContent = "Delete";
-			deleteButton.addEventListener("click", () =>
-				report(output, async () => {
-					console.log("[action] delete service", { name: service.name });
-					if (!confirm(`Delete service "${service.name}"?`)) return;
-					renderConfig(await api.call("realm.deleteService", { name: service.name }));
-				})
-			);
-			deleteCell.appendChild(deleteButton);
-			row.appendChild(deleteCell);
+				const deleteCell = document.createElement("td");
+				const deleteButton = document.createElement("md-text-button");
+				deleteButton.textContent = "Delete";
+				deleteButton.addEventListener("click", () =>
+					report(output, async () => {
+						console.log("[action] delete service", { name: service.name });
+						if (!confirm(`Delete service "${service.name}"?`)) return;
+						renderConfig(await api.call("realm.deleteService", { name: service.name }));
+					})
+				);
+				deleteCell.appendChild(deleteButton);
+				row.appendChild(deleteCell);
 
-			myServicesBody.appendChild(row);
-		}
+				return row;
+			},
+			(row, service) => syncCells(row, myServiceCells(service))
+		);
 	}
 
 	addButton.addEventListener("click", () =>
@@ -161,92 +164,128 @@ export function initRealmServices(api, output, renderConfig) {
 		return `${peerId}|${name}`;
 	}
 
-	function statusLabelAndButtons(row, peerId, service) {
-		const statusCell = document.createElement("td");
-		statusCell.dataset.label = "Proxy";
+	// syncProxyCell/syncConnectedCell/syncActionsCell each build their <td>
+	// on first call (create) and patch it in place on later calls (update),
+	// found by dataset.label rather than position — needed because unlike
+	// the data cells above, their content (proxy running state, peer
+	// connected state) can change on its own poll cycle, independent of
+	// whether the underlying peerServices/service entry changed.
+	function syncProxyCell(row, peerId, service) {
+		let cell = row.querySelector('td[data-label="Proxy"]');
+		if (!cell) {
+			cell = document.createElement("td");
+			cell.dataset.label = "Proxy";
+			row.appendChild(cell);
+		}
 		const localPort = activeProxies.get(proxyKey(peerId, service.name));
-		statusCell.textContent = localPort ? `Running on 127.0.0.1:${localPort}` : "Stopped";
-		row.appendChild(statusCell);
+		cell.textContent = localPort ? `Running on 127.0.0.1:${localPort}` : "Stopped";
+	}
 
-		appendConnectedCell(row, peerId);
+	function syncConnectedCell(row, peerId) {
+		let cell = row.querySelector('td[data-label="Connected"]');
+		let dot;
+		if (!cell) {
+			cell = document.createElement("td");
+			cell.dataset.label = "Connected";
+			dot = document.createElement("span");
+			cell.appendChild(dot);
+			row.appendChild(cell);
+		} else {
+			dot = cell.querySelector("span");
+		}
+		const connected = knownPeers.find((p) => p.id === peerId)?.connected ?? false;
+		dot.className = `status-dot${connected ? " connected" : ""}`;
+		dot.title = connected ? "Connected" : "Not connected";
+	}
 
-		const actionsCell = document.createElement("td");
-
-		const toggleButton = document.createElement("md-text-button");
-		toggleButton.textContent = localPort ? "Stop" : "Start";
-		toggleButton.addEventListener("click", () =>
-			report(output, async () => {
-				if (activeProxies.get(proxyKey(peerId, service.name))) {
-					console.log("[action] stop service proxy", { peerId, name: service.name });
-					await api.call("realm.stopServiceProxy", { peerId, name: service.name });
-					activeProxies.delete(proxyKey(peerId, service.name));
-				} else {
-					console.log("[action] start service proxy", { peerId, name: service.name });
-					const result = await api.call("realm.startServiceProxy", { peerId, name: service.name });
-					activeProxies.set(proxyKey(peerId, service.name), result.localPort);
-				}
-				renderPeerServicesTable();
-			})
-		);
-		actionsCell.appendChild(toggleButton);
-
-		const connectableTypes = ["http", "https", "ssh", "vnc", "rdp"];
-		if (connectableTypes.includes(service.type)) {
-			const connectButton = document.createElement("md-text-button");
-			connectButton.textContent = "Connect";
-			connectButton.addEventListener("click", () =>
-				report(output, async () => {
-					console.log("[action] connect service", { peerId, name: service.name, type: service.type });
-					const result = await api.call("realm.connectService", { peerId, name: service.name, type: service.type });
-					activeProxies.set(proxyKey(peerId, service.name), result.localPort);
-					renderPeerServicesTable();
-					if (!result.opened) {
-						output.textContent = result.error
-							? `Started proxy on 127.0.0.1:${result.localPort}, but couldn't open an app: ${result.error}`
-							: `Started proxy on 127.0.0.1:${result.localPort}. Connect to it manually.`;
-					} else {
-						output.textContent = `Connected to "${service.name}" on ${peerId}.`;
-					}
-				})
-			);
-			actionsCell.appendChild(connectButton);
+	function syncActionsCell(row, peerId, service) {
+		let cell = row.querySelector('td[data-label="Actions"]');
+		if (!cell) {
+			cell = document.createElement("td");
+			cell.dataset.label = "Actions";
+			row.appendChild(cell);
 		}
 
-		row.appendChild(actionsCell);
+		let toggleButton = cell.querySelector('[data-role="toggle"]');
+		if (!toggleButton) {
+			toggleButton = document.createElement("md-text-button");
+			toggleButton.dataset.role = "toggle";
+			toggleButton.addEventListener("click", () =>
+				report(output, async () => {
+					if (activeProxies.get(proxyKey(peerId, service.name))) {
+						console.log("[action] stop service proxy", { peerId, name: service.name });
+						await api.call("realm.stopServiceProxy", { peerId, name: service.name });
+						activeProxies.delete(proxyKey(peerId, service.name));
+					} else {
+						console.log("[action] start service proxy", { peerId, name: service.name });
+						const result = await api.call("realm.startServiceProxy", { peerId, name: service.name });
+						activeProxies.set(proxyKey(peerId, service.name), result.localPort);
+					}
+					renderPeerServicesTable();
+				})
+			);
+			cell.appendChild(toggleButton);
+		}
+		toggleButton.textContent = activeProxies.get(proxyKey(peerId, service.name)) ? "Stop" : "Start";
+
+		const connectableTypes = ["http", "https", "ssh", "vnc", "rdp"];
+		let connectButton = cell.querySelector('[data-role="connect"]');
+		if (connectableTypes.includes(service.type)) {
+			if (!connectButton) {
+				connectButton = document.createElement("md-text-button");
+				connectButton.dataset.role = "connect";
+				connectButton.textContent = "Connect";
+				connectButton.addEventListener("click", () =>
+					report(output, async () => {
+						console.log("[action] connect service", { peerId, name: service.name, type: service.type });
+						const result = await api.call("realm.connectService", { peerId, name: service.name, type: service.type });
+						activeProxies.set(proxyKey(peerId, service.name), result.localPort);
+						renderPeerServicesTable();
+						if (!result.opened) {
+							output.textContent = result.error
+								? `Started proxy on 127.0.0.1:${result.localPort}, but couldn't open an app: ${result.error}`
+								: `Started proxy on 127.0.0.1:${result.localPort}. Connect to it manually.`;
+						} else {
+							output.textContent = `Connected to "${service.name}" on ${peerId}.`;
+						}
+					})
+				);
+				cell.appendChild(connectButton);
+			}
+		} else if (connectButton) {
+			connectButton.remove();
+		}
+	}
+
+	function peerServiceCells(service) {
+		return [
+			["Peer", formatKnownPeerLabel(knownPeers, service.peerId)],
+			["Name", service.name],
+			["Description", service.description || ""],
+			["Type", service.type],
+			["Target", `${service.hostname}:${service.port}`],
+		];
+	}
+
+	function syncPeerServiceRow(row, service) {
+		syncCells(row, peerServiceCells(service));
+		syncProxyCell(row, service.peerId, service);
+		syncConnectedCell(row, service.peerId);
+		syncActionsCell(row, service.peerId, service);
 	}
 
 	function renderPeerServicesTable() {
-		peerServicesBody.innerHTML = "";
-		for (const service of peerServices) {
-			if (service.peerId === ownPeerId) continue;
-			const row = document.createElement("tr");
-			const cells = [
-				["Peer", formatKnownPeerLabel(knownPeers, service.peerId)],
-				["Name", service.name],
-				["Description", service.description || ""],
-				["Type", service.type],
-				["Target", `${service.hostname}:${service.port}`],
-			];
-			for (const [label, value] of cells) {
-				const cell = document.createElement("td");
-				cell.textContent = value;
-				cell.dataset.label = label;
-				row.appendChild(cell);
-			}
-			statusLabelAndButtons(row, service.peerId, service);
-			peerServicesBody.appendChild(row);
-		}
-	}
-
-	function appendConnectedCell(row, peerId) {
-		const connected = knownPeers.find((p) => p.id === peerId)?.connected ?? false;
-		const cell = document.createElement("td");
-		cell.dataset.label = "Connected";
-		const dot = document.createElement("span");
-		dot.className = `status-dot${connected ? " connected" : ""}`;
-		dot.title = connected ? "Connected" : "Not connected";
-		cell.appendChild(dot);
-		row.appendChild(cell);
+		syncList(
+			peerServicesBody,
+			peerServices.filter((service) => service.peerId !== ownPeerId),
+			(service) => `${service.peerId}|${service.name}`,
+			(service) => {
+				const row = document.createElement("tr");
+				syncPeerServiceRow(row, service);
+				return row;
+			},
+			syncPeerServiceRow
+		);
 	}
 
 	async function refreshPeerServices() {

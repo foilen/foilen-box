@@ -1,4 +1,4 @@
-import { report, formatPeerLabel } from "./util.js";
+import { report, formatPeerLabel, syncList, syncCells } from "./util.js";
 import { initQrModal, initScanModal } from "./realm-qr.js";
 
 // initRealmIdentities wires the Identities subtab: listing, generating,
@@ -32,117 +32,114 @@ export function initRealmIdentities(api, output, renderConfig) {
 	let knownPeers = [];
 	let ownPeerId = "";
 
-	// renderPushIdentityOptions and renderPushPeerOptions are split (rather
-	// than one combined rebuild) so that the peers poll (every few seconds,
-	// see realm-peers.js) doesn't also tear down and rebuild the identity
-	// select — which briefly desyncs the select's selected value, since
-	// md-outlined-select processes newly-slotted md-select-option children
-	// asynchronously and doesn't reliably pick up a value set right after
-	// rebuilding. The identity select only needs rebuilding when the
-	// identities list itself changes.
-	function renderPushIdentityOptions() {
-		const previousIdentity = pushIdentitySelect.value;
-		pushIdentitySelect.innerHTML = "";
-		for (const identity of identities) {
-			const option = document.createElement("md-select-option");
-			option.value = identity.name;
-			option.innerHTML = `<div slot="headline">${identity.name}</div>`;
-			pushIdentitySelect.appendChild(option);
-		}
-		pushIdentitySelect.value = previousIdentity;
+	// syncOptions reconciles an <md-outlined-select>'s <md-select-option>
+	// children in place (keyed by option value) instead of clearing and
+	// rebuilding them. This is what lets both selects be re-rendered freely
+	// on every relevant refresh (the identities list changing, or the peers
+	// poll every few seconds — see realm-peers.js) without desyncing the
+	// select's shown value: the currently-selected option's node is never
+	// torn down, so there's nothing for md-outlined-select's async
+	// re-processing of a fresh option list to get out of sync with.
+	function syncOptions(select, entries) {
+		syncList(
+			select,
+			entries,
+			([value]) => value,
+			([value, label]) => {
+				const option = document.createElement("md-select-option");
+				option.value = value;
+				option.innerHTML = `<div slot="headline">${label}</div>`;
+				return option;
+			},
+			(option, [, label]) => {
+				const headline = option.querySelector('[slot="headline"]');
+				if (headline.textContent !== label) headline.textContent = label;
+			}
+		);
 	}
 
-	// Peers are polled every few seconds (see realm-peers.js), so skip the
-	// rebuild entirely when the set of selectable peers hasn't actually
-	// changed — same rebuild-drops-the-selection issue as above, but here it
-	// can't be fixed by only calling this on relevant updates, since every
-	// poll is a "relevant" peer update in general.
-	let lastPeerOptionsKey = "";
-	function renderPushPeerOptions() {
-		const entries = knownPeers.filter((peer) => peer.id !== ownPeerId).map((peer) => [peer.id, formatPeerLabel(peer)]);
-		const key = JSON.stringify(entries);
-		if (key === lastPeerOptionsKey) return;
-		lastPeerOptionsKey = key;
+	function renderPushIdentityOptions() {
+		syncOptions(pushIdentitySelect, identities.map((identity) => [identity.name, identity.name]));
+	}
 
-		const previousPeer = pushPeerSelect.value;
-		pushPeerSelect.innerHTML = "";
-		for (const [id, label] of entries) {
-			const option = document.createElement("md-select-option");
-			option.value = id;
-			option.innerHTML = `<div slot="headline">${label}</div>`;
-			pushPeerSelect.appendChild(option);
-		}
-		pushPeerSelect.value = previousPeer;
+	function renderPushPeerOptions() {
+		syncOptions(
+			pushPeerSelect,
+			knownPeers.filter((peer) => peer.id !== ownPeerId).map((peer) => [peer.id, formatPeerLabel(peer)])
+		);
 	}
 
 	function renderIdentities(cfg) {
 		identities = cfg.identities || [];
 		identitiesCount.textContent = identities.length;
-		identitiesBody.innerHTML = "";
-		for (const identity of identities) {
-			const row = document.createElement("tr");
+		syncList(
+			identitiesBody,
+			identities,
+			(identity) => identity.name,
+			(identity) => {
+				const row = document.createElement("tr");
+				syncCells(row, [
+					["Name", identity.name],
+					["ID", identity.id],
+				]);
 
-			const nameCell = document.createElement("td");
-			nameCell.textContent = identity.name;
-			nameCell.dataset.label = "Name";
-			row.appendChild(nameCell);
+				const exportCell = document.createElement("td");
+				exportCell.dataset.label = "Export";
+				const exportButton = document.createElement("md-text-button");
+				exportButton.textContent = "Export";
+				exportButton.addEventListener("click", () =>
+					report(output, async () => {
+						console.log("[action] export identity", { identity: identity.name });
+						const data = await api.call("realm.exportIdentity", { name: identity.name });
+						const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+						const url = URL.createObjectURL(blob);
+						const link = document.createElement("a");
+						link.href = url;
+						link.download = `${identity.name}.json`;
+						link.click();
+						URL.revokeObjectURL(url);
+						output.textContent = `Exported identity "${identity.name}".`;
+					})
+				);
+				exportCell.appendChild(exportButton);
+				row.appendChild(exportCell);
 
-			const idCell = document.createElement("td");
-			idCell.textContent = identity.id;
-			idCell.dataset.label = "ID";
-			row.appendChild(idCell);
+				const qrCell = document.createElement("td");
+				qrCell.dataset.label = "QR";
+				const qrButton = document.createElement("md-text-button");
+				qrButton.textContent = "Show QR";
+				qrButton.addEventListener("click", () =>
+					report(output, async () => {
+						console.log("[action] show identity qr", { identity: identity.name });
+						const data = await api.call("realm.exportIdentity", { name: identity.name });
+						showQrCode(`Identity "${identity.name}"`, { name: data.name, privateKeyBase64: data.privateKeyBase64 });
+					})
+				);
+				qrCell.appendChild(qrButton);
+				row.appendChild(qrCell);
 
-			const exportCell = document.createElement("td");
-			exportCell.dataset.label = "Export";
-			const exportButton = document.createElement("md-text-button");
-			exportButton.textContent = "Export";
-			exportButton.addEventListener("click", () =>
-				report(output, async () => {
-					console.log("[action] export identity", { identity: identity.name });
-					const data = await api.call("realm.exportIdentity", { name: identity.name });
-					const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-					const url = URL.createObjectURL(blob);
-					const link = document.createElement("a");
-					link.href = url;
-					link.download = `${identity.name}.json`;
-					link.click();
-					URL.revokeObjectURL(url);
-					output.textContent = `Exported identity "${identity.name}".`;
-				})
-			);
-			exportCell.appendChild(exportButton);
-			row.appendChild(exportCell);
+				const deleteCell = document.createElement("td");
+				deleteCell.dataset.label = "Delete";
+				const deleteButton = document.createElement("md-text-button");
+				deleteButton.textContent = "Delete";
+				deleteButton.addEventListener("click", () =>
+					report(output, async () => {
+						console.log("[action] delete identity", { identity: identity.name });
+						if (!confirm(`Delete identity "${identity.name}"?`)) return;
+						renderConfig(await api.call("realm.deleteIdentity", { name: identity.name }));
+					})
+				);
+				deleteCell.appendChild(deleteButton);
+				row.appendChild(deleteCell);
 
-			const qrCell = document.createElement("td");
-			qrCell.dataset.label = "QR";
-			const qrButton = document.createElement("md-text-button");
-			qrButton.textContent = "Show QR";
-			qrButton.addEventListener("click", () =>
-				report(output, async () => {
-					console.log("[action] show identity qr", { identity: identity.name });
-					const data = await api.call("realm.exportIdentity", { name: identity.name });
-					showQrCode(`Identity "${identity.name}"`, { name: data.name, privateKeyBase64: data.privateKeyBase64 });
-				})
-			);
-			qrCell.appendChild(qrButton);
-			row.appendChild(qrCell);
-
-			const deleteCell = document.createElement("td");
-			deleteCell.dataset.label = "Delete";
-			const deleteButton = document.createElement("md-text-button");
-			deleteButton.textContent = "Delete";
-			deleteButton.addEventListener("click", () =>
-				report(output, async () => {
-					console.log("[action] delete identity", { identity: identity.name });
-					if (!confirm(`Delete identity "${identity.name}"?`)) return;
-					renderConfig(await api.call("realm.deleteIdentity", { name: identity.name }));
-				})
-			);
-			deleteCell.appendChild(deleteButton);
-			row.appendChild(deleteCell);
-
-			identitiesBody.appendChild(row);
-		}
+				return row;
+			},
+			(row, identity) =>
+				syncCells(row, [
+					["Name", identity.name],
+					["ID", identity.id],
+				])
+		);
 		renderPushIdentityOptions();
 	}
 

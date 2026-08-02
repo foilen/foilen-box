@@ -1,4 +1,4 @@
-import { formatPeerLabel } from "./util.js";
+import { formatPeerLabel, syncList, syncCells } from "./util.js";
 
 const PEERS_POLL_INTERVAL_MS = 5000;
 
@@ -14,76 +14,100 @@ export function initRealmPeers(api, onPeersUpdate) {
 	const addressesOpenState = new Map();
 	const swarmAddressesOpenState = new Map();
 
-	// renderAddressesCell builds the "<details><summary>N address(es)</summary><ul>...</ul></details>"
-	// widget shared by the peers and swarm tables, remembering per-row
-	// open/closed state across re-renders in openStateMap.
-	function renderAddressesCell(rowId, addresses, openStateMap) {
+	// syncAddressesCell builds/patches the "<details><summary>N
+	// address(es)</summary><ul>...</ul></details>" widget shared by the
+	// peers and swarm tables in place, remembering per-row open/closed state
+	// across re-renders in openStateMap and diffing the address <li>s so an
+	// open panel doesn't collapse or lose scroll position on every poll.
+	function syncAddressesCell(cell, rowId, addresses, openStateMap) {
+		if (addresses.length === 0) {
+			cell.replaceChildren();
+			return;
+		}
+		let details = cell.querySelector("details");
+		let summary, list;
+		if (!details) {
+			details = document.createElement("details");
+			details.open = openStateMap.get(rowId) ?? false;
+			details.addEventListener("toggle", () => openStateMap.set(rowId, details.open));
+			summary = document.createElement("summary");
+			details.appendChild(summary);
+			list = document.createElement("ul");
+			details.appendChild(list);
+			cell.replaceChildren(details);
+		} else {
+			summary = details.querySelector("summary");
+			list = details.querySelector("ul");
+		}
+		summary.textContent = `${addresses.length} address${addresses.length === 1 ? "" : "es"}`;
+		syncList(
+			list,
+			addresses,
+			(address) => address,
+			(address) => {
+				const item = document.createElement("li");
+				item.textContent = address;
+				return item;
+			},
+			() => {}
+		);
+	}
+
+	function createAddressesCell(rowId, addresses, openStateMap) {
 		const cell = document.createElement("td");
 		cell.dataset.label = "Addresses";
-		if (addresses.length === 0) {
-			return cell;
-		}
-		const details = document.createElement("details");
-		details.open = openStateMap.get(rowId) ?? false;
-		details.addEventListener("toggle", () => {
-			openStateMap.set(rowId, details.open);
-		});
-		const summary = document.createElement("summary");
-		summary.textContent = `${addresses.length} address${addresses.length === 1 ? "" : "es"}`;
-		details.appendChild(summary);
-		const list = document.createElement("ul");
-		for (const address of addresses) {
-			const item = document.createElement("li");
-			item.textContent = address;
-			list.appendChild(item);
-		}
-		details.appendChild(list);
-		cell.appendChild(details);
+		syncAddressesCell(cell, rowId, addresses, openStateMap);
 		return cell;
 	}
 
 	function renderPeers(peers) {
-		peersBody.innerHTML = "";
 		peersCount.textContent = peers.length;
-		for (const peer of peers) {
-			const row = document.createElement("tr");
-			const cells = [
-				["ID", formatPeerLabel(peer)],
-				["Groups", (peer.groupNames || []).join(", ")],
-				["Connected", peer.connected ? "yes" : "no"],
-				["Main", peer.mainPeer ? "yes" : "no"],
-				["Relay Service", peer.relayServiceEnabled ? "yes" : "no"],
-				["Version", peer.version || ""],
-				["Last Seen", peer.lastSeen ? new Date(peer.lastSeen).toLocaleString() : ""],
-			];
-			for (const [label, value] of cells) {
-				const cell = document.createElement("td");
-				cell.textContent = value;
-				cell.dataset.label = label;
-				row.appendChild(cell);
+		syncList(
+			peersBody,
+			peers,
+			(peer) => peer.id,
+			(peer) => {
+				const row = document.createElement("tr");
+				syncCells(row, peerCells(peer));
+				row.appendChild(createAddressesCell(peer.id, peer.addresses || [], addressesOpenState));
+				return row;
+			},
+			(row, peer) => {
+				syncCells(row, peerCells(peer));
+				syncAddressesCell(row.lastElementChild, peer.id, peer.addresses || [], addressesOpenState);
 			}
+		);
+	}
 
-			row.appendChild(renderAddressesCell(peer.id, peer.addresses || [], addressesOpenState));
-
-			peersBody.appendChild(row);
-		}
+	function peerCells(peer) {
+		return [
+			["ID", formatPeerLabel(peer)],
+			["Groups", (peer.groupNames || []).join(", ")],
+			["Connected", peer.connected ? "yes" : "no"],
+			["Main", peer.mainPeer ? "yes" : "no"],
+			["Relay Service", peer.relayServiceEnabled ? "yes" : "no"],
+			["Version", peer.version || ""],
+			["Last Seen", peer.lastSeen ? new Date(peer.lastSeen).toLocaleString() : ""],
+		];
 	}
 
 	function renderSwarm(peers) {
-		swarmBody.innerHTML = "";
 		swarmCount.textContent = peers.length;
-		for (const peer of peers) {
-			const row = document.createElement("tr");
-
-			const idCell = document.createElement("td");
-			idCell.textContent = peer.id;
-			idCell.dataset.label = "ID";
-			row.appendChild(idCell);
-
-			row.appendChild(renderAddressesCell(peer.id, peer.addresses || [], swarmAddressesOpenState));
-
-			swarmBody.appendChild(row);
-		}
+		syncList(
+			swarmBody,
+			peers,
+			(peer) => peer.id,
+			(peer) => {
+				const row = document.createElement("tr");
+				syncCells(row, [["ID", peer.id]]);
+				row.appendChild(createAddressesCell(peer.id, peer.addresses || [], swarmAddressesOpenState));
+				return row;
+			},
+			(row, peer) => {
+				syncCells(row, [["ID", peer.id]]);
+				syncAddressesCell(row.lastElementChild, peer.id, peer.addresses || [], swarmAddressesOpenState);
+			}
+		);
 	}
 
 	function refreshPeers() {

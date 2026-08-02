@@ -1,4 +1,4 @@
-import { report, formatPeerLabel } from "./util.js";
+import { report, formatPeerLabel, syncList } from "./util.js";
 
 // initRealmSpeedtest wires the Speed Test subtab: a checkable peer list (fed
 // by the same known-peers list as Permissions/Specs/Scripts/Services, via
@@ -21,25 +21,31 @@ export function initRealmSpeedtest(api, output) {
 	}
 
 	function renderPeers() {
-		const checkedIds = new Set(selectedPeerIds());
-		peersBody.innerHTML = "";
-		for (const peer of peers) {
-			if (peer.id === ownPeerId) continue;
-			const row = document.createElement("tr");
+		syncList(
+			peersBody,
+			peers.filter((peer) => peer.id !== ownPeerId),
+			(peer) => peer.id,
+			(peer) => {
+				const row = document.createElement("tr");
 
-			const checkCell = document.createElement("td");
-			const checkbox = document.createElement("md-checkbox");
-			checkbox.dataset.peerId = peer.id;
-			checkbox.checked = checkedIds.has(peer.id);
-			checkCell.appendChild(checkbox);
-			row.appendChild(checkCell);
+				const checkCell = document.createElement("td");
+				const checkbox = document.createElement("md-checkbox");
+				checkbox.dataset.peerId = peer.id;
+				checkCell.appendChild(checkbox);
+				row.appendChild(checkCell);
 
-			const peerCell = document.createElement("td");
-			peerCell.textContent = formatPeerLabel(peer);
-			row.appendChild(peerCell);
+				const peerCell = document.createElement("td");
+				peerCell.textContent = formatPeerLabel(peer);
+				row.appendChild(peerCell);
 
-			peersBody.appendChild(row);
-		}
+				return row;
+			},
+			(row, peer) => {
+				const peerCell = row.children[1];
+				const label = formatPeerLabel(peer);
+				if (peerCell.textContent !== label) peerCell.textContent = label;
+			}
+		);
 	}
 
 	function addResultRow(peer) {
