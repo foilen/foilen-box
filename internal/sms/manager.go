@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/url"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -41,8 +43,9 @@ type Manager struct {
 	cfg         *Service
 	localPeerID func() string
 
-	mu     sync.Mutex
-	bridge PlatformBridge
+	mu      sync.Mutex
+	bridge  PlatformBridge
+	baseURL string
 
 	pollMu     sync.Mutex
 	knownKeys  map[string]map[string]bool // "groupId|storeName" -> message key -> seen
@@ -74,6 +77,24 @@ func (m *Manager) getBridge() PlatformBridge {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.bridge
+}
+
+// SetBaseURL registers the local web UI's base URL (e.g.
+// "http://127.0.0.1:12345/"), used to build a clickable deep link for
+// desktop notifications; called once from
+// internal/webserver.Server.Start, after the listener's port is known.
+// Left empty on Android, where the platform bridge handles its own
+// click-to-open via a PendingIntent instead.
+func (m *Manager) SetBaseURL(baseURL string) {
+	m.mu.Lock()
+	m.baseURL = baseURL
+	m.mu.Unlock()
+}
+
+func (m *Manager) getBaseURL() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.baseURL
 }
 
 // Start begins the background poll loop. Safe to call once at construction
@@ -529,14 +550,34 @@ func (m *Manager) notify(groupID, storeName string, msg SmsMessage) {
 		preview = preview[:20]
 	}
 
+	// groupID|storeName|phoneNumber mirrors the JS side's UI hash format
+	// (realm-sms.js/hash.js) so the deep link can restore both the store
+	// being viewed and the open conversation, not just the phone number.
+	deepLink := groupID + "|" + storeName + "|" + msg.PhoneNumber
+
 	if bridge := m.getBridge(); bridge != nil {
-		// groupID|storeName|phoneNumber mirrors the JS side's UI hash format
-		// (realm-sms.js/hash.js) so the deep link can restore both the store
-		// being viewed and the open conversation, not just the phone number.
-		bridge.ShowNotification(title, preview, groupID+"|"+storeName+"|"+msg.PhoneNumber)
+		bridge.ShowNotification(title, preview, deepLink)
 		return
 	}
-	if err := notify.Notify(title, preview); err != nil {
+
+	baseURL := m.getBaseURL()
+	if baseURL == "" {
+		if err := notify.Notify(title, preview); err != nil {
+			log.Printf("sms: failed to show desktop notification: %v", err)
+		}
+		return
+	}
+	target := baseURL + "#realm/realm-sms-subtab/" + encodeURIComponent(deepLink)
+	if err := notify.NotifyClick(title, preview, target); err != nil {
 		log.Printf("sms: failed to show desktop notification: %v", err)
 	}
+}
+
+// encodeURIComponent mirrors JavaScript's encodeURIComponent well enough for
+// the deep-link segments this package builds ("groupId|storeName|phone"):
+// url.QueryEscape covers the same reserved characters but represents a
+// space as "+" instead of "%20", which decodeURIComponent (used by
+// hash.js/parseHash on the receiving end) would read back literally.
+func encodeURIComponent(s string) string {
+	return strings.ReplaceAll(url.QueryEscape(s), "+", "%20")
 }

@@ -68,6 +68,7 @@ func Start(configDir string, defaultDhtMode string, hostnameOverride string) (*S
 	if err := os.WriteFile(filepath.Join(logDir, "ui-port.txt"), []byte(strconv.Itoa(port)), 0o644); err != nil {
 		return nil, fmt.Errorf("failed to write ui-port.txt: %w", err)
 	}
+	a.realmSms.SetBaseURL(fmt.Sprintf("http://%s/", listener.Addr().String()))
 
 	staticRoot, err := fs.Sub(webFS, "web")
 	if err != nil {
