@@ -86,7 +86,15 @@ func (f *Feature) RegisterHandlers(reg *realm.Registrar) {
 
 // Push sends name/kp to peer "to", which imports it automatically if it has
 // granted this peer (or one of its groups) the push action.
-func (f *Feature) Push(to, name string, kp model.KeyPair) error {
+func (f *Feature) Push(to, name string, kp model.KeyPair) (err error) {
+	defer func() {
+		if err != nil {
+			log.Printf("realm identity: push of identity %q to %s failed: %v", name, to, err)
+		} else {
+			log.Printf("realm identity: pushed identity %q to %s", name, to)
+		}
+	}()
+
 	reg := f.registrar()
 	if reg == nil {
 		return fmt.Errorf("realm identity: not registered on an engine")

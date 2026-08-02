@@ -3,6 +3,7 @@ package webserver
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"foilen-box/internal/browseropen"
@@ -332,6 +333,7 @@ func handleRealmAddIdentity(a *api, params json.RawMessage) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	log.Printf("realm identity: added identity %q", p.Name)
 	return realmConfigResponse(a, cfg), nil
 }
 
@@ -357,6 +359,7 @@ func handleRealmImportIdentity(a *api, params json.RawMessage) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	log.Printf("realm identity: imported identity %q", p.Name)
 	return realmConfigResponse(a, cfg), nil
 }
 
@@ -379,6 +382,7 @@ func handleRealmDeleteIdentity(a *api, params json.RawMessage) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	log.Printf("realm identity: deleted identity %q", p.Name)
 	return realmConfigResponse(a, cfg), nil
 }
 
@@ -397,6 +401,7 @@ func handleRealmExportIdentity(a *api, params json.RawMessage) (any, error) {
 	cfg := a.realmConfig.Load()
 	for _, id := range cfg.Identities {
 		if id.Name == p.Name {
+			log.Printf("realm identity: exported identity %q", p.Name)
 			return exportIdentityResult{Name: id.Name, PrivateKeyBase64: id.KeyPair.PrivateKeyBase64}, nil
 		}
 	}
