@@ -15,6 +15,7 @@ import (
 
 	realm "foilen-realm"
 	realmconfig "foilen-realm/config"
+	realmannounce "foilen-realm/features/announce"
 	realmidentity "foilen-realm/features/identity"
 	realmmaps "foilen-realm/features/maps"
 	realmscripts "foilen-realm/features/scripts"
@@ -117,7 +118,15 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 	scriptsFeature := realmscripts.New()
 	servicesFeature := realmservices.New(realmServicesStore)
 	mapsFeature := realmmaps.New(realmMapsStore)
-	announceFeature := newRealmAnnounce(mapsFeature, func() string { return appspec.Report(dataDir) }, func() appspec.Summary { return appspec.GetSummary(dataDir) }, func() string { return resolveHostname(hostnameOverride) })
+	announceFeature := realmannounce.New(mapsFeature,
+		func() string { return appspec.Report(dataDir) },
+		func() realmannounce.SpecSummary {
+			s := appspec.GetSummary(dataDir)
+			return realmannounce.SpecSummary{OS: s.OS, CPU: s.CPU, Mem: s.Mem, Battery: s.Battery, GPU: s.GPU, Disk: s.Disk}
+		},
+		func() string { return resolveHostname(hostnameOverride) },
+		appVersion,
+	)
 	speedTestFeature := boxspeedtest.New()
 	smsManager := boxsms.NewManager(mapsFeature, smsConfigSvc, func() string { return realmConfigSvc.Load().PeerID.ID })
 	// a is assigned below, but the identity feature's onReceive callback

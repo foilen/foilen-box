@@ -18,3 +18,11 @@ func displayVersion() string {
 	}
 	return CommitDate + " " + Version
 }
+
+// appVersion returns this build's self-reported application name and
+// version, e.g. "FoilenBox - 20260731_1557 abc1234", posted alongside peer
+// announce info so other peers can tell which application (and build)
+// they're talking to.
+func appVersion() string {
+	return "FoilenBox - " + displayVersion()
+}

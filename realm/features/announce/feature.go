@@ -1,4 +1,12 @@
-package webserver
+// Package announce is the "common/announce" Realm feature: on every engine
+// tick it posts this peer's own services, scripts, spec, and reachability
+// info (hostname/description/addresses) to every currently configured
+// group's "common" RealmMap, and consumes every configured group's "common"
+// map for peers/{peerId} entries, upserting them into the local known-peers
+// store. This is how peers discover each other's connection info well
+// enough to reconnect (see connection shaping in realm/connection_ring.go),
+// replacing the old direct peer-to-peer "peer share" gossip protocol.
+package announce
 
 import (
 	"encoding/json"
@@ -9,16 +17,16 @@ import (
 
 	realm "foilen-realm"
 	realmmaps "foilen-realm/features/maps"
-	realmmodel "foilen-realm/model"
-
-	appspec "foilen-box/internal/spec"
+	"foilen-realm/model"
 )
 
 const (
-	// announceStoreName is the RealmMap store every peer posts its own
-	// services, scripts, spec, and reachability info into, on all of its
-	// groups.
-	announceStoreName = "common"
+	// FeatureName is this feature's namespace.
+	FeatureName = "common/announce"
+
+	// storeName is the RealmMap store every peer posts its own services,
+	// scripts, spec, and reachability info into, on all of its groups.
+	storeName = "common"
 
 	// peersKeyPrefix namespaces the peers/{peerId} entries every peer posts
 	// with its own hostname/description/addresses, so other members can
@@ -38,10 +46,24 @@ const (
 	peerInfoRefreshInterval = 24 * time.Hour
 
 	// commonMapDefaultAutoDeleteHours is the entry TTL seeded into
-	// announceStoreName's _realmMaps config the first time any peer notices
-	// it's missing (see seedCommonConfig) — 7 days.
+	// storeName's _realmMaps config the first time any peer notices it's
+	// missing (see seedCommonConfig) — 7 days.
 	commonMapDefaultAutoDeleteHours = 168
 )
+
+// SpecSummary is the compact, one-line-per-field system report posted
+// alongside the full spec text — mirrors model.PeerSpec's OS/CPU/Mem/
+// Battery/GPU/Disk fields. Callers adapt their own system-report type (e.g.
+// internal/spec.Summary) into this so the feature itself has no dependency
+// on any application-specific spec package.
+type SpecSummary struct {
+	OS      string
+	CPU     string
+	Mem     string
+	Battery string
+	GPU     string
+	Disk    string
+}
 
 // peerAnnounceInfo is the JSON shape posted under peers/{peerId}: a peer's
 // own self-reported reachability info, analogous to model.PeerSpec but for
@@ -54,19 +76,13 @@ type peerAnnounceInfo struct {
 	Version             string   `json:"version"`
 }
 
-// realmAnnounce implements realm.Feature and realm.PeriodicHook: on every
-// engine tick it posts this peer's own services, scripts, and reachability
-// info (hostname/description/addresses) to every currently configured
-// group's "common" RealmMap, and its own spec (refreshed at most once per
-// specRefreshInterval, since gathering it is comparatively expensive). It
-// also consumes every configured group's "common" map on each tick,
-// upserting whatever peers/{peerId} entries it finds into the local known-
-// peers store, replacing the old direct peer-to-peer "peer share" gossip.
-type realmAnnounce struct {
+// Feature implements realm.Feature and realm.PeriodicHook.
+type Feature struct {
 	mapsFeature *realmmaps.Feature
 	specText    func() string
-	specSummary func() appspec.Summary
+	specSummary func() SpecSummary
 	hostname    func() string
+	appVersion  func() string
 
 	mu            sync.Mutex
 	lastSpecPost  time.Time
@@ -74,34 +90,37 @@ type realmAnnounce struct {
 	postedInfo    peerAnnounceInfo
 }
 
-func newRealmAnnounce(mapsFeature *realmmaps.Feature, specText func() string, specSummary func() appspec.Summary, hostname func() string) *realmAnnounce {
-	return &realmAnnounce{mapsFeature: mapsFeature, specText: specText, specSummary: specSummary, hostname: hostname}
+// New builds the announce Feature. specText/specSummary/hostname/appVersion
+// are injected rather than computed here so this package has no dependency
+// on any application-specific system-report or versioning code.
+func New(mapsFeature *realmmaps.Feature, specText func() string, specSummary func() SpecSummary, hostname func() string, appVersion func() string) *Feature {
+	return &Feature{mapsFeature: mapsFeature, specText: specText, specSummary: specSummary, hostname: hostname, appVersion: appVersion}
 }
 
-func (a *realmAnnounce) Name() string { return "common/announce" }
+func (f *Feature) Name() string { return FeatureName }
 
-func (a *realmAnnounce) Actions() []realmmodel.PermissionAction { return nil }
+func (f *Feature) Actions() []model.PermissionAction { return nil }
 
-func (a *realmAnnounce) RegisterHandlers(reg *realm.Registrar) {}
+func (f *Feature) RegisterHandlers(reg *realm.Registrar) {}
 
 // RunPeriodic posts this peer's services, scripts, and reachability info
 // (the latter only when its hostname, description, or addresses changed, or
 // peerInfoRefreshInterval elapsed), and (at most daily) its spec, to every
 // currently configured group's "common" map; it then pulls every such map's
 // peers/* entries into the local known-peers store, per realm.PeriodicHook.
-func (a *realmAnnounce) RunPeriodic(reg *realm.Registrar) {
+func (f *Feature) RunPeriodic(reg *realm.Registrar) {
 	cfg := reg.Config()
 	if cfg.PeerID.ID == "" || len(cfg.Groups) == 0 {
 		return
 	}
 
-	postSpec := a.dueForSpecPost()
+	postSpec := f.dueForSpecPost()
 	var specJSON []byte
 	if postSpec {
-		summary := a.specSummary()
-		peerSpec := realmmodel.PeerSpec{
+		summary := f.specSummary()
+		peerSpec := model.PeerSpec{
 			PeerID:    cfg.PeerID.ID,
-			Text:      a.specText(),
+			Text:      f.specText(),
 			OS:        summary.OS,
 			CPU:       summary.CPU,
 			Mem:       summary.Mem,
@@ -112,20 +131,20 @@ func (a *realmAnnounce) RunPeriodic(reg *realm.Registrar) {
 		}
 		b, err := json.Marshal(peerSpec)
 		if err != nil {
-			log.Printf("realm announce: failed to marshal own spec: %v", err)
+			log.Printf("announce: failed to marshal own spec: %v", err)
 			postSpec = false
 		} else {
 			specJSON = b
 		}
 	}
 
-	peerInfo := peerAnnounceInfo{Hostname: a.hostname(), Description: cfg.Description, Addresses: ownAddresses(reg), RelayServiceEnabled: cfg.EnableRelayService, Version: appVersion()}
-	postPeerInfo := a.dueForPeerInfoPost(peerInfo)
+	peerInfo := peerAnnounceInfo{Hostname: f.hostname(), Description: cfg.Description, Addresses: ownAddresses(reg), RelayServiceEnabled: cfg.EnableRelayService, Version: f.appVersion()}
+	postPeerInfo := f.dueForPeerInfoPost(peerInfo)
 	var peerInfoJSON []byte
 	if postPeerInfo {
 		b, err := json.Marshal(peerInfo)
 		if err != nil {
-			log.Printf("realm announce: failed to marshal own peer info: %v", err)
+			log.Printf("announce: failed to marshal own peer info: %v", err)
 			postPeerInfo = false
 		} else {
 			peerInfoJSON = b
@@ -133,110 +152,110 @@ func (a *realmAnnounce) RunPeriodic(reg *realm.Registrar) {
 	}
 
 	for _, group := range cfg.Groups {
-		a.seedCommonConfig(group)
+		f.seedCommonConfig(group)
 
 		for _, svc := range cfg.Services {
 			b, err := json.Marshal(svc)
 			if err != nil {
-				log.Printf("realm announce: failed to marshal service %q: %v", svc.Name, err)
+				log.Printf("announce: failed to marshal service %q: %v", svc.Name, err)
 				continue
 			}
 			key := serviceMapKey(cfg.PeerID.ID, svc.Name)
-			if err := a.mapsFeature.SetValue(group.KeyPair.ID, announceStoreName, key, string(b)); err != nil {
-				log.Printf("realm announce: failed to post service %q to group %q: %v", svc.Name, group.Name, err)
+			if err := f.mapsFeature.SetValue(group.KeyPair.ID, storeName, key, string(b)); err != nil {
+				log.Printf("announce: failed to post service %q to group %q: %v", svc.Name, group.Name, err)
 			}
 		}
 		for _, sc := range cfg.Scripts {
 			b, err := json.Marshal(sc)
 			if err != nil {
-				log.Printf("realm announce: failed to marshal script %q: %v", sc.Name, err)
+				log.Printf("announce: failed to marshal script %q: %v", sc.Name, err)
 				continue
 			}
 			key := "scripts/" + cfg.PeerID.ID + "/" + sc.Name
-			if err := a.mapsFeature.SetValue(group.KeyPair.ID, announceStoreName, key, string(b)); err != nil {
-				log.Printf("realm announce: failed to post script %q to group %q: %v", sc.Name, group.Name, err)
+			if err := f.mapsFeature.SetValue(group.KeyPair.ID, storeName, key, string(b)); err != nil {
+				log.Printf("announce: failed to post script %q to group %q: %v", sc.Name, group.Name, err)
 			}
 		}
 		if postSpec {
 			key := "specs/" + cfg.PeerID.ID
-			if err := a.mapsFeature.SetValue(group.KeyPair.ID, announceStoreName, key, string(specJSON)); err != nil {
-				log.Printf("realm announce: failed to post spec to group %q: %v", group.Name, err)
+			if err := f.mapsFeature.SetValue(group.KeyPair.ID, storeName, key, string(specJSON)); err != nil {
+				log.Printf("announce: failed to post spec to group %q: %v", group.Name, err)
 			}
 		}
 		if postPeerInfo {
 			key := peersKeyPrefix + cfg.PeerID.ID
-			if err := a.mapsFeature.SetValue(group.KeyPair.ID, announceStoreName, key, string(peerInfoJSON)); err != nil {
-				log.Printf("realm announce: failed to post peer info to group %q: %v", group.Name, err)
+			if err := f.mapsFeature.SetValue(group.KeyPair.ID, storeName, key, string(peerInfoJSON)); err != nil {
+				log.Printf("announce: failed to post peer info to group %q: %v", group.Name, err)
 			}
 		}
 	}
 
 	if postSpec {
-		a.mu.Lock()
-		a.lastSpecPost = time.Now()
-		a.mu.Unlock()
+		f.mu.Lock()
+		f.lastSpecPost = time.Now()
+		f.mu.Unlock()
 	}
 	if postPeerInfo {
-		a.mu.Lock()
-		a.lastPeersPost = time.Now()
-		a.postedInfo = peerInfo
-		a.mu.Unlock()
+		f.mu.Lock()
+		f.lastPeersPost = time.Now()
+		f.postedInfo = peerInfo
+		f.mu.Unlock()
 	}
 
-	a.consumePeerInfo(reg, cfg)
+	f.consumePeerInfo(reg, cfg)
 }
 
 // seedCommonConfig idempotently ensures group's _realmMaps has an entry for
-// announceStoreName, so the shared announce map gets a default entry TTL
-// even though nothing ever calls CreateMap for it explicitly (SetValue
-// creates stores implicitly). Doesn't stomp an existing entry, so a user
-// override (or a default already seeded by another peer) is left alone.
-func (a *realmAnnounce) seedCommonConfig(group realmmodel.Group) {
-	cfgMap, _, _ := a.mapsFeature.GetMap(group.KeyPair.ID, realmmaps.SystemConfigStoreName)
-	if _, ok := cfgMap.Entries[announceStoreName]; ok {
+// storeName, so the shared announce map gets a default entry TTL even
+// though nothing ever calls CreateMap for it explicitly (SetValue creates
+// stores implicitly). Doesn't stomp an existing entry, so a user override
+// (or a default already seeded by another peer) is left alone.
+func (f *Feature) seedCommonConfig(group model.Group) {
+	cfgMap, _, _ := f.mapsFeature.GetMap(group.KeyPair.ID, realmmaps.SystemConfigStoreName)
+	if _, ok := cfgMap.Entries[storeName]; ok {
 		return
 	}
-	data, err := json.Marshal(realmmodel.RealmMapConfig{AutoDeleteEntriesHours: commonMapDefaultAutoDeleteHours})
+	data, err := json.Marshal(model.RealmMapConfig{AutoDeleteEntriesHours: commonMapDefaultAutoDeleteHours})
 	if err != nil {
-		log.Printf("realm announce: failed to marshal default config for %q: %v", announceStoreName, err)
+		log.Printf("announce: failed to marshal default config for %q: %v", storeName, err)
 		return
 	}
-	if err := a.mapsFeature.SetValue(group.KeyPair.ID, realmmaps.SystemConfigStoreName, announceStoreName, string(data)); err != nil {
-		log.Printf("realm announce: failed to seed default config for %q in group %q: %v", announceStoreName, group.Name, err)
+	if err := f.mapsFeature.SetValue(group.KeyPair.ID, realmmaps.SystemConfigStoreName, storeName, string(data)); err != nil {
+		log.Printf("announce: failed to seed default config for %q in group %q: %v", storeName, group.Name, err)
 	}
 }
 
 // serviceMapKey returns the RealmMap key a service is posted under, so an
-// immediate publish/retraction (announceServiceNow/retractServiceNow) and
+// immediate publish/retraction (AnnounceServiceNow/RetractServiceNow) and
 // the periodic re-post above agree on the same entry.
 func serviceMapKey(peerID, name string) string {
 	return "services/" + peerID + "/" + name
 }
 
-// announceServiceNow immediately posts svc to every one of cfg's groups'
+// AnnounceServiceNow immediately posts svc to every one of cfg's groups'
 // "common" RealmMap, instead of waiting for the next RunPeriodic tick, so a
 // service added or edited through the app is visible to peers right away.
-func announceServiceNow(mapsFeature *realmmaps.Feature, cfg realmmodel.Config, svc realmmodel.Service) {
+func AnnounceServiceNow(mapsFeature *realmmaps.Feature, cfg model.Config, svc model.Service) {
 	b, err := json.Marshal(svc)
 	if err != nil {
-		log.Printf("realm announce: failed to marshal service %q: %v", svc.Name, err)
+		log.Printf("announce: failed to marshal service %q: %v", svc.Name, err)
 		return
 	}
 	key := serviceMapKey(cfg.PeerID.ID, svc.Name)
 	for _, group := range cfg.Groups {
-		if err := mapsFeature.SetValue(group.KeyPair.ID, announceStoreName, key, string(b)); err != nil {
-			log.Printf("realm announce: failed to post service %q to group %q: %v", svc.Name, group.Name, err)
+		if err := mapsFeature.SetValue(group.KeyPair.ID, storeName, key, string(b)); err != nil {
+			log.Printf("announce: failed to post service %q to group %q: %v", svc.Name, group.Name, err)
 		}
 	}
 }
 
-// retractServiceNow immediately removes a deleted service's entry from every
-// one of cfg's groups' "common" RealmMap.
-func retractServiceNow(mapsFeature *realmmaps.Feature, cfg realmmodel.Config, name string) {
+// RetractServiceNow immediately removes a deleted service's entry from
+// every one of cfg's groups' "common" RealmMap.
+func RetractServiceNow(mapsFeature *realmmaps.Feature, cfg model.Config, name string) {
 	key := serviceMapKey(cfg.PeerID.ID, name)
 	for _, group := range cfg.Groups {
-		if err := mapsFeature.DeleteValue(group.KeyPair.ID, announceStoreName, key); err != nil {
-			log.Printf("realm announce: failed to retract service %q from group %q: %v", name, group.Name, err)
+		if err := mapsFeature.DeleteValue(group.KeyPair.ID, storeName, key); err != nil {
+			log.Printf("announce: failed to retract service %q from group %q: %v", name, group.Name, err)
 		}
 	}
 }
@@ -251,13 +270,13 @@ func retractServiceNow(mapsFeature *realmmaps.Feature, cfg realmmodel.Config, na
 // (existing.GroupNames, unmodified): membership is only ever granted by a
 // direct, signed group-challenge with that peer, see
 // realm/peer_identify.go/challengeGroup.
-func (a *realmAnnounce) consumePeerInfo(reg *realm.Registrar, cfg realmmodel.Config) {
+func (f *Feature) consumePeerInfo(reg *realm.Registrar, cfg model.Config) {
 	peersStore := reg.Peers()
 	if peersStore == nil {
 		return
 	}
 	for _, group := range cfg.Groups {
-		rm, _, _ := a.mapsFeature.GetMap(group.KeyPair.ID, announceStoreName)
+		rm, _, _ := f.mapsFeature.GetMap(group.KeyPair.ID, storeName)
 		for key, entry := range rm.Entries {
 			if len(key) <= len(peersKeyPrefix) || key[:len(peersKeyPrefix)] != peersKeyPrefix {
 				continue
@@ -278,7 +297,7 @@ func (a *realmAnnounce) consumePeerInfo(reg *realm.Registrar, cfg realmmodel.Con
 			}
 			connected := known && existing.Connected
 
-			peersStore.Upsert(realmmodel.PeerInfo{
+			peersStore.Upsert(model.PeerInfo{
 				ID:                  peerID,
 				LastSeen:            lastSeen,
 				Addresses:           info.Addresses,
@@ -293,23 +312,23 @@ func (a *realmAnnounce) consumePeerInfo(reg *realm.Registrar, cfg realmmodel.Con
 	}
 }
 
-func (a *realmAnnounce) dueForSpecPost() bool {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return time.Since(a.lastSpecPost) >= specRefreshInterval
+func (f *Feature) dueForSpecPost() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return time.Since(f.lastSpecPost) >= specRefreshInterval
 }
 
 // dueForPeerInfoPost reports whether the own-peer-info entry should be
 // (re)posted this tick: either info differs from what was last posted (any
 // of hostname, description, or addresses), or peerInfoRefreshInterval has
 // elapsed since the last post.
-func (a *realmAnnounce) dueForPeerInfoPost(info peerAnnounceInfo) bool {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if !reflect.DeepEqual(info, a.postedInfo) {
+func (f *Feature) dueForPeerInfoPost(info peerAnnounceInfo) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !reflect.DeepEqual(info, f.postedInfo) {
 		return true
 	}
-	return time.Since(a.lastPeersPost) >= peerInfoRefreshInterval
+	return time.Since(f.lastPeersPost) >= peerInfoRefreshInterval
 }
 
 // ownAddresses returns the running host's own listen multiaddrs as strings,
@@ -325,12 +344,4 @@ func ownAddresses(reg *realm.Registrar) []string {
 		result[i] = a.String()
 	}
 	return result
-}
-
-// appVersion returns this build's self-reported application name and
-// version, e.g. "FoilenBox - 20260731_1557 abc1234", posted alongside peer
-// announce info so other peers can tell which application (and build)
-// they're talking to.
-func appVersion() string {
-	return "FoilenBox - " + displayVersion()
 }

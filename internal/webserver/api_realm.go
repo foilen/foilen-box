@@ -8,6 +8,7 @@ import (
 
 	"foilen-box/internal/browseropen"
 
+	realmannounce "foilen-realm/features/announce"
 	realmkeypair "foilen-realm/keypair"
 	realmmodel "foilen-realm/model"
 )
@@ -624,7 +625,7 @@ func handleRealmAddService(a *api, params json.RawMessage) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	announceServiceNow(a.realmMapsFeature, cfg, svc)
+	realmannounce.AnnounceServiceNow(a.realmMapsFeature, cfg, svc)
 	return realmConfigResponse(a, cfg), nil
 }
 
@@ -663,7 +664,7 @@ func handleRealmUpdateService(a *api, params json.RawMessage) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	announceServiceNow(a.realmMapsFeature, cfg, svc)
+	realmannounce.AnnounceServiceNow(a.realmMapsFeature, cfg, svc)
 	return realmConfigResponse(a, cfg), nil
 }
 
@@ -686,7 +687,7 @@ func handleRealmDeleteService(a *api, params json.RawMessage) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	retractServiceNow(a.realmMapsFeature, cfg, p.Name)
+	realmannounce.RetractServiceNow(a.realmMapsFeature, cfg, p.Name)
 	return realmConfigResponse(a, cfg), nil
 }
 
