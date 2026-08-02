@@ -7,6 +7,7 @@ import { report, formatPeerLabel, syncList } from "./util.js";
 // after the other, filling in a result row as each one completes.
 export function initRealmSpeedtest(api, output) {
 	const peersBody = document.getElementById("realm-speedtest-peers-tbody");
+	const selectAllCheckbox = document.getElementById("realm-speedtest-select-all");
 	const runButton = document.getElementById("realm-speedtest-run-button");
 	const progress = document.getElementById("realm-speedtest-progress");
 	const resultsBody = document.getElementById("realm-speedtest-results-tbody");
@@ -20,6 +21,21 @@ export function initRealmSpeedtest(api, output) {
 			.map((cb) => cb.dataset.peerId);
 	}
 
+	function syncConnectedCell(row, peer) {
+		let cell = row.children[2];
+		let dot;
+		if (!cell) {
+			cell = document.createElement("td");
+			dot = document.createElement("span");
+			cell.appendChild(dot);
+			row.appendChild(cell);
+		} else {
+			dot = cell.querySelector("span");
+		}
+		dot.className = `status-dot${peer.connected ? " connected" : ""}`;
+		dot.title = peer.connected ? "Connected" : "Not connected";
+	}
+
 	function renderPeers() {
 		syncList(
 			peersBody,
@@ -31,6 +47,7 @@ export function initRealmSpeedtest(api, output) {
 				const checkCell = document.createElement("td");
 				const checkbox = document.createElement("md-checkbox");
 				checkbox.dataset.peerId = peer.id;
+				checkbox.addEventListener("change", updateSelectAllState);
 				checkCell.appendChild(checkbox);
 				row.appendChild(checkCell);
 
@@ -38,14 +55,23 @@ export function initRealmSpeedtest(api, output) {
 				peerCell.textContent = formatPeerLabel(peer);
 				row.appendChild(peerCell);
 
+				syncConnectedCell(row, peer);
+
 				return row;
 			},
 			(row, peer) => {
 				const peerCell = row.children[1];
 				const label = formatPeerLabel(peer);
 				if (peerCell.textContent !== label) peerCell.textContent = label;
+				syncConnectedCell(row, peer);
 			}
 		);
+		updateSelectAllState();
+	}
+
+	function updateSelectAllState() {
+		const checkboxes = Array.from(peersBody.querySelectorAll("md-checkbox"));
+		selectAllCheckbox.checked = checkboxes.length > 0 && checkboxes.every((cb) => cb.checked);
 	}
 
 	function addResultRow(peer) {
@@ -78,6 +104,11 @@ export function initRealmSpeedtest(api, output) {
 			uploadCell.textContent = `${result.uploadMbps.toFixed(2)} Mbps`;
 		}
 	}
+
+	selectAllCheckbox.addEventListener("change", () => {
+		const checked = selectAllCheckbox.checked;
+		for (const checkbox of peersBody.querySelectorAll("md-checkbox")) checkbox.checked = checked;
+	});
 
 	runButton.addEventListener("click", () =>
 		report(output, async () => {
