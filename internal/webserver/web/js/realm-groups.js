@@ -144,7 +144,7 @@ export function initRealmGroups(api, output, renderConfig) {
 		reader.readAsText(file);
 	});
 
-	importScanButton.addEventListener("click", startScan);
+	importScanButton.addEventListener("click", () => startScan("Scan Group QR Code"));
 
 	importConfirmButton.addEventListener("click", () =>
 		report(output, async () => {

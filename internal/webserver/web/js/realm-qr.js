@@ -27,6 +27,7 @@ export function initQrModal() {
 
 export function initScanModal(onScanned) {
 	const scanModal = document.getElementById("realm-scan-modal");
+	const scanTitle = document.getElementById("realm-scan-title");
 	const scanVideo = document.getElementById("realm-scan-video");
 	const scanCanvas = document.getElementById("realm-scan-canvas");
 	const scanStatus = document.getElementById("realm-scan-status");
@@ -70,9 +71,10 @@ export function initScanModal(onScanned) {
 		stopScan();
 	});
 
-	return async function startScan() {
+	return async function startScan(title) {
 		console.log("[action] start qr scan");
 		try {
+			scanTitle.textContent = title || "Scan QR Code";
 			scanStatus.textContent = "";
 			scanModal.classList.remove("hidden");
 			scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });

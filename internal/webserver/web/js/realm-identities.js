@@ -32,7 +32,15 @@ export function initRealmIdentities(api, output, renderConfig) {
 	let knownPeers = [];
 	let ownPeerId = "";
 
-	function renderPushSelects() {
+	// renderPushIdentityOptions and renderPushPeerOptions are split (rather
+	// than one combined rebuild) so that the peers poll (every few seconds,
+	// see realm-peers.js) doesn't also tear down and rebuild the identity
+	// select — which briefly desyncs the select's selected value, since
+	// md-outlined-select processes newly-slotted md-select-option children
+	// asynchronously and doesn't reliably pick up a value set right after
+	// rebuilding. The identity select only needs rebuilding when the
+	// identities list itself changes.
+	function renderPushIdentityOptions() {
 		const previousIdentity = pushIdentitySelect.value;
 		pushIdentitySelect.innerHTML = "";
 		for (const identity of identities) {
@@ -42,14 +50,26 @@ export function initRealmIdentities(api, output, renderConfig) {
 			pushIdentitySelect.appendChild(option);
 		}
 		pushIdentitySelect.value = previousIdentity;
+	}
+
+	// Peers are polled every few seconds (see realm-peers.js), so skip the
+	// rebuild entirely when the set of selectable peers hasn't actually
+	// changed — same rebuild-drops-the-selection issue as above, but here it
+	// can't be fixed by only calling this on relevant updates, since every
+	// poll is a "relevant" peer update in general.
+	let lastPeerOptionsKey = "";
+	function renderPushPeerOptions() {
+		const entries = knownPeers.filter((peer) => peer.id !== ownPeerId).map((peer) => [peer.id, formatPeerLabel(peer)]);
+		const key = JSON.stringify(entries);
+		if (key === lastPeerOptionsKey) return;
+		lastPeerOptionsKey = key;
 
 		const previousPeer = pushPeerSelect.value;
 		pushPeerSelect.innerHTML = "";
-		for (const peer of knownPeers) {
-			if (peer.id === ownPeerId) continue;
+		for (const [id, label] of entries) {
 			const option = document.createElement("md-select-option");
-			option.value = peer.id;
-			option.innerHTML = `<div slot="headline">${formatPeerLabel(peer)}</div>`;
+			option.value = id;
+			option.innerHTML = `<div slot="headline">${label}</div>`;
 			pushPeerSelect.appendChild(option);
 		}
 		pushPeerSelect.value = previousPeer;
@@ -123,7 +143,7 @@ export function initRealmIdentities(api, output, renderConfig) {
 
 			identitiesBody.appendChild(row);
 		}
-		renderPushSelects();
+		renderPushIdentityOptions();
 	}
 
 	addIdentityButton.addEventListener("click", () =>
@@ -163,7 +183,7 @@ export function initRealmIdentities(api, output, renderConfig) {
 		reader.readAsText(file);
 	});
 
-	importScanButton.addEventListener("click", startScan);
+	importScanButton.addEventListener("click", () => startScan("Scan Identity QR Code"));
 
 	importConfirmButton.addEventListener("click", () =>
 		report(output, async () => {
@@ -207,7 +227,7 @@ export function initRealmIdentities(api, output, renderConfig) {
 		renderIdentities,
 		onPeersUpdate: (peers) => {
 			knownPeers = peers;
-			renderPushSelects();
+			renderPushPeerOptions();
 		},
 		onConfigUpdate: (cfg) => {
 			ownPeerId = cfg.peerId || "";

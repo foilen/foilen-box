@@ -44,6 +44,24 @@
 		<button class="subtab-button" data-subtab="realm-maps-subtab">Maps</button>
 	</div>
 
+	<div id="realm-qr-modal" class="modal hidden">
+		<div class="modal-content">
+			<h4 id="realm-qr-title">QR Code</h4>
+			<div id="realm-qr-code"></div>
+			<md-text-button id="realm-qr-close-button">Close</md-text-button>
+		</div>
+	</div>
+
+	<div id="realm-scan-modal" class="modal hidden">
+		<div class="modal-content">
+			<h4 id="realm-scan-title">Scan QR Code</h4>
+			<video id="realm-scan-video" playsinline muted></video>
+			<canvas id="realm-scan-canvas" class="hidden"></canvas>
+			<p id="realm-scan-status" class="hint"></p>
+			<md-text-button id="realm-scan-close-button">Close</md-text-button>
+		</div>
+	</div>
+
 	<div id="realm-main" class="subtab-panel">
 		<div class="row">
 			<label><md-checkbox id="realm-enabled"></md-checkbox> Realm networking enabled</label>
@@ -168,24 +186,6 @@
 				<md-filled-tonal-button id="realm-import-confirm-button">Import</md-filled-tonal-button>
 				<md-filled-tonal-button id="realm-import-scan-button">Scan QR Code</md-filled-tonal-button>
 				<md-text-button id="realm-import-cancel-button">Cancel</md-text-button>
-			</div>
-		</div>
-
-		<div id="realm-qr-modal" class="modal hidden">
-			<div class="modal-content">
-				<h4 id="realm-qr-title">Group QR Code</h4>
-				<div id="realm-qr-code"></div>
-				<md-text-button id="realm-qr-close-button">Close</md-text-button>
-			</div>
-		</div>
-
-		<div id="realm-scan-modal" class="modal hidden">
-			<div class="modal-content">
-				<h4>Scan Group QR Code</h4>
-				<video id="realm-scan-video" playsinline muted></video>
-				<canvas id="realm-scan-canvas" class="hidden"></canvas>
-				<p id="realm-scan-status" class="hint"></p>
-				<md-text-button id="realm-scan-close-button">Close</md-text-button>
 			</div>
 		</div>
 
