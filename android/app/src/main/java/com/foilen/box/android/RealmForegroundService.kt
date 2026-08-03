@@ -9,7 +9,9 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -34,10 +36,22 @@ class RealmForegroundService : Service() {
 	// discovery), forcing peer discovery through the public DHT only.
 	private var multicastLock: WifiManager.MulticastLock? = null
 
+	private val handler = Handler(Looper.getMainLooper())
+
+	// Peer counts aren't push-notified from Go, so the notification text is
+	// kept fresh by polling Mobile.connectedPeersCount/peersTotalCount.
+	private val peerCountRefresher = object : Runnable {
+		override fun run() {
+			updateNotification()
+			handler.postDelayed(this, PEER_COUNT_REFRESH_MS)
+		}
+	}
+
 	override fun onCreate() {
 		super.onCreate()
 		createNotificationChannel()
 		showNotification()
+		handler.post(peerCountRefresher)
 		acquireMulticastLock()
 		Thread {
 			try {
@@ -64,10 +78,13 @@ class RealmForegroundService : Service() {
 		if (intent?.hasExtra(EXTRA_ENABLED) == true) {
 			if (intent.getBooleanExtra(EXTRA_ENABLED, true)) {
 				showNotification()
+				handler.removeCallbacks(peerCountRefresher)
+				handler.postDelayed(peerCountRefresher, PEER_COUNT_REFRESH_MS)
 			} else {
 				// Realm is off, so there are no peer connections left to keep
 				// alive — drop the foreground notification. The service itself
 				// keeps running so it can restore it if re-enabled.
+				handler.removeCallbacks(peerCountRefresher)
 				stopForeground(STOP_FOREGROUND_REMOVE)
 			}
 		}
@@ -75,6 +92,25 @@ class RealmForegroundService : Service() {
 	}
 
 	private fun showNotification() {
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+			ServiceCompat.startForeground(
+				this,
+				NOTIFICATION_ID,
+				buildNotification(),
+				ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+			)
+		} else {
+			startForeground(NOTIFICATION_ID, buildNotification())
+		}
+	}
+
+	// Refreshes the already-shown foreground notification with current peer
+	// counts, without going through startForeground again.
+	private fun updateNotification() {
+		getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification())
+	}
+
+	private fun buildNotification(): android.app.Notification {
 		val contentIntent = PendingIntent.getActivity(
 			this,
 			0,
@@ -84,25 +120,17 @@ class RealmForegroundService : Service() {
 			PendingIntent.FLAG_IMMUTABLE,
 		)
 
-		val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+		val connected = Mobile.connectedPeersCount()
+		val total = Mobile.peersTotalCount()
+
+		return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
 			.setSmallIcon(android.R.drawable.ic_dialog_info)
 			.setContentTitle("Foilen Box")
-			.setContentText("Keeping realm peer connections alive in the background")
+			.setContentText("Connected peers $connected/$total")
 			.setPriority(NotificationCompat.PRIORITY_LOW)
 			.setOngoing(true)
 			.setContentIntent(contentIntent)
 			.build()
-
-		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-			ServiceCompat.startForeground(
-				this,
-				NOTIFICATION_ID,
-				notification,
-				ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
-			)
-		} else {
-			startForeground(NOTIFICATION_ID, notification)
-		}
 	}
 
 	override fun onBind(intent: Intent?): IBinder? = null
@@ -123,6 +151,7 @@ class RealmForegroundService : Service() {
 	}
 
 	override fun onDestroy() {
+		handler.removeCallbacks(peerCountRefresher)
 		multicastLock?.let { if (it.isHeld) it.release() }
 		multicastLock = null
 		super.onDestroy()
@@ -144,6 +173,7 @@ class RealmForegroundService : Service() {
 		private const val NOTIFICATION_CHANNEL_ID = "realm_peer_service"
 		private const val NOTIFICATION_ID = 2
 		private const val EXTRA_ENABLED = "enabled"
+		private const val PEER_COUNT_REFRESH_MS = 30_000L
 
 		// The service is already running (started from MainActivity.onCreate)
 		// by the time Realm can be toggled from the web UI, so a plain

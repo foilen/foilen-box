@@ -155,6 +155,19 @@ type SmsBridge interface {
 	ShowNotification(title string, body string, deepLink string)
 }
 
+// PeerCounts returns how many known Realm peers are currently connected out
+// of the total known, for platform UI that can't poll the WebSocket API
+// (e.g. Android's foreground-service notification).
+func (s *Server) PeerCounts() (connected int, total int) {
+	for _, p := range s.api.realmPeers.List() {
+		total++
+		if p.Connected {
+			connected++
+		}
+	}
+	return connected, total
+}
+
 // SetSmsBridge registers the platform-specific SMS bridge.
 func (s *Server) SetSmsBridge(bridge SmsBridge) {
 	s.api.realmSms.SetBridge(bridge)

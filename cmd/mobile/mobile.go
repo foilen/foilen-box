@@ -88,6 +88,33 @@ func SmsReceived(sender string, body string, timestampMillis int64) error {
 	return s.HandleIncomingSms(sender, body, timestampMillis)
 }
 
+// ConnectedPeersCount and PeersTotalCount back the Android foreground-service
+// notification ("Connected peers X/Y"), which can't use the WebSocket API the
+// web UI polls for the same numbers. Split into two calls (rather than one
+// struct return) since gomobile bind only supports a single non-error return
+// value.
+func ConnectedPeersCount() int {
+	mu.Lock()
+	s := server
+	mu.Unlock()
+	if s == nil {
+		return 0
+	}
+	connected, _ := s.PeerCounts()
+	return connected
+}
+
+func PeersTotalCount() int {
+	mu.Lock()
+	s := server
+	mu.Unlock()
+	if s == nil {
+		return 0
+	}
+	_, total := s.PeerCounts()
+	return total
+}
+
 // StopServer stops the server started by StartServer, if any.
 func StopServer() error {
 	mu.Lock()
