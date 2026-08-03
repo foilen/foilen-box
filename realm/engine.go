@@ -225,6 +225,29 @@ func (e *Engine) SwarmPeers() []SwarmPeer {
 	return result
 }
 
+// ConnectedAddresses returns the remote multiaddrs of every open connection
+// to the given peer ID, or nil if not running or not connected.
+func (e *Engine) ConnectedAddresses(id string) []string {
+	e.mu.Lock()
+	h := e.host
+	e.mu.Unlock()
+	if h == nil {
+		return nil
+	}
+
+	pid, err := peer.Decode(id)
+	if err != nil {
+		return nil
+	}
+
+	conns := h.Network().ConnsToPeer(pid)
+	addrs := make([]multiaddr.Multiaddr, 0, len(conns))
+	for _, c := range conns {
+		addrs = append(addrs, c.RemoteMultiaddr())
+	}
+	return addrsToStrings(addrs)
+}
+
 // Restart stops the engine if running and starts it again with cfg. This
 // tears down and rebuilds the libp2p host (new connections, fresh DHT
 // routing table), so prefer Reconcile for ordinary config changes; Restart

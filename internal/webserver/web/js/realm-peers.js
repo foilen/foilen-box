@@ -122,6 +122,7 @@ export function initRealmPeers(api, output, onPeersUpdate) {
 
 	function peerTrailingCells(peer) {
 		return [
+			["Connected via", (peer.connectedAddresses || []).join(", ")],
 			["Main", peer.mainPeer ? "yes" : "no"],
 			["Relay Service", peer.relayServiceEnabled ? "yes" : "no"],
 			["Version", peer.version || ""],
