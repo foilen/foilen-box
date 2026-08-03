@@ -1140,6 +1140,11 @@ func handleRealmClearAllPeerAddresses(a *api, _ json.RawMessage) (any, error) {
 	return map[string]any{"ok": true}, nil
 }
 
+func handleRealmForcePeriodicTick(a *api, _ json.RawMessage) (any, error) {
+	a.realmEngine.RunPeriodicNow()
+	return map[string]any{"ok": true}, nil
+}
+
 func handleRealmDeletePeer(a *api, params json.RawMessage) (any, error) {
 	var p struct {
 		PeerId string `json:"peerId"`

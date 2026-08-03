@@ -10,6 +10,7 @@ export function initRealmPeers(api, output, onPeersUpdate) {
 	const swarmBody = document.getElementById("realm-swarm-tbody");
 	const swarmCount = document.getElementById("realm-swarm-count");
 	const clearAllButton = document.getElementById("realm-clear-all-peer-addresses-button");
+	const forcePeriodicTickButton = document.getElementById("realm-force-periodic-tick-button");
 
 	const addressesOpenState = new Map();
 	const swarmAddressesOpenState = new Map();
@@ -185,6 +186,13 @@ export function initRealmPeers(api, output, onPeersUpdate) {
 	clearAllButton.addEventListener("click", () =>
 		report(output, async () => {
 			await api.call("realm.clearAllPeerAddresses");
+			refreshPeers();
+		})
+	);
+
+	forcePeriodicTickButton.addEventListener("click", () =>
+		report(output, async () => {
+			await api.call("realm.forcePeriodicTick");
 			refreshPeers();
 		})
 	);

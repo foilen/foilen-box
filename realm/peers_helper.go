@@ -145,6 +145,22 @@ func (e *Engine) keepAliveLoop(ctx context.Context) {
 	}
 }
 
+// RunPeriodicNow immediately runs one iteration of the keep-alive tick (ring
+// maintenance, DHT swarm trimming, relay upkeep, every feature's
+// PeriodicHook, and stale-peer pruning) instead of waiting for the next
+// keepAliveInterval tick. No-op if the engine isn't running.
+func (e *Engine) RunPeriodicNow() {
+	ctx := e.Context()
+	if ctx == nil {
+		return
+	}
+	e.runPeriodicHooks()
+	e.maintainGroupRings(ctx)
+	e.maintainDHTSwarm()
+	e.maintainManualRelayReservation(ctx)
+	e.pruneStalePeers()
+}
+
 // pruneStalePeers removes known, disconnected peers not seen within the
 // configured retention window (model.DefaultPeerRetentionDays if unset;
 // pruning is skipped entirely if the configured value is negative).

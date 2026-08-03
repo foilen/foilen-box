@@ -35,7 +35,7 @@ import (
 
 const (
 	dhtDatastoreDirName = "realm-dht-datastore"
-	keepAliveInterval   = 5 * time.Minute
+	keepAliveInterval   = 10 * time.Minute
 	dialTimeout         = 30 * time.Second
 
 	// reconnectDelay: how long onDisconnected waits before retrying a dropped ring-neighbor peer.
