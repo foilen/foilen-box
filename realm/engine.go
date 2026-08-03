@@ -21,7 +21,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/discovery/mdns"
 	routingdisc "github.com/libp2p/go-libp2p/p2p/discovery/routing"
-	"github.com/libp2p/go-libp2p/p2p/host/autorelay"
 	circuitrelay "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	quictransport "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
@@ -80,10 +79,10 @@ type Engine struct {
 	// starting from the public bootstrap list.
 	lastDHTPeers []peer.AddrInfo
 
-	// relayMu guards relayReservation separately from mu, since maintaining
-	// the reservation does network I/O (maintainManualRelayReservation).
-	relayMu          sync.Mutex
-	relayReservation *relayReservation
+	// relayMu guards relayReservations separately from mu, since maintaining
+	// reservations does network I/O (maintainManualRelayReservation).
+	relayMu           sync.Mutex
+	relayReservations map[peer.ID]*relayReservation
 }
 
 // New creates an idle Engine. dataDir is where the persistent DHT datastore
@@ -413,17 +412,6 @@ func (e *Engine) Start(cfg model.Config) error {
 		libp2p.NATPortMap(),
 		// DCUtR: upgrade a relayed connection to direct via hole punching.
 		libp2p.EnableHolePunching(),
-		// AutoRelay (client): if unreachable, reserve a relay slot so others can
-		// still reach us. No public relay infra for a private swarm, so
-		// candidates come from e.relayPeerSource (our own group peers that opted
-		// into cfg.EnableRelayService). Only engages once AutoNAT goes Private —
-		// a backstop for everyone-unreachable, not the asymmetric case (see
-		// maintainManualRelayReservation in relay.go for that).
-		libp2p.EnableAutoRelayWithPeerSource(e.relayPeerSource, autorelay.WithMinCandidates(1)),
-		// AutoNAT (server): answer peers' dial-back probes so their AutoNAT
-		// client can determine reachability; without it AutoRelay above never
-		// gets a Private verdict to act on.
-		libp2p.EnableNATService(),
 	}
 	// Customizing the websocket transport below opts the host out of
 	// go-libp2p's DefaultListenAddrs/DefaultTransports fallback, so both are
@@ -465,8 +453,7 @@ func (e *Engine) Start(cfg model.Config) error {
 		log.Printf("realm engine: %v", err)
 	}
 	// Append the web-announce addr and standing relay reservation addrs
-	// (maintainManualRelayReservation) unconditionally, not only while
-	// AutoRelay considers this host privately-reachable.
+	// (maintainManualRelayReservation) unconditionally.
 	opts = append(opts, libp2p.AddrsFactory(func(addrs []multiaddr.Multiaddr) []multiaddr.Multiaddr {
 		if webAnnounceAddr != nil {
 			addrs = append(addrs, webAnnounceAddr)
@@ -567,7 +554,7 @@ func (e *Engine) Stop() {
 	}
 
 	e.relayMu.Lock()
-	e.relayReservation = nil
+	e.relayReservations = nil
 	e.relayMu.Unlock()
 
 	log.Printf("realm engine: stopped")

@@ -21,7 +21,7 @@ type PeerInfo struct {
 	Description       string              `json:"description"`
 	// RelayServiceEnabled is whether this peer last reported running
 	// cfg.EnableRelayService — worth trying as a relay candidate
-	// (Engine.relayPeerSource) instead of blindly probing every peer.
+	// (Engine.connectedRelayPeers) instead of blindly probing every peer.
 	RelayServiceEnabled bool `json:"relayServiceEnabled"`
 	// Version is the peer's self-reported application name and version,
 	// e.g. "FoilenBox - abc1234" (see Engine.SetAppVersion).
