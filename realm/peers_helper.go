@@ -2,6 +2,7 @@ package realm
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -166,6 +167,19 @@ func (e *Engine) pruneStalePeers() {
 			h.OnPeerRemoved(id)
 		}
 	}
+}
+
+// RemovePeer deletes a known, disconnected peer and runs the same
+// peerRemovedHooks as PruneStale. Refuses (returns an error) if the peer is
+// unknown or currently connected.
+func (e *Engine) RemovePeer(id string) error {
+	if !e.peers.Remove(id) {
+		return fmt.Errorf("peer %q is unknown or still connected", id)
+	}
+	for _, h := range e.peerRemovedHooks {
+		h.OnPeerRemoved(id)
+	}
+	return nil
 }
 
 func (e *Engine) runPeriodicHooks() {

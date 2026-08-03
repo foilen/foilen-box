@@ -89,6 +89,27 @@ export function initRealmPeers(api, output, onPeersUpdate) {
 		return cell;
 	}
 
+	function createDeleteCell(peerId) {
+		const cell = document.createElement("td");
+		const button = document.createElement("md-text-button");
+		button.textContent = "Delete";
+		button.addEventListener("click", () =>
+			report(output, async () => {
+				if (!confirm(`Delete peer "${peerId}"?`)) return;
+				await api.call("realm.deletePeer", { peerId });
+				refreshPeers();
+			})
+		);
+		cell.appendChild(button);
+		return cell;
+	}
+
+	// Delete is only meaningful for disconnected peers (a connected one would
+	// just get re-added on its next message), so hide it otherwise.
+	function syncDeleteCell(cell, peer) {
+		cell.style.display = peer.connected ? "none" : "";
+	}
+
 	function renderPeers(peers) {
 		peersCount.textContent = peers.length;
 		syncList(
@@ -102,13 +123,17 @@ export function initRealmPeers(api, output, onPeersUpdate) {
 				syncCells(row, peerTrailingCells(peer), 3);
 				row.appendChild(createAddressesCell(peer.id, peer.addresses || [], addressesOpenState));
 				row.appendChild(createClearAddressesCell(peer.id));
+				const deleteCell = createDeleteCell(peer.id);
+				syncDeleteCell(deleteCell, peer);
+				row.appendChild(deleteCell);
 				return row;
 			},
 			(row, peer) => {
 				syncCells(row, peerLeadingCells(peer));
 				syncConnectedCell(row, peer);
 				syncCells(row, peerTrailingCells(peer), 3);
-				syncAddressesCell(row.children[row.children.length - 2], peer.id, peer.addresses || [], addressesOpenState);
+				syncAddressesCell(row.children[row.children.length - 3], peer.id, peer.addresses || [], addressesOpenState);
+				syncDeleteCell(row.lastElementChild, peer);
 			}
 		);
 	}

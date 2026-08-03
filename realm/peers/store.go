@@ -287,6 +287,21 @@ func (s *Store) PruneStale(cutoff time.Time) []string {
 	return removed
 }
 
+// Remove deletes a known, disconnected peer. Reports whether it was removed;
+// refuses (returns false) if the peer is unknown or currently connected.
+func (s *Store) Remove(id string) bool {
+	removed := false
+	s.db.Update(func(d *Data) {
+		p, ok := d.Peers[id]
+		if !ok || p.Connected {
+			return
+		}
+		delete(d.Peers, id)
+		removed = true
+	})
+	return removed
+}
+
 // ResetAllConnected clears the connected flag for every known peer. Used on
 // engine startup, since a persisted "connected" from a prior session doesn't
 // reflect the state of the new (not-yet-connected) host.

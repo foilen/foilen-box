@@ -1139,3 +1139,19 @@ func handleRealmClearAllPeerAddresses(a *api, _ json.RawMessage) (any, error) {
 	a.realmPeers.ClearAllDiscoveredAddresses()
 	return map[string]any{"ok": true}, nil
 }
+
+func handleRealmDeletePeer(a *api, params json.RawMessage) (any, error) {
+	var p struct {
+		PeerId string `json:"peerId"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+	if p.PeerId == "" {
+		return nil, fmt.Errorf("please select a peer")
+	}
+	if err := a.realmEngine.RemovePeer(p.PeerId); err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true}, nil
+}

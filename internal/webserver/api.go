@@ -341,6 +341,7 @@ var handlers = map[string]handlerFunc{
 	"realm.listSwarmPeers":        handleRealmListSwarmPeers,
 	"realm.clearPeerAddresses":    handleRealmClearPeerAddresses,
 	"realm.clearAllPeerAddresses": handleRealmClearAllPeerAddresses,
+	"realm.deletePeer":            handleRealmDeletePeer,
 	"realm.addScript":             handleRealmAddScript,
 	"realm.updateScript":          handleRealmUpdateScript,
 	"realm.deleteScript":          handleRealmDeleteScript,
