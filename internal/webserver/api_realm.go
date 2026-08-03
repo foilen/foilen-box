@@ -1082,3 +1082,23 @@ func handleRealmListSwarmPeers(a *api, _ json.RawMessage) (any, error) {
 	return map[string]any{"peers": result}, nil
 }
 
+func handleRealmClearPeerAddresses(a *api, params json.RawMessage) (any, error) {
+	var p struct {
+		PeerId string `json:"peerId"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+	if p.PeerId == "" {
+		return nil, fmt.Errorf("please select a peer")
+	}
+	if !a.realmPeers.ClearDiscoveredAddresses(p.PeerId) {
+		return nil, fmt.Errorf("unknown peer %q", p.PeerId)
+	}
+	return map[string]any{"ok": true}, nil
+}
+
+func handleRealmClearAllPeerAddresses(a *api, _ json.RawMessage) (any, error) {
+	a.realmPeers.ClearAllDiscoveredAddresses()
+	return map[string]any{"ok": true}, nil
+}

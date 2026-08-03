@@ -185,6 +185,55 @@ func (s *Store) SetAnnouncedAddresses(id string, addrs []string) {
 	})
 }
 
+// discoveredSources are the address sources populated by live discovery
+// (mDNS/DHT) rather than the authoritative "common" RealmMap, and thus the
+// ones that can go stale once a peer stops being rediscovered.
+var discoveredSources = []string{"mdns", "dht"}
+
+// ClearDiscoveredAddresses drops peer id's mdns/dht address buckets,
+// keeping "announce" (sourced from the "common" RealmMap) intact, and
+// recomputes merged Addresses. Reports whether the peer was known.
+func (s *Store) ClearDiscoveredAddresses(id string) bool {
+	found := false
+	s.db.Update(func(d *Data) {
+		p, ok := d.Peers[id]
+		if !ok {
+			return
+		}
+		found = true
+		bySource := make(map[string][]string, len(p.AddressesBySource))
+		for k, v := range p.AddressesBySource {
+			bySource[k] = v
+		}
+		for _, source := range discoveredSources {
+			delete(bySource, source)
+		}
+		p.AddressesBySource = bySource
+		p.Addresses = mergeAddresses(bySource)
+		d.Peers[id] = p
+	})
+	return found
+}
+
+// ClearAllDiscoveredAddresses drops the mdns/dht address buckets for every
+// known peer, keeping each peer's "announce" bucket intact.
+func (s *Store) ClearAllDiscoveredAddresses() {
+	s.db.Update(func(d *Data) {
+		for id, p := range d.Peers {
+			bySource := make(map[string][]string, len(p.AddressesBySource))
+			for k, v := range p.AddressesBySource {
+				bySource[k] = v
+			}
+			for _, source := range discoveredSources {
+				delete(bySource, source)
+			}
+			p.AddressesBySource = bySource
+			p.Addresses = mergeAddresses(bySource)
+			d.Peers[id] = p
+		}
+	})
+}
+
 // AddGroupName records that a peer has passed the group-challenge for
 // groupName, if present. A no-op if the peer already has it.
 func (s *Store) AddGroupName(id, groupName string) {

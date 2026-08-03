@@ -174,7 +174,7 @@ export function initRealmTab(api, isAndroid) {
 	onMapsConfigUpdate = mapsModule.onConfigUpdate;
 	const specsModule = initRealmSpecs(api);
 	onSpecsConfigUpdate = specsModule.onConfigUpdate;
-	initRealmPeers(api, (peers) => {
+	initRealmPeers(api, output, (peers) => {
 		latestPeers = peers;
 		pushPeers();
 	});

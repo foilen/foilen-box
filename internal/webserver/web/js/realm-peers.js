@@ -1,14 +1,15 @@
-import { formatPeerLabel, syncList, syncCells } from "./util.js";
+import { report, formatPeerLabel, syncList, syncCells } from "./util.js";
 
 const PEERS_POLL_INTERVAL_MS = 5000;
 
 // Wires the Peers/Swarm tables. onPeersUpdate (optional) gets the latest
 // peers list on every refresh — used by the permissions subtab.
-export function initRealmPeers(api, onPeersUpdate) {
+export function initRealmPeers(api, output, onPeersUpdate) {
 	const peersBody = document.getElementById("realm-peers-tbody");
 	const peersCount = document.getElementById("realm-peers-count");
 	const swarmBody = document.getElementById("realm-swarm-tbody");
 	const swarmCount = document.getElementById("realm-swarm-count");
+	const clearAllButton = document.getElementById("realm-clear-all-peer-addresses-button");
 
 	const addressesOpenState = new Map();
 	const swarmAddressesOpenState = new Map();
@@ -56,6 +57,20 @@ export function initRealmPeers(api, onPeersUpdate) {
 		return cell;
 	}
 
+	function createClearAddressesCell(peerId) {
+		const cell = document.createElement("td");
+		const button = document.createElement("md-text-button");
+		button.textContent = "Clear discovered addresses";
+		button.addEventListener("click", () =>
+			report(output, async () => {
+				await api.call("realm.clearPeerAddresses", { peerId });
+				refreshPeers();
+			})
+		);
+		cell.appendChild(button);
+		return cell;
+	}
+
 	function renderPeers(peers) {
 		peersCount.textContent = peers.length;
 		syncList(
@@ -66,11 +81,12 @@ export function initRealmPeers(api, onPeersUpdate) {
 				const row = document.createElement("tr");
 				syncCells(row, peerCells(peer));
 				row.appendChild(createAddressesCell(peer.id, peer.addresses || [], addressesOpenState));
+				row.appendChild(createClearAddressesCell(peer.id));
 				return row;
 			},
 			(row, peer) => {
 				syncCells(row, peerCells(peer));
-				syncAddressesCell(row.lastElementChild, peer.id, peer.addresses || [], addressesOpenState);
+				syncAddressesCell(row.children[row.children.length - 2], peer.id, peer.addresses || [], addressesOpenState);
 			}
 		);
 	}
@@ -113,6 +129,13 @@ export function initRealmPeers(api, onPeersUpdate) {
 		});
 		api.call("realm.listSwarmPeers").then((result) => renderSwarm(result.peers));
 	}
+
+	clearAllButton.addEventListener("click", () =>
+		report(output, async () => {
+			await api.call("realm.clearAllPeerAddresses");
+			refreshPeers();
+		})
+	);
 
 	refreshPeers();
 	setInterval(refreshPeers, PEERS_POLL_INTERVAL_MS);

@@ -334,6 +334,8 @@ var handlers = map[string]handlerFunc{
 	"realm.setExposeWeb":          handleRealmSetExposeWeb,
 	"realm.listPeers":             handleRealmListPeers,
 	"realm.listSwarmPeers":        handleRealmListSwarmPeers,
+	"realm.clearPeerAddresses":    handleRealmClearPeerAddresses,
+	"realm.clearAllPeerAddresses": handleRealmClearAllPeerAddresses,
 	"realm.addScript":             handleRealmAddScript,
 	"realm.updateScript":          handleRealmUpdateScript,
 	"realm.deleteScript":          handleRealmDeleteScript,
