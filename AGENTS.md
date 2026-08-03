@@ -11,6 +11,8 @@ Depending on the needs for the requested task, read the following documentation:
 - If you are unsure about what path to take when there are multiple choices:
   - Check if you can find a similar feature in this project
   - Ask the requester
+- Creating a new encrypted-realmmap feature (web UI + storage): see `docs/pattern-encrypted-realmmap-feature.md` for design guidelines extracted from SMS.
+
 - You can create/update tests and compile them, but do not run them unless explicitly asked to
 - Keep comments in the code to minimum. If it just repeat in english what the code is doing, it is not needed. Keep it short.
 - When updating `go.mod` (e.g. Go version, dependencies), also update `flake.nix` (module version, `vendorHash`, etc.) to match
