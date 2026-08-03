@@ -298,7 +298,7 @@ func (m *Manager) Actions() []realmmodel.PermissionAction { return nil }
 func (m *Manager) RegisterHandlers(reg *realm.Registrar) {}
 
 // RunPeriodic reconciles the currently enabled store (if any) against the
-// device's SMS history on the engine's keep-alive cadence (10 minutes); this
+// device's SMS history on the engine's keep-alive cadence (5 minutes); this
 // also retries an initial import that failed (e.g. missing permission).
 func (m *Manager) RunPeriodic(reg *realm.Registrar) {
 	cfg := m.cfg.Load()
