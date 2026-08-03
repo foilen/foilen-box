@@ -341,6 +341,16 @@ md-outlined-select {
 	background: #1e8e3e;
 }
 
+#group-troubleshooting-diagram {
+	max-width: 100%;
+	overflow-x: auto;
+}
+
+#group-troubleshooting-diagram svg {
+	max-width: 100%;
+	height: auto;
+}
+
 .table-scroll {
 	max-width: 100%;
 	overflow-x: auto;

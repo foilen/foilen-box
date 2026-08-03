@@ -9,6 +9,7 @@ import (
 	earlyaggregate "foilen-box/internal/early/aggregate"
 	earlyclient "foilen-box/internal/early/client"
 	earlyconfig "foilen-box/internal/early/config"
+	boxgrouptroubleshooting "foilen-box/internal/grouptroubleshooting"
 	boxsms "foilen-box/internal/sms"
 	appspec "foilen-box/internal/spec"
 	boxspeedtest "foilen-box/internal/speedtest"
@@ -41,26 +42,27 @@ type response struct {
 
 // api holds the backend services the dispatcher calls into.
 type api struct {
-	configDir          string
-	logDir             string
-	hostnameOverride   string
-	uiConfig           *uiConfigService
-	currentPort        int
-	earlyConfig        *earlyconfig.Service
-	earlyAggregate     *earlyaggregate.Service
-	realmConfig        *realmconfig.Service
-	realmPeers         *realmpeers.Store
-	realmEngine        *realm.Engine
-	realmScripts       *realmscripts.Feature
-	realmServices      *realmservices.Feature
-	realmServicesStore *realmservices.Store
-	realmMapsFeature   *realmmaps.Feature
-	realmSpeedTest     *boxspeedtest.Feature
-	realmIdentity      *realmidentity.Feature
-	realmGroup         *realmgroup.Feature
-	realmStateSink     RealmStateSink
-	realmSms           *boxsms.Manager
-	smsConfig          *boxsms.Service
+	configDir                 string
+	logDir                    string
+	hostnameOverride          string
+	uiConfig                  *uiConfigService
+	currentPort               int
+	earlyConfig               *earlyconfig.Service
+	earlyAggregate            *earlyaggregate.Service
+	realmConfig               *realmconfig.Service
+	realmPeers                *realmpeers.Store
+	realmEngine               *realm.Engine
+	realmScripts              *realmscripts.Feature
+	realmServices             *realmservices.Feature
+	realmServicesStore        *realmservices.Store
+	realmMapsFeature          *realmmaps.Feature
+	realmSpeedTest            *boxspeedtest.Feature
+	realmIdentity             *realmidentity.Feature
+	realmGroup                *realmgroup.Feature
+	realmStateSink            RealmStateSink
+	realmSms                  *boxsms.Manager
+	smsConfig                 *boxsms.Service
+	realmGroupTroubleshooting *boxgrouptroubleshooting.Manager
 }
 
 func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*api, error) {
@@ -131,6 +133,10 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 	)
 	speedTestFeature := boxspeedtest.New()
 	smsManager := boxsms.NewManager(mapsFeature, smsConfigSvc, func() string { return realmConfigSvc.Load().PeerID.ID })
+	groupTroubleshootingManager := boxgrouptroubleshooting.NewManager(mapsFeature, realmEng, realmPeerStore,
+		func() string { return realmConfigSvc.Load().PeerID.ID },
+		func() []realmmodel.Group { return realmConfigSvc.Load().Groups },
+	)
 	// Forward-declared: onReceive only fires after a is fully constructed.
 	var a *api
 	identityFeature := realmidentity.New(func(name string, kp realmmodel.KeyPair) error {
@@ -149,25 +155,27 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 	realmEng.Register(smsManager)
 
 	a = &api{
-		configDir:          configDir,
-		hostnameOverride:   hostnameOverride,
-		uiConfig:           uiConfigSvc,
-		earlyConfig:        configService,
-		earlyAggregate:     earlyaggregate.New(earlyclient.New(), configService),
-		realmConfig:        realmConfigSvc,
-		realmPeers:         realmPeerStore,
-		realmEngine:        realmEng,
-		realmScripts:       scriptsFeature,
-		realmServices:      servicesFeature,
-		realmServicesStore: realmServicesStore,
-		realmMapsFeature:   mapsFeature,
-		realmSpeedTest:     speedTestFeature,
-		realmIdentity:      identityFeature,
-		realmGroup:         groupFeature,
-		realmSms:           smsManager,
-		smsConfig:          smsConfigSvc,
+		configDir:                 configDir,
+		hostnameOverride:          hostnameOverride,
+		uiConfig:                  uiConfigSvc,
+		earlyConfig:               configService,
+		earlyAggregate:            earlyaggregate.New(earlyclient.New(), configService),
+		realmConfig:               realmConfigSvc,
+		realmPeers:                realmPeerStore,
+		realmEngine:               realmEng,
+		realmScripts:              scriptsFeature,
+		realmServices:             servicesFeature,
+		realmServicesStore:        realmServicesStore,
+		realmMapsFeature:          mapsFeature,
+		realmSpeedTest:            speedTestFeature,
+		realmIdentity:             identityFeature,
+		realmGroup:                groupFeature,
+		realmSms:                  smsManager,
+		smsConfig:                 smsConfigSvc,
+		realmGroupTroubleshooting: groupTroubleshootingManager,
 	}
 	smsManager.Start()
+	groupTroubleshootingManager.Start()
 
 	// Auto-start the realm engine if a peer id already exists; failure here
 	// shouldn't block the web UI from starting.
@@ -372,6 +380,8 @@ var handlers = map[string]handlerFunc{
 	"sms.listConversations":    handleSmsListConversations,
 	"sms.listMessages":         handleSmsListMessages,
 	"sms.sendMessage":          handleSmsSendMessage,
+
+	"groupTroubleshooting.start": handleGroupTroubleshootingStart,
 }
 
 func (a *api) dispatch(req request) response {

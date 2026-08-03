@@ -9,6 +9,7 @@ import { initRealmServices } from "./realm-services.js";
 import { initRealmSpeedtest } from "./realm-speedtest.js";
 import { initRealmSms } from "./realm-sms.js";
 import { initRealmMaps } from "./realm-maps.js";
+import { initRealmGroupTroubleshooting } from "./realm-group-troubleshooting.js";
 import { parseHash, updateHash } from "./hash.js";
 import { updateFaviconForSubtab } from "./favicon.js";
 
@@ -87,6 +88,7 @@ export function initRealmTab(api, isAndroid) {
 	let onScriptsConfigUpdate = () => {};
 	let onSpeedtestConfigUpdate = () => {};
 	let onSmsConfigUpdate = () => {};
+	let onGroupTroubleshootingConfigUpdate = () => {};
 
 	// A node never discovers itself via mDNS/DHT, but its id shows up in maps
 	// (specs/scripts/services it posts about itself). Synthesize a pseudo-peer
@@ -105,6 +107,7 @@ export function initRealmTab(api, isAndroid) {
 		identitiesModule.onPeersUpdate(peers);
 		groupsModule.onPeersUpdate(peers);
 		smsModule.onPeersUpdate(peers);
+		groupTroubleshootingModule.onPeersUpdate(peers);
 	}
 
 	function renderConfig(cfg) {
@@ -157,6 +160,7 @@ export function initRealmTab(api, isAndroid) {
 		onScriptsConfigUpdate(cfg);
 		onSpeedtestConfigUpdate(cfg);
 		onSmsConfigUpdate(cfg);
+		onGroupTroubleshootingConfigUpdate(cfg);
 
 		ownPeer = cfg.peerId ? { id: cfg.peerId, hostname: cfg.hostname, description: cfg.description } : null;
 		pushPeers();
@@ -181,6 +185,8 @@ export function initRealmTab(api, isAndroid) {
 	onSpeedtestConfigUpdate = speedtestModule.onConfigUpdate;
 	const smsModule = initRealmSms(api, output, isAndroid);
 	onSmsConfigUpdate = smsModule.onConfigUpdate;
+	const groupTroubleshootingModule = initRealmGroupTroubleshooting(api, output);
+	onGroupTroubleshootingConfigUpdate = groupTroubleshootingModule.onConfigUpdate;
 	const mapsModule = initRealmMaps(api, output, renderConfig);
 	onMapsConfigUpdate = mapsModule.onConfigUpdate;
 	const specsModule = initRealmSpecs(api);
@@ -192,6 +198,7 @@ export function initRealmTab(api, isAndroid) {
 	initRealmSubtabs(api, (subtab, extra) => {
 		if (subtab === "realm-maps-subtab") mapsModule.onSubtabActivated();
 		if (subtab === "realm-sms-subtab") smsModule.onSubtabActivated(extra);
+		if (subtab === "realm-group-troubleshooting-subtab") groupTroubleshootingModule.onSubtabActivated();
 	});
 
 	api.call("realm.loadConfig").then(renderConfig);

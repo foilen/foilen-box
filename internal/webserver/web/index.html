@@ -45,6 +45,7 @@
 		<a class="subtab-button" data-subtab="realm-speedtest-subtab" href="#realm/realm-speedtest-subtab">Speed Test</a>
 		<a class="subtab-button" data-subtab="realm-sms-subtab" href="#realm/realm-sms-subtab">SMS</a>
 		<a class="subtab-button" data-subtab="realm-maps-subtab" href="#realm/realm-maps-subtab">RealmMaps</a>
+		<a class="subtab-button" data-subtab="realm-group-troubleshooting-subtab" href="#realm/realm-group-troubleshooting-subtab">Group Troubleshooting</a>
 	</div>
 
 	<div id="realm-qr-modal" class="modal hidden">
@@ -543,6 +544,20 @@
 			</div>
 			<md-text-button id="realm-map-close-detail-button">Close</md-text-button>
 		</div>
+	</div>
+
+	<div id="realm-group-troubleshooting-subtab" class="subtab-panel">
+		<h3>Group Troubleshooting</h3>
+		<p class="hint">Runs a fixed 10-minute session that maps out which peers of a group can currently reach
+			each other, and how (direct in blue, relayed in yellow/dashed).</p>
+		<div class="row">
+			<label>Group:
+				<md-outlined-select id="group-troubleshooting-group-select"></md-outlined-select>
+			</label>
+			<md-filled-tonal-button id="group-troubleshooting-start-button">Check Group during 10 minutes</md-filled-tonal-button>
+		</div>
+		<p id="group-troubleshooting-status" class="hint"></p>
+		<div id="group-troubleshooting-diagram"></div>
 	</div>
 
 	<pre id="realm-output" class="output"></pre>
