@@ -57,6 +57,24 @@ export function initRealmPeers(api, output, onPeersUpdate) {
 		return cell;
 	}
 
+	// Inserted between the "Groups" and "Main" cells (indices 0-1), so it relies
+	// on those already being in place and appends itself at index 2 on create.
+	function syncConnectedCell(row, peer) {
+		let cell = row.children[2];
+		let dot;
+		if (!cell) {
+			cell = document.createElement("td");
+			cell.dataset.label = "Connected";
+			dot = document.createElement("span");
+			cell.appendChild(dot);
+			row.appendChild(cell);
+		} else {
+			dot = cell.querySelector("span");
+		}
+		dot.className = `status-dot${peer.connected ? " connected" : ""}`;
+		dot.title = peer.connected ? "Connected" : "Not connected";
+	}
+
 	function createClearAddressesCell(peerId) {
 		const cell = document.createElement("td");
 		const button = document.createElement("md-text-button");
@@ -79,23 +97,31 @@ export function initRealmPeers(api, output, onPeersUpdate) {
 			(peer) => peer.id,
 			(peer) => {
 				const row = document.createElement("tr");
-				syncCells(row, peerCells(peer));
+				syncCells(row, peerLeadingCells(peer));
+				syncConnectedCell(row, peer);
+				syncCells(row, peerTrailingCells(peer), 3);
 				row.appendChild(createAddressesCell(peer.id, peer.addresses || [], addressesOpenState));
 				row.appendChild(createClearAddressesCell(peer.id));
 				return row;
 			},
 			(row, peer) => {
-				syncCells(row, peerCells(peer));
+				syncCells(row, peerLeadingCells(peer));
+				syncConnectedCell(row, peer);
+				syncCells(row, peerTrailingCells(peer), 3);
 				syncAddressesCell(row.children[row.children.length - 2], peer.id, peer.addresses || [], addressesOpenState);
 			}
 		);
 	}
 
-	function peerCells(peer) {
+	function peerLeadingCells(peer) {
 		return [
 			["ID", formatPeerLabel(peer)],
 			["Groups", (peer.groupNames || []).join(", ")],
-			["Connected", peer.connected ? "yes" : "no"],
+		];
+	}
+
+	function peerTrailingCells(peer) {
+		return [
 			["Main", peer.mainPeer ? "yes" : "no"],
 			["Relay Service", peer.relayServiceEnabled ? "yes" : "no"],
 			["Version", peer.version || ""],

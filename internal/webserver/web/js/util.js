@@ -74,9 +74,10 @@ export function syncList(container, items, keyOf, create, update) {
 // cells if missing and only touching textContent when it changed — works for
 // both syncList's create and update callbacks. Returns the cell count so
 // callers can append further custom cells after these.
-export function syncCells(row, cells) {
+export function syncCells(row, cells, offset = 0) {
 	cells.forEach(([label, value], i) => {
-		let cell = row.children[i];
+		const idx = offset + i;
+		let cell = row.children[idx];
 		if (!cell) {
 			cell = document.createElement("td");
 			row.appendChild(cell);
@@ -85,5 +86,5 @@ export function syncCells(row, cells) {
 		const text = String(value);
 		if (cell.textContent !== text) cell.textContent = text;
 	});
-	return cells.length;
+	return offset + cells.length;
 }
