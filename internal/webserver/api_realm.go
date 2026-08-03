@@ -288,6 +288,34 @@ func handleRealmDeleteGroup(a *api, params json.RawMessage) (any, error) {
 	return realmConfigResponse(a, cfg), nil
 }
 
+func handleRealmPushGroup(a *api, params json.RawMessage) (any, error) {
+	var p struct {
+		Name   string `json:"name"`
+		PeerId string `json:"peerId"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+	if p.Name == "" || p.PeerId == "" {
+		return nil, fmt.Errorf("please select both a group and a peer")
+	}
+	cfg := a.realmConfig.Load()
+	var kp *realmmodel.KeyPair
+	for i := range cfg.Groups {
+		if cfg.Groups[i].Name == p.Name {
+			kp = &cfg.Groups[i].KeyPair
+			break
+		}
+	}
+	if kp == nil {
+		return nil, fmt.Errorf("no group named %q", p.Name)
+	}
+	if err := a.realmGroup.Push(p.PeerId, p.Name, *kp); err != nil {
+		return nil, err
+	}
+	return map[string]any{"pushed": true}, nil
+}
+
 func (a *api) identityExists(name string) bool {
 	for _, id := range a.realmConfig.Load().Identities {
 		if id.Name == name {

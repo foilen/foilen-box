@@ -8,6 +8,7 @@ const ACTION_LABELS = {
 	"common/scripts/run": "Run scripts on this machine",
 	"box/speedtest/run": "Run a speed test against this machine",
 	"common/identity/push": "Accept identities pushed to this machine",
+	"common/group/push": "Accept groups pushed to this machine",
 };
 
 export function actionLabel(action) {

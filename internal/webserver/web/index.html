@@ -191,6 +191,17 @@
 			</div>
 		</div>
 
+		<h3>Push Group to a Peer</h3>
+		<p class="hint">Sends the full group, including its private key, directly to another peer over Realm.
+			The peer imports it automatically if it has granted this peer (or one of its groups) the "Accept
+			pushed groups" permission (see the Permissions subtab). The group arrives with no permissions
+			granted; the receiving peer assigns those locally.</p>
+		<div class="row">
+			<md-outlined-select id="realm-push-group-select" label="Group"></md-outlined-select>
+			<md-outlined-select id="realm-push-group-peer-select" label="Peer"></md-outlined-select>
+			<md-filled-tonal-button id="realm-push-group-button">Push</md-filled-tonal-button>
+		</div>
+
 		<h3>Peers (<span id="realm-peers-count">0</span>)</h3>
 		<div class="table-scroll">
 			<table id="realm-peers-table">

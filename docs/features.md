@@ -9,6 +9,8 @@
 - `services` (`common/services`) — proxying; implements `PeerRemovedHook`/`PeerInUseHook` to stay
   connected while actively proxying
 - `identity` (`common/identity`) — push a standalone Identity keypair to a peer, auto-imported on receipt
+- `group` (`common/group`) — push a Group keypair to a peer, auto-imported on receipt (arrives with no
+  permissions granted; the receiving peer assigns those locally)
 - `announce` (`common/announce`) — periodic hook that publishes this peer's services/scripts/spec/
   reachability info into the `maps` feature and consumes peers' own announce entries to populate the
   known-peers store; this is how peers discover each other well enough to reconnect (see "Connection
@@ -27,7 +29,7 @@ peer identity, group membership, discovery (mDNS/DHT), and a permission
 system, with everything a peer can actually *do* implemented as a pluggable
 **Feature**. Foilen Box (the `foilen-box` module) is just one consumer of
 this library — it happens to register every built-in feature
-(`common/maps`, `common/scripts`, `common/services`, `common/identity`, `common/announce`), but any application
+(`common/maps`, `common/scripts`, `common/services`, `common/identity`, `common/group`, `common/announce`), but any application
 can register only the ones it needs.
 
 This doc explains how to add a new feature.

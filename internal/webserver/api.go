@@ -16,6 +16,7 @@ import (
 	realm "foilen-realm"
 	realmconfig "foilen-realm/config"
 	realmannounce "foilen-realm/features/announce"
+	realmgroup "foilen-realm/features/group"
 	realmidentity "foilen-realm/features/identity"
 	realmmaps "foilen-realm/features/maps"
 	realmscripts "foilen-realm/features/scripts"
@@ -56,6 +57,7 @@ type api struct {
 	realmMapsFeature   *realmmaps.Feature
 	realmSpeedTest     *boxspeedtest.Feature
 	realmIdentity      *realmidentity.Feature
+	realmGroup         *realmgroup.Feature
 	realmStateSink     RealmStateSink
 	realmSms           *boxsms.Manager
 	smsConfig          *boxsms.Service
@@ -134,12 +136,16 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 	identityFeature := realmidentity.New(func(name string, kp realmmodel.KeyPair) error {
 		return a.importPushedIdentity(name, kp)
 	})
+	groupFeature := realmgroup.New(func(name string, kp realmmodel.KeyPair) error {
+		return a.importPushedGroup(name, kp)
+	})
 	realmEng.Register(scriptsFeature)
 	realmEng.Register(servicesFeature)
 	realmEng.Register(mapsFeature)
 	realmEng.Register(announceFeature)
 	realmEng.Register(speedTestFeature)
 	realmEng.Register(identityFeature)
+	realmEng.Register(groupFeature)
 	realmEng.Register(smsManager)
 
 	a = &api{
@@ -157,6 +163,7 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 		realmMapsFeature:   mapsFeature,
 		realmSpeedTest:     speedTestFeature,
 		realmIdentity:      identityFeature,
+		realmGroup:         groupFeature,
 		realmSms:           smsManager,
 		smsConfig:          smsConfigSvc,
 	}
@@ -226,6 +233,29 @@ func (a *api) importPushedIdentity(name string, kp realmmodel.KeyPair) error {
 	return nil
 }
 
+// importPushedGroup is the group feature's onReceive callback: auto-imports
+// a pushed group (no user confirmation), renaming on a name collision. It
+// arrives with no permissions granted — the receiving user assigns those
+// locally via the Permissions subtab, same as a manually imported group.
+func (a *api) importPushedGroup(name string, kp realmmodel.KeyPair) error {
+	unique := name
+	for i := 2; a.groupExists(unique); i++ {
+		unique = fmt.Sprintf("%s (%d)", name, i)
+	}
+	_, err := a.updateRealmConfig(func(c *realmmodel.Config) {
+		c.Groups = append(c.Groups, realmmodel.Group{Name: unique, KeyPair: kp})
+	})
+	if err != nil {
+		return err
+	}
+	if unique != name {
+		log.Printf("realm group: saved pushed group %q as %q (name already in use)", name, unique)
+	} else {
+		log.Printf("realm group: saved pushed group %q", unique)
+	}
+	return nil
+}
+
 // resolveHostname returns override if set, else the OS-reported hostname.
 func resolveHostname(override string) string {
 	if override != "" {
@@ -286,6 +316,7 @@ var handlers = map[string]handlerFunc{
 	"realm.addGroup":              handleRealmAddGroup,
 	"realm.importGroup":           handleRealmImportGroup,
 	"realm.deleteGroup":           handleRealmDeleteGroup,
+	"realm.pushGroup":             handleRealmPushGroup,
 	"realm.addPermission":         handleRealmAddPermission,
 	"realm.deletePermission":      handleRealmDeletePermission,
 	"realm.exportGroup":           handleRealmExportGroup,

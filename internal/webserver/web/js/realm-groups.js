@@ -1,10 +1,14 @@
-import { report, formatGroupLabel, syncList, syncCells } from "./util.js";
+import { report, formatGroupLabel, formatPeerLabel, syncList, syncCells } from "./util.js";
 import { renderActionCheckboxes, checkedActions } from "./realm-actions.js";
 import { initQrModal, initScanModal } from "./realm-qr.js";
 
-// Wires the Groups section: list/generate/import/export/delete. renderConfig
-// is the top-level fan-out (see realm.js), called after any mutation since
-// the backend returns the full config on every change.
+const GROUPS_POLL_INTERVAL_MS = 5000;
+
+// Wires the Groups section: list/generate/import/export/delete/push.
+// renderConfig is the top-level fan-out (see realm.js), called after any
+// mutation since the backend returns the full config on every change. Also
+// polled here so a group pushed by another peer shows up without a manual
+// reload, since there's no server->client push channel in this app.
 export function initRealmGroups(api, output, renderConfig) {
 	const groupsBody = document.getElementById("realm-groups-tbody");
 	const groupsCount = document.getElementById("realm-groups-count");
@@ -20,17 +24,58 @@ export function initRealmGroups(api, output, renderConfig) {
 	const newGroupActions = document.getElementById("realm-new-group-actions");
 	const importActions = document.getElementById("realm-import-actions");
 
+	const pushGroupSelect = document.getElementById("realm-push-group-select");
+	const pushPeerSelect = document.getElementById("realm-push-group-peer-select");
+	const pushButton = document.getElementById("realm-push-group-button");
+
 	const showQrCode = initQrModal();
 	const startScan = initScanModal((data) => {
 		importJsonInput.value = data;
 		importForm.classList.remove("hidden");
 	});
 
+	let groups = [];
+	let knownPeers = [];
+	let ownPeerId = "";
+
+	// Patches an <md-outlined-select>'s options in place (keyed by value)
+	// instead of rebuilding them, so re-rendering on every refresh doesn't tear
+	// down the selected option and desync the select's shown value.
+	function syncOptions(select, entries) {
+		syncList(
+			select,
+			entries,
+			([value]) => value,
+			([value, label]) => {
+				const option = document.createElement("md-select-option");
+				option.value = value;
+				option.innerHTML = `<div slot="headline">${label}</div>`;
+				return option;
+			},
+			(option, [, label]) => {
+				const headline = option.querySelector('[slot="headline"]');
+				if (headline.textContent !== label) headline.textContent = label;
+			}
+		);
+	}
+
+	function renderPushGroupOptions() {
+		syncOptions(pushGroupSelect, groups.map((group) => [group.name, formatGroupLabel(group)]));
+	}
+
+	function renderPushPeerOptions() {
+		syncOptions(
+			pushPeerSelect,
+			knownPeers.filter((peer) => peer.id !== ownPeerId).map((peer) => [peer.id, formatPeerLabel(peer)])
+		);
+	}
+
 	function renderGroups(cfg) {
 		const availableActions = cfg.availableActions || [];
 		renderActionCheckboxes(newGroupActions, availableActions);
 		renderActionCheckboxes(importActions, availableActions);
 
+		groups = cfg.groups || [];
 		groupsCount.textContent = cfg.groups.length;
 		syncList(
 			groupsBody,
@@ -105,6 +150,7 @@ export function initRealmGroups(api, output, renderConfig) {
 			},
 			(row, group) => syncCells(row, [["ID", formatGroupLabel(group)]])
 		);
+		renderPushGroupOptions();
 	}
 
 	addGroupButton.addEventListener("click", () =>
@@ -172,5 +218,30 @@ export function initRealmGroups(api, output, renderConfig) {
 		})
 	);
 
-	return { renderGroups };
+	pushButton.addEventListener("click", () =>
+		report(output, async () => {
+			const name = pushGroupSelect.value;
+			const peerId = pushPeerSelect.value;
+			console.log("[action] push group", { name, peerId });
+			if (!name || !peerId) {
+				output.textContent = "Please select both a group and a peer.";
+				return;
+			}
+			await api.call("realm.pushGroup", { name, peerId });
+			output.textContent = `Pushed group "${name}" to ${peerId}.`;
+		})
+	);
+
+	setInterval(() => api.call("realm.loadConfig").then(renderConfig), GROUPS_POLL_INTERVAL_MS);
+
+	return {
+		renderGroups,
+		onPeersUpdate: (peers) => {
+			knownPeers = peers;
+			renderPushPeerOptions();
+		},
+		onConfigUpdate: (cfg) => {
+			ownPeerId = cfg.peerId || "";
+		},
+	};
 }

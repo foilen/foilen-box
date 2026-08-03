@@ -68,6 +68,7 @@ export function initRealmTab(api, isAndroid) {
 	// its own tables. Forward-declared so it can be handed to
 	// initRealmGroups/initRealmPermissions before their render functions exist.
 	let renderGroups = () => {};
+	let onGroupsConfigUpdate = () => {};
 	let renderIdentities = () => {};
 	let onIdentitiesConfigUpdate = () => {};
 	let renderPermissions = () => {};
@@ -96,6 +97,7 @@ export function initRealmTab(api, isAndroid) {
 		scriptsModule.onPeersUpdate(peers);
 		speedtestModule.onPeersUpdate(peers);
 		identitiesModule.onPeersUpdate(peers);
+		groupsModule.onPeersUpdate(peers);
 		smsModule.onPeersUpdate(peers);
 	}
 
@@ -130,6 +132,7 @@ export function initRealmTab(api, isAndroid) {
 		exposeWebAnnounceProtocolSelect.value = cfg.exposeWebAnnounceProtocol || "";
 
 		renderGroups(cfg);
+		onGroupsConfigUpdate(cfg);
 		renderIdentities(cfg);
 		onIdentitiesConfigUpdate(cfg);
 		renderPermissions(cfg);
@@ -146,7 +149,9 @@ export function initRealmTab(api, isAndroid) {
 		pushPeers();
 	}
 
-	renderGroups = initRealmGroups(api, output, renderConfig).renderGroups;
+	const groupsModule = initRealmGroups(api, output, renderConfig);
+	renderGroups = groupsModule.renderGroups;
+	onGroupsConfigUpdate = groupsModule.onConfigUpdate;
 	const identitiesModule = initRealmIdentities(api, output, renderConfig);
 	renderIdentities = identitiesModule.renderIdentities;
 	onIdentitiesConfigUpdate = identitiesModule.onConfigUpdate;
