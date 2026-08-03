@@ -1,6 +1,10 @@
 ### Go ###
 dist/
 
+### Vendor assets ###
+internal/webserver/web/vendor-fonts/
+internal/webserver/web/vendor-js/
+
 ### IntelliJ IDEA ###
 .idea
 *.iws

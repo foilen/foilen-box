@@ -16,6 +16,8 @@ Depending on the needs for the requested task, read the following documentation:
 - You can create/update tests and compile them, but do not run them unless explicitly asked to
 - Keep comments in the code to minimum. If it just repeat in english what the code is doing, it is not needed. Keep it short.
 - When updating `go.mod` (e.g. Go version, dependencies), also update `flake.nix` (module version, `vendorHash`, etc.) to match
+- To add a new third-party JS library to the web UI, add an entry to `ENTRIES` in `scripts/fetch-vendor-js.mjs` (an esm.sh URL) and import it from `vendor-js/<name>/entry.mjs`; it's mirrored locally at build time (not committed, not runtime-fetched from a CDN) — see `flake.nix`'s `vendorJs` derivation for the Nix side
+- To add/change a Google Font, edit the `family=` query params in `scripts/fetch-vendor-fonts.sh` and reference it from `vendor-fonts/google-fonts.css`; it's mirrored locally at build time the same way (not committed, not runtime-fetched from `fonts.googleapis.com`/`fonts.gstatic.com`) — see `flake.nix`'s `vendorFonts` derivation for the Nix side
 
 # Techno pointers
 

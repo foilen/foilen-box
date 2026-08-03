@@ -1,4 +1,4 @@
-import mermaid from "https://esm.sh/mermaid@11";
+import mermaid from "../vendor-js/mermaid/entry.mjs";
 import { report, formatGroupLabel, formatKnownPeerLabel, syncList } from "./util.js";
 
 const POLL_INTERVAL_MS = 5000;
