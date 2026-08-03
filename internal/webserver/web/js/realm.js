@@ -10,6 +10,7 @@ import { initRealmSpeedtest } from "./realm-speedtest.js";
 import { initRealmSms } from "./realm-sms.js";
 import { initRealmMaps } from "./realm-maps.js";
 import { parseHash, updateHash } from "./hash.js";
+import { updateFaviconForSubtab } from "./favicon.js";
 
 // Wires subtab switching. onActivate (optional) is called with the
 // activated subtab on every switch — used by Services to refresh stale peers.
@@ -21,6 +22,7 @@ function initRealmSubtabs(api, onActivate) {
 		button.classList.add("active");
 		document.getElementById(button.dataset.subtab).classList.add("active");
 		api.call("config.recordSubtabLoad", { subtabId: button.dataset.subtab }).catch(() => {});
+		updateFaviconForSubtab(button.dataset.subtab);
 		if (onActivate) onActivate(button.dataset.subtab, extra);
 	}
 	buttons.forEach((button) => {

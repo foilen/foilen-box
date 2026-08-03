@@ -7,6 +7,7 @@ import { initAndroidConfigTab } from "./android-config.js";
 import { initLogsTab } from "./logs.js";
 import { initConfigTab } from "./config.js";
 import { parseHash, updateHash } from "./hash.js";
+import { updateFaviconForTab } from "./favicon.js";
 
 class Api {
 	constructor() {
@@ -71,6 +72,7 @@ function activateTab(api, tabId) {
 	button.classList.add("active");
 	document.getElementById(tabId).classList.add("active");
 	api.call("config.recordTabLoad", { tabId }).catch(() => {});
+	updateFaviconForTab(tabId);
 	return true;
 }
 
