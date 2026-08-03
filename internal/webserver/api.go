@@ -270,8 +270,11 @@ var handlers = map[string]handlerFunc{
 	"logs.read":           handleLogsRead,
 	"logs.clear":          handleLogsClear,
 
-	"config.loadConfig": handleConfigLoadConfig,
-	"config.saveConfig": handleConfigSaveConfig,
+	"config.loadConfig":       handleConfigLoadConfig,
+	"config.saveConfig":       handleConfigSaveConfig,
+	"config.loadTabStats":     handleConfigLoadTabStats,
+	"config.recordTabLoad":    handleConfigRecordTabLoad,
+	"config.recordSubtabLoad": handleConfigRecordSubtabLoad,
 
 	"early.loadConfig": handleEarlyLoadConfig,
 	"early.saveConfig": handleEarlySaveConfig,

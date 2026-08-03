@@ -12,9 +12,14 @@ const uiConfigFileName = "webui.json"
 // uiConfig is the local port-binding preference for the embedded web
 // server: by default it binds a random free port every start (RandomPort
 // true, Port ignored); unchecking it in the Config tab pins Port instead.
+// TabLoadCounts/SubtabLoadCounts count how many times each tab/subtab has
+// been activated, keyed by its data-tab/data-subtab id, so the UI can show
+// the most-used ones first on the next page load.
 type uiConfig struct {
-	RandomPort bool `json:"randomPort"`
-	Port       int  `json:"port"`
+	RandomPort       bool           `json:"randomPort"`
+	Port             int            `json:"port"`
+	TabLoadCounts    map[string]int `json:"tabLoadCounts,omitempty"`
+	SubtabLoadCounts map[string]int `json:"subtabLoadCounts,omitempty"`
 }
 
 // uiConfigService loads/saves uiConfig from a directory resolved at

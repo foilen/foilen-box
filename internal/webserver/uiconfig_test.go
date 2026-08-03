@@ -2,6 +2,7 @@ package webserver
 
 import (
 	"net"
+	"reflect"
 	"testing"
 )
 
@@ -12,13 +13,13 @@ func TestUIConfigSaveLoadRoundTrip(t *testing.T) {
 		t.Fatalf("newUIConfigService() error = %v", err)
 	}
 
-	want := uiConfig{RandomPort: false, Port: 12345}
+	want := uiConfig{RandomPort: false, Port: 12345, TabLoadCounts: map[string]int{"realm": 3}, SubtabLoadCounts: map[string]int{"realm-main": 2}}
 	if err := svc.Save(want); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
 
 	got := svc.Load()
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Load() = %+v, want %+v", got, want)
 	}
 }
@@ -31,7 +32,7 @@ func TestUIConfigLoadMissingFileDefaultsToRandomPort(t *testing.T) {
 	}
 
 	got := svc.Load()
-	if want := (uiConfig{RandomPort: true}); got != want {
+	if want := (uiConfig{RandomPort: true}); !reflect.DeepEqual(got, want) {
 		t.Errorf("Load() = %+v, want %+v", got, want)
 	}
 }

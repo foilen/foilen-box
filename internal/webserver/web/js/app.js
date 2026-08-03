@@ -63,34 +63,58 @@ class Api {
 	}
 }
 
-function activateTab(tabId) {
+function activateTab(api, tabId) {
 	const button = document.querySelector(`.tab-button[data-tab="${tabId}"]`);
 	if (!button) return false;
 	document.querySelectorAll(".tab-button").forEach((b) => b.classList.remove("active"));
 	document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
 	button.classList.add("active");
 	document.getElementById(tabId).classList.add("active");
+	api.call("config.recordTabLoad", { tabId }).catch(() => {});
 	return true;
 }
 
-function initTabs() {
+function initTabs(api) {
 	const buttons = document.querySelectorAll(".tab-button");
 	buttons.forEach((button) => {
 		button.addEventListener("click", (event) => {
 			if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
 			event.preventDefault();
 			console.log("[action] switch tab", { tab: button.dataset.tab });
-			activateTab(button.dataset.tab);
+			activateTab(api, button.dataset.tab);
 			updateHash();
 		});
 	});
+}
+
+function reorderButtonsByLoadCount(containers, selector, dataKey, counts) {
+	containers.forEach((container) => {
+		const buttons = [...container.querySelectorAll(selector)];
+		buttons
+			.map((b, i) => ({ b, i, count: counts[b.dataset[dataKey]] || 0 }))
+			.sort((x, y) => y.count - x.count || x.i - y.i)
+			.forEach(({ b }) => container.appendChild(b));
+	});
+}
+
+async function applyTabLoadOrder(api) {
+	let stats;
+	try {
+		stats = await api.call("config.loadTabStats");
+	} catch (err) {
+		console.error("[tabs] failed to load tab stats", err);
+		return;
+	}
+	reorderButtonsByLoadCount([document.getElementById("tabs")], "a.tab-button", "tab", stats.tabCounts || {});
+	reorderButtonsByLoadCount(document.querySelectorAll(".subtab-nav"), "a.subtab-button", "subtab", stats.subtabCounts || {});
 }
 
 const platform = new URLSearchParams(location.search).get("platform");
 const isAndroid = platform === "android";
 
 const api = new Api();
-initTabs();
+await applyTabLoadOrder(api);
+initTabs(api);
 initSpecTab(api);
 initTroubleshootingTab(api);
 initEarlyTab(api);
@@ -107,5 +131,5 @@ if (!isAndroid) {
 }
 
 const { tab } = parseHash();
-if (tab) activateTab(tab);
+if (tab) activateTab(api, tab);
 updateHash();

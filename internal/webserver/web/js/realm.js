@@ -13,13 +13,14 @@ import { parseHash, updateHash } from "./hash.js";
 
 // Wires subtab switching. onActivate (optional) is called with the
 // activated subtab on every switch — used by Services to refresh stale peers.
-function initRealmSubtabs(onActivate) {
+function initRealmSubtabs(api, onActivate) {
 	const buttons = document.querySelectorAll("#realm-subtabs .subtab-button");
 	function activate(button, extra) {
 		buttons.forEach((b) => b.classList.remove("active"));
 		document.querySelectorAll("#realm .subtab-panel").forEach((p) => p.classList.remove("active"));
 		button.classList.add("active");
 		document.getElementById(button.dataset.subtab).classList.add("active");
+		api.call("config.recordSubtabLoad", { subtabId: button.dataset.subtab }).catch(() => {});
 		if (onActivate) onActivate(button.dataset.subtab, extra);
 	}
 	buttons.forEach((button) => {
@@ -170,7 +171,7 @@ export function initRealmTab(api, isAndroid) {
 		latestPeers = peers;
 		pushPeers();
 	});
-	initRealmSubtabs((subtab, extra) => {
+	initRealmSubtabs(api, (subtab, extra) => {
 		if (subtab === "realm-maps-subtab") mapsModule.onSubtabActivated();
 		if (subtab === "realm-sms-subtab") smsModule.onSubtabActivated(extra);
 	});
