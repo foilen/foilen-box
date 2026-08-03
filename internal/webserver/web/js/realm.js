@@ -132,7 +132,7 @@ export function initRealmTab(api, isAndroid) {
 
 		exposeWebEnabledCheckbox.checked = cfg.exposeWebEnabled;
 		exposeWebFields.classList.toggle("hidden", !cfg.exposeWebEnabled);
-		exposeWebListenProtocolSelect.value = cfg.exposeWebListenProtocol || "wss";
+		exposeWebListenProtocolSelect.value = cfg.exposeWebListenProtocol || "https";
 		if (document.activeElement !== exposeWebListenPortInput) {
 			exposeWebListenPortInput.value = cfg.exposeWebListenPort || 443;
 		}

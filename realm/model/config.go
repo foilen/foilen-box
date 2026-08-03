@@ -55,16 +55,17 @@ type Config struct {
 	// RealmListenPort) or ListenPortModeSpecific (user-chosen RealmListenPort).
 	RealmListenPortMode string `json:"realmListenPortMode"`
 
-	// ExposeWebEnabled adds a websocket listen address so this peer stays
-	// dialable through firewalls/proxies that only allow web ports out.
-	// Only useful for a peer with a stable public hostname/IP.
+	// ExposeWebEnabled runs a libp2p listener over a plain HTTP(S) server
+	// (see realm/web_transport.go) with a /p2p WebSocket endpoint, so this
+	// peer stays dialable through firewalls/proxies that only allow web
+	// ports out. Only useful for a peer with a stable public hostname/IP.
 	ExposeWebEnabled bool `json:"exposeWebEnabled"`
 
-	// ExposeWebListenProtocol: "wss" (default, TLS) or "ws" (behind a
-	// reverse proxy that already terminates TLS).
+	// ExposeWebListenProtocol: "https" (default, TLS, self-signed) or "http"
+	// (behind a reverse proxy that already terminates TLS).
 	ExposeWebListenProtocol string `json:"exposeWebListenProtocol"`
 
-	// ExposeWebListenPort is where the libp2p host binds the websocket listener locally.
+	// ExposeWebListenPort is where the web listener's HTTP(S) server binds locally.
 	ExposeWebListenPort int `json:"exposeWebListenPort"`
 
 	// ExposeWebAnnounceHost is the hostname/IP peers should dial to reach
@@ -74,6 +75,6 @@ type Config struct {
 	// ExposeWebAnnouncePort: port peers should dial; 0 = same as ExposeWebListenPort.
 	ExposeWebAnnouncePort int `json:"exposeWebAnnouncePort"`
 
-	// ExposeWebAnnounceProtocol: "wss"/"ws"; "" = same as ExposeWebListenProtocol.
+	// ExposeWebAnnounceProtocol: "https"/"http"; "" = same as ExposeWebListenProtocol.
 	ExposeWebAnnounceProtocol string `json:"exposeWebAnnounceProtocol"`
 }

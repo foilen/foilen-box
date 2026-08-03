@@ -18,8 +18,9 @@ import (
 )
 
 // generateSelfSignedTLSConfig creates a throwaway self-signed cert for the
-// "wss" listener, just to look like ordinary HTTPS/WSS to firewalls/proxies;
-// real peer auth is libp2p's Noise handshake on top (websocketDialerTLSConfig).
+// web listener's HTTPS server (webTransport.Listen, web_transport.go) and
+// for the matching dial-side "realm-https" TLS config; real peer auth
+// happens afterwards, via libp2p's Noise handshake on top.
 func generateSelfSignedTLSConfig() (*tls.Config, error) {
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -48,20 +49,18 @@ func generateSelfSignedTLSConfig() (*tls.Config, error) {
 
 	return &tls.Config{
 		Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: priv}},
+		// Force HTTP/1.1: the WebSocket upgrade in web_transport.go relies on
+		// hijacking the connection, which HTTP/2 doesn't support. Without
+		// this, any client offering "h2" in its ALPN (e.g. curl, browsers)
+		// gets negotiated to HTTP/2 and the /p2p upgrade fails with 400.
+		NextProtos: []string{"http/1.1"},
 	}, nil
 }
 
-// websocketDialerTLSConfig is used for every outgoing wss dial, since any
-// peer may have a self-signed cert (generateSelfSignedTLSConfig) with no
-// shared CA to validate against. Safe to skip: libp2p's Noise handshake on
-// top actually authenticates the peer.
-func websocketDialerTLSConfig() *tls.Config {
-	return &tls.Config{InsecureSkipVerify: true} //nolint:gosec // see doc comment
-}
-
 // exposeWebSettingsSnapshot is the subset of model.Config that requires a
-// full host Restart (not just a Reconcile) when changed, since these are all
-// only applied via libp2p.New's options.
+// full host Restart (not just a Reconcile) when changed: the web listener
+// (webTransport, web_transport.go) is only (de)registered and (un)listened
+// via Engine.Start's libp2p.New options.
 type exposeWebSettingsSnapshot struct {
 	enabled          bool
 	listenProtocol   string
@@ -84,17 +83,18 @@ func exposeWebSettings(cfg model.Config) exposeWebSettingsSnapshot {
 	}
 }
 
-// exposeWebListenAddr builds the extra listen multiaddr for cfg's websocket
-// listener (see model.Config.ExposeWebEnabled), or nil if it's not enabled.
+// exposeWebListenAddr builds the multiaddr webTransport.Listen should bind
+// to for cfg's web listener (see model.Config.ExposeWebEnabled), or nil if
+// it's not enabled.
 func exposeWebListenAddr(cfg model.Config) (multiaddr.Multiaddr, error) {
 	if !cfg.ExposeWebEnabled {
 		return nil, nil
 	}
-	proto := cfg.ExposeWebListenProtocol
-	if proto == "" {
-		proto = "wss"
+	maProto := "realm-https"
+	if cfg.ExposeWebListenProtocol == "http" {
+		maProto = "realm-http"
 	}
-	spec := fmt.Sprintf("/ip4/0.0.0.0/tcp/%d/%s", cfg.ExposeWebListenPort, proto)
+	spec := fmt.Sprintf("/ip4/0.0.0.0/%s/%d", maProto, cfg.ExposeWebListenPort)
 	a, err := multiaddr.NewMultiaddr(spec)
 	if err != nil {
 		return nil, fmt.Errorf("expose web: invalid listen addr %q: %w", spec, err)
@@ -103,9 +103,11 @@ func exposeWebListenAddr(cfg model.Config) (multiaddr.Multiaddr, error) {
 }
 
 // exposeWebAnnounceAddr builds the multiaddr this host should advertise to
-// other peers for its websocket listener (see model.Config.ExposeWebEnabled),
-// or nil if it's not enabled. Falls back to this host's outbound IP when
-// ExposeWebAnnounceHost isn't set.
+// other peers for its web listener (see model.Config.ExposeWebEnabled and
+// web_transport.go), or nil if it's not enabled. Uses the custom
+// realm-http/realm-https multiaddr protocols rather than libp2p's standard
+// ws/wss, since this isn't a libp2p websocket transport listener. Falls
+// back to this host's outbound IP when ExposeWebAnnounceHost isn't set.
 func exposeWebAnnounceAddr(cfg model.Config) (multiaddr.Multiaddr, error) {
 	if !cfg.ExposeWebEnabled {
 		return nil, nil
@@ -114,8 +116,9 @@ func exposeWebAnnounceAddr(cfg model.Config) (multiaddr.Multiaddr, error) {
 	if proto == "" {
 		proto = cfg.ExposeWebListenProtocol
 	}
-	if proto == "" {
-		proto = "wss"
+	maProto := "realm-https"
+	if proto == "http" {
+		maProto = "realm-http"
 	}
 	port := cfg.ExposeWebAnnouncePort
 	if port == 0 {
@@ -124,13 +127,13 @@ func exposeWebAnnounceAddr(cfg model.Config) (multiaddr.Multiaddr, error) {
 
 	var spec string
 	if cfg.ExposeWebAnnounceHost != "" {
-		spec = fmt.Sprintf("/dns4/%s/tcp/%d/%s", cfg.ExposeWebAnnounceHost, port, proto)
+		spec = fmt.Sprintf("/dns4/%s/%s/%d", cfg.ExposeWebAnnounceHost, maProto, port)
 	} else {
 		ip, err := outboundIPv4()
 		if err != nil {
 			return nil, fmt.Errorf("expose web: failed to determine local IP for announce addr: %w", err)
 		}
-		spec = fmt.Sprintf("/ip4/%s/tcp/%d/%s", ip, port, proto)
+		spec = fmt.Sprintf("/ip4/%s/%s/%d", ip, maProto, port)
 	}
 	a, err := multiaddr.NewMultiaddr(spec)
 	if err != nil {

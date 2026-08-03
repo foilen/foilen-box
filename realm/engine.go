@@ -26,7 +26,6 @@ import (
 	quictransport "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
-	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
 	webtransport "github.com/libp2p/go-libp2p/p2p/transport/webtransport"
 	"github.com/multiformats/go-multiaddr"
 
@@ -425,27 +424,18 @@ func (e *Engine) Start(cfg model.Config) error {
 		libp2p.Transport(libp2pwebrtc.New),
 	)
 
-	// Dialer must accept self-signed certs unconditionally: any peer we dial
-	// may have ExposeWebEnabled with its own self-signed cert (expose_web.go).
-	wsOpts := []any{ws.WithTLSClientConfig(websocketDialerTLSConfig())}
-
+	// Web listener (see model.Config.ExposeWebEnabled): a Transport for the
+	// realm-http(s) multiaddr scheme (web_transport.go). Always registered
+	// so this host can dial any peer advertising one (see
+	// exposeWebAnnounceAddr below), but only told to Listen when enabled.
+	opts = append(opts, libp2p.Transport(newWebTransport))
 	webListenAddr, err := exposeWebListenAddr(cfg)
 	if err != nil {
 		log.Printf("realm engine: %v", err)
 	}
 	if webListenAddr != nil {
 		opts = append(opts, libp2p.ListenAddrs(webListenAddr))
-		if cfg.ExposeWebListenProtocol == "" || cfg.ExposeWebListenProtocol == "wss" {
-			tlsConf, err := generateSelfSignedTLSConfig()
-			if err != nil {
-				log.Printf("realm engine: failed to generate self-signed cert for web listener, disabling it: %v", err)
-				webListenAddr = nil
-			} else {
-				wsOpts = append(wsOpts, ws.WithTLSConfig(tlsConf))
-			}
-		}
 	}
-	opts = append(opts, libp2p.Transport(ws.New, wsOpts...))
 
 	webAnnounceAddr, err := exposeWebAnnounceAddr(cfg)
 	if err != nil {
