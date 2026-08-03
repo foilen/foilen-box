@@ -10,6 +10,14 @@ const (
 // DefaultPeerRetentionDays is used when Config.PeerRetentionDays is 0 (unset).
 const DefaultPeerRetentionDays = 14
 
+// Listen port mode values for Config.RealmListenPortMode: ListenPortModeDefault
+// auto-picks a free port (see PickFreeListenPort); ListenPortModeSpecific uses
+// the user-chosen Config.RealmListenPort as-is.
+const (
+	ListenPortModeDefault  = ""
+	ListenPortModeSpecific = "specific"
+)
+
 // Config is the persisted Realm configuration.
 type Config struct {
 	PeerID      KeyPair `json:"peerId"`
@@ -42,6 +50,10 @@ type Config struct {
 	// RealmListenPort is the libp2p host's TCP/UDP port. 0 = unassigned; see
 	// PickFreeListenPort, which persists it so addresses stay stable across restarts.
 	RealmListenPort int `json:"realmListenPort"`
+
+	// RealmListenPortMode: ListenPortModeDefault (auto-assigned, see
+	// RealmListenPort) or ListenPortModeSpecific (user-chosen RealmListenPort).
+	RealmListenPortMode string `json:"realmListenPortMode"`
 
 	// ExposeWebEnabled adds a websocket listen address so this peer stays
 	// dialable through firewalls/proxies that only allow web ports out.

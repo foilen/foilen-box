@@ -117,6 +117,23 @@
 				(e.g. a VPS); costs it some bandwidth on their behalf.</p>
 		</div>
 
+		<h3>TCP/UDP</h3>
+		<div id="realm-listen-port">
+			<label>Listen port:
+				<md-outlined-select id="realm-listen-port-mode">
+					<md-select-option value=""><div slot="headline">Default (random, auto-assigned)</div></md-select-option>
+					<md-select-option value="specific"><div slot="headline">Specific port</div></md-select-option>
+				</md-outlined-select>
+			</label>
+			<label id="realm-listen-port-specific-row" class="hidden">Port:
+				<md-outlined-text-field type="number" id="realm-listen-port-value" min="1" max="65535" step="1" style="width: 6em;"></md-outlined-text-field>
+			</label>
+			<p class="hint">Currently bound to port <code id="realm-listen-port-current">(none)</code>, used for
+				both TCP and UDP (QUIC). "Default" lets the app pick a free port automatically and keeps using
+				it across restarts; switch to "Specific" to pin a fixed port yourself, e.g. for firewall
+				rules. Changing these settings restarts Realm's networking.</p>
+		</div>
+
 		<h3>Web listener</h3>
 		<div id="realm-expose-web">
 			<label><md-checkbox id="realm-expose-web-enabled"></md-checkbox> Expose on a web port (80/443)</label>
@@ -152,9 +169,10 @@
 					</md-outlined-select>
 				</label>
 				<p class="hint">The announce hostname/port/protocol is what other peers are told to dial; it's
-					required since this address can't be auto-discovered. Set announce port/protocol when a
-					reverse proxy exposes a different public port (typically 443/wss) than the port this
-					process actually binds locally.</p>
+					needed since this address can't be auto-discovered. If left blank, this host's outbound IP
+					is used instead of a hostname. Set announce port/protocol when a reverse proxy exposes a
+					different public port (typically 443/wss) than the port this process actually binds
+					locally.</p>
 			</div>
 		</div>
 

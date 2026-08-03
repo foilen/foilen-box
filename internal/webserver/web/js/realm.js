@@ -56,6 +56,10 @@ export function initRealmTab(api, isAndroid) {
 	const dhtModeSelect = document.getElementById("realm-dht-mode");
 	const peerRetentionDaysInput = document.getElementById("realm-peer-retention-days");
 	const enableRelayServiceCheckbox = document.getElementById("realm-enable-relay-service");
+	const listenPortModeSelect = document.getElementById("realm-listen-port-mode");
+	const listenPortSpecificRow = document.getElementById("realm-listen-port-specific-row");
+	const listenPortValueInput = document.getElementById("realm-listen-port-value");
+	const listenPortCurrentEl = document.getElementById("realm-listen-port-current");
 	const exposeWebEnabledCheckbox = document.getElementById("realm-expose-web-enabled");
 	const exposeWebFields = document.getElementById("realm-expose-web-fields");
 	const exposeWebListenProtocolSelect = document.getElementById("realm-expose-web-listen-protocol");
@@ -118,6 +122,13 @@ export function initRealmTab(api, isAndroid) {
 			peerRetentionDaysInput.value = cfg.peerRetentionDays || 0;
 		}
 		enableRelayServiceCheckbox.checked = cfg.enableRelayService;
+
+		listenPortModeSelect.value = cfg.realmListenPortMode || "";
+		listenPortSpecificRow.classList.toggle("hidden", cfg.realmListenPortMode !== "specific");
+		if (document.activeElement !== listenPortValueInput) {
+			listenPortValueInput.value = cfg.realmListenPort || "";
+		}
+		listenPortCurrentEl.textContent = cfg.realmListenPort || "(none)";
 
 		exposeWebEnabledCheckbox.checked = cfg.exposeWebEnabled;
 		exposeWebFields.classList.toggle("hidden", !cfg.exposeWebEnabled);
@@ -246,6 +257,28 @@ export function initRealmTab(api, isAndroid) {
 			);
 		})
 	);
+
+	function saveListenPort() {
+		return report(output, async () => {
+			const params = {
+				mode: listenPortModeSelect.value,
+				port: parseInt(listenPortValueInput.value, 10) || 0,
+			};
+			console.log("[action] change realm listen port", params);
+			renderConfig(await api.call("realm.setListenPort", params));
+		});
+	}
+	listenPortModeSelect.addEventListener("change", () => {
+		const specific = listenPortModeSelect.value === "specific";
+		listenPortSpecificRow.classList.toggle("hidden", !specific);
+		// Save right away so a background config poll doesn't revert this
+		// selection before the user picks a port; skipped when switching to
+		// "specific" with no port yet (e.g. still unassigned) since the
+		// backend rejects a 0 port — the value input's own "change" handler
+		// saves once they enter one.
+		if (!specific || parseInt(listenPortValueInput.value, 10) > 0) saveListenPort();
+	});
+	listenPortValueInput.addEventListener("change", saveListenPort);
 
 	function saveExposeWeb() {
 		return report(output, async () => {

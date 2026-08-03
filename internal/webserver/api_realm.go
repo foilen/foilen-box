@@ -32,6 +32,9 @@ type realmConfigResult struct {
 	Scripts            []scriptResult                `json:"scripts"`
 	Services           []serviceResult               `json:"services"`
 
+	RealmListenPort     int    `json:"realmListenPort"`
+	RealmListenPortMode string `json:"realmListenPortMode"`
+
 	ExposeWebEnabled          bool   `json:"exposeWebEnabled"`
 	ExposeWebListenProtocol   string `json:"exposeWebListenProtocol"`
 	ExposeWebListenPort       int    `json:"exposeWebListenPort"`
@@ -136,6 +139,9 @@ func realmConfigResponse(a *api, cfg realmmodel.Config) realmConfigResult {
 		Identities:         identities,
 		Scripts:            scripts,
 		Services:           services,
+
+		RealmListenPort:     cfg.RealmListenPort,
+		RealmListenPortMode: cfg.RealmListenPortMode,
 
 		ExposeWebEnabled:          cfg.ExposeWebEnabled,
 		ExposeWebListenProtocol:   cfg.ExposeWebListenProtocol,
@@ -989,6 +995,35 @@ func handleRealmSetEnableRelayService(a *api, params json.RawMessage) (any, erro
 		return nil, err
 	}
 	cfg, err := a.updateRealmConfig(func(c *realmmodel.Config) { c.EnableRelayService = p.EnableRelayService })
+	if err != nil {
+		return nil, err
+	}
+	return realmConfigResponse(a, cfg), nil
+}
+
+func handleRealmSetListenPort(a *api, params json.RawMessage) (any, error) {
+	var p struct {
+		Mode string `json:"mode"`
+		Port int    `json:"port"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
+	}
+	if p.Mode != realmmodel.ListenPortModeDefault && p.Mode != realmmodel.ListenPortModeSpecific {
+		return nil, fmt.Errorf("unknown listen port mode: %s", p.Mode)
+	}
+	if p.Mode == realmmodel.ListenPortModeSpecific && (p.Port < 1 || p.Port > 65535) {
+		return nil, fmt.Errorf("specific listen port must be between 1 and 65535")
+	}
+	cfg, err := a.updateRealmConfig(func(c *realmmodel.Config) {
+		c.RealmListenPortMode = p.Mode
+		if p.Mode == realmmodel.ListenPortModeSpecific {
+			c.RealmListenPort = p.Port
+		} else {
+			// Zeroed so ensureRealmListenPort assigns a fresh free port.
+			c.RealmListenPort = 0
+		}
+	})
 	if err != nil {
 		return nil, err
 	}

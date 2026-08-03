@@ -9,6 +9,7 @@ import (
 	"crypto/x509/pkix"
 	"fmt"
 	"math/big"
+	"net"
 	"time"
 
 	"github.com/multiformats/go-multiaddr"
@@ -103,9 +104,10 @@ func exposeWebListenAddr(cfg model.Config) (multiaddr.Multiaddr, error) {
 
 // exposeWebAnnounceAddr builds the multiaddr this host should advertise to
 // other peers for its websocket listener (see model.Config.ExposeWebEnabled),
-// or nil if it's not enabled or ExposeWebAnnounceHost isn't set.
+// or nil if it's not enabled. Falls back to this host's outbound IP when
+// ExposeWebAnnounceHost isn't set.
 func exposeWebAnnounceAddr(cfg model.Config) (multiaddr.Multiaddr, error) {
-	if !cfg.ExposeWebEnabled || cfg.ExposeWebAnnounceHost == "" {
+	if !cfg.ExposeWebEnabled {
 		return nil, nil
 	}
 	proto := cfg.ExposeWebAnnounceProtocol
@@ -119,10 +121,32 @@ func exposeWebAnnounceAddr(cfg model.Config) (multiaddr.Multiaddr, error) {
 	if port == 0 {
 		port = cfg.ExposeWebListenPort
 	}
-	spec := fmt.Sprintf("/dns4/%s/tcp/%d/%s", cfg.ExposeWebAnnounceHost, port, proto)
+
+	var spec string
+	if cfg.ExposeWebAnnounceHost != "" {
+		spec = fmt.Sprintf("/dns4/%s/tcp/%d/%s", cfg.ExposeWebAnnounceHost, port, proto)
+	} else {
+		ip, err := outboundIPv4()
+		if err != nil {
+			return nil, fmt.Errorf("expose web: failed to determine local IP for announce addr: %w", err)
+		}
+		spec = fmt.Sprintf("/ip4/%s/tcp/%d/%s", ip, port, proto)
+	}
 	a, err := multiaddr.NewMultiaddr(spec)
 	if err != nil {
 		return nil, fmt.Errorf("expose web: invalid announce addr %q: %w", spec, err)
 	}
 	return a, nil
+}
+
+// outboundIPv4 returns this host's preferred outbound IPv4 address, by
+// asking the OS how it would route to a public IP. No packets are actually
+// sent: UDP "connect" just resolves local routing.
+func outboundIPv4() (string, error) {
+	conn, err := net.Dial("udp4", "8.8.8.8:80")
+	if err != nil {
+		return "", fmt.Errorf("failed to determine outbound IP: %w", err)
+	}
+	defer conn.Close()
+	return conn.LocalAddr().(*net.UDPAddr).IP.String(), nil
 }

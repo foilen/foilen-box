@@ -270,9 +270,13 @@ func resolveHostname(override string) string {
 
 // ensureRealmListenPort backfills cfg.RealmListenPort with a free port, once,
 // so the peer's advertised addresses stay stable across restarts. No-op if
-// already assigned or if a free port couldn't be picked (falls back to
-// libp2p's random-port default).
+// the user picked a specific port (RealmListenPortMode), already assigned,
+// or if a free port couldn't be picked (falls back to libp2p's random-port
+// default).
 func ensureRealmListenPort(svc *realmconfig.Service, cfg realmmodel.Config) realmmodel.Config {
+	if cfg.RealmListenPortMode == realmmodel.ListenPortModeSpecific {
+		return cfg
+	}
 	if cfg.RealmListenPort != 0 {
 		return cfg
 	}
@@ -331,6 +335,7 @@ var handlers = map[string]handlerFunc{
 	"realm.setDiscoveryOptions":   handleRealmSetDiscoveryOptions,
 	"realm.setEnableRelayService": handleRealmSetEnableRelayService,
 	"realm.setPeerRetentionDays":  handleRealmSetPeerRetentionDays,
+	"realm.setListenPort":         handleRealmSetListenPort,
 	"realm.setExposeWeb":          handleRealmSetExposeWeb,
 	"realm.listPeers":             handleRealmListPeers,
 	"realm.listSwarmPeers":        handleRealmListSwarmPeers,
