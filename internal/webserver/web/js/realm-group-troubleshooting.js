@@ -62,11 +62,21 @@ function buildDiagram(groupPeers, connectionsByPeer, knownPeers) {
 	const nodeIds = new Set();
 	const activeNodes = new Set();
 
+	const outgoingCounts = new Map();
+	const incomingCounts = new Map();
+	for (const [ownerId, conns] of connectionsByPeer) {
+		outgoingCounts.set(ownerId, conns.length);
+		for (const c of conns) {
+			incomingCounts.set(c.remotePeerId, (incomingCounts.get(c.remotePeerId) || 0) + 1);
+		}
+	}
+
 	function ensureNode(peerId) {
 		const id = nodeId(peerId);
 		if (!nodeIds.has(id)) {
 			nodeIds.add(id);
-			lines.push(`  ${id}["${escapeLabel(formatKnownPeerLabel(knownPeers, peerId))}"]`);
+			const label = `${formatKnownPeerLabel(knownPeers, peerId)} (${outgoingCounts.get(peerId) || 0}/${incomingCounts.get(peerId) || 0})`;
+			lines.push(`  ${id}["${escapeLabel(label)}"]`);
 		}
 		return id;
 	}
@@ -107,6 +117,7 @@ export function initRealmGroupTroubleshooting(api, output) {
 	const startButton = document.getElementById("group-troubleshooting-start-button");
 	const statusEl = document.getElementById("group-troubleshooting-status");
 	const diagramEl = document.getElementById("group-troubleshooting-diagram");
+	const freezeCheckbox = document.getElementById("group-troubleshooting-freeze");
 
 	let groups = [];
 	let peers = [];
@@ -158,6 +169,7 @@ export function initRealmGroupTroubleshooting(api, output) {
 	}
 
 	function renderForSelectedGroup() {
+		if (freezeCheckbox.checked) return;
 		const session = sessionByGroup.get(selectedGroupId);
 		if (!session) {
 			statusEl.textContent = "";
@@ -199,6 +211,10 @@ export function initRealmGroupTroubleshooting(api, output) {
 
 		renderForSelectedGroup();
 	}
+
+	freezeCheckbox.addEventListener("change", () => {
+		if (!freezeCheckbox.checked) renderForSelectedGroup();
+	});
 
 	groupSelect.addEventListener("change", () =>
 		report(output, async () => {
