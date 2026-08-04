@@ -591,6 +591,13 @@ func (f *Feature) groupFor(groupID string) (model.Group, error) {
 // No need to check Connected: incomingSubs is pruned on disconnect (see
 // OnPeerDisconnected), and a gone peer just fails sendPush's stream open.
 func (f *Feature) broadcast(reg *realm.Registrar, group model.Group, storeName string, env model.MapEventEnvelope) {
+	f.broadcastExcept(reg, group, storeName, env, "")
+}
+
+// broadcastExcept is broadcast, skipping exceptPeerID — used to relay an
+// event just received from that peer on to our own subscribers without
+// bouncing it straight back.
+func (f *Feature) broadcastExcept(reg *realm.Registrar, group model.Group, storeName string, env model.MapEventEnvelope, exceptPeerID string) {
 	h := reg.Host()
 	ctx := reg.Context()
 	if h == nil || ctx == nil {
@@ -601,6 +608,9 @@ func (f *Feature) broadcast(reg *realm.Registrar, group model.Group, storeName s
 		log.Printf("realm maps: broadcasting %s/%s key=%q to %d subscriber(s)", group.Name, storeName, env.Key, len(recipients))
 	}
 	for _, peerID := range recipients {
+		if peerID == exceptPeerID {
+			continue
+		}
 		pid, err := peer.Decode(peerID)
 		if err != nil {
 			continue
@@ -669,7 +679,9 @@ func (f *Feature) subscribeToPeer(reg *realm.Registrar, id peer.ID, group model.
 
 	maxTsByStore := make(map[string]int64, len(storeNames))
 	for _, env := range resp.Events {
-		f.applyVerified(group, env)
+		if f.applyVerified(group, env) {
+			f.broadcastExcept(reg, group, env.StoreName, env, peerID)
+		}
 		if env.UpdatedAtUnixMillis > maxTsByStore[env.StoreName] {
 			maxTsByStore[env.StoreName] = env.UpdatedAtUnixMillis
 		}
@@ -708,18 +720,23 @@ func (f *Feature) sendUnsubscribe(reg *realm.Registrar, id peer.ID, groupID stri
 }
 
 // applyVerified verifies env's signature against group's key and, if valid,
-// merges it into the store.
-func (f *Feature) applyVerified(group model.Group, env model.MapEventEnvelope) {
+// merges it into the store. Returns whether it actually changed anything, so
+// callers can decide whether to relay it on to their own subscribers.
+func (f *Feature) applyVerified(group model.Group, env model.MapEventEnvelope) bool {
 	if !verifyEvent(group, env) {
 		log.Printf("realm maps: dropping event for group %q with invalid signature", env.GroupID)
-		return
+		return false
 	}
 	entry := model.MapEntry{Value: env.Value, Deleted: env.Deleted, UpdatedAtUnixMillis: env.UpdatedAtUnixMillis, OriginPeerID: env.OriginPeerID, Nonce: env.Nonce, IdentitySignature: env.IdentitySignature}
-	if _, err := f.store.ApplyEvent(env.GroupID, env.StoreName, env.Key, entry); err != nil {
+	changed, err := f.store.ApplyEvent(env.GroupID, env.StoreName, env.Key, entry)
+	if err != nil {
 		log.Printf("realm maps: failed to persist event for group %q: %v", env.GroupID, err)
-		return
+		return false
 	}
-	log.Printf("realm maps: applied event for %s/%s key=%q deleted=%v from peer %s", group.Name, env.StoreName, env.Key, env.Deleted, env.OriginPeerID)
+	if changed {
+		log.Printf("realm maps: applied event for %s/%s key=%q deleted=%v from peer %s", group.Name, env.StoreName, env.Key, env.Deleted, env.OriginPeerID)
+	}
+	return changed
 }
 
 // handlePushStream is the libp2p stream handler for PushProtocolID: one
@@ -740,7 +757,9 @@ func (f *Feature) handlePushStream(reg *realm.Registrar) network.StreamHandler {
 			// can't verify, so we can't trust it either.
 			return
 		}
-		f.applyVerified(group, env)
+		if f.applyVerified(group, env) {
+			f.broadcastExcept(reg, group, env.StoreName, env, s.Conn().RemotePeer().String())
+		}
 	}
 }
 
