@@ -53,14 +53,17 @@ function parseEntries(entries) {
 	return { expiresAtUnixMillis, connectionsByPeer };
 }
 
-// Builds mermaid flowchart source: one gray node per group member, turning
-// green when it's an endpoint of at least one connection; a solid blue edge
-// for a direct connection, a dashed yellow edge for a relayed one
+// Builds mermaid flowchart source: one node per group member, colored gray
+// when it has no connections and no realmmap entry of its own, blue when
+// something connects to it but it hasn't published its own entry yet, green
+// once we have its entry (i.e. connectionsByPeer.has(peerId)); a solid blue
+// edge for a direct connection, a dashed yellow edge for a relayed one
 // (address contains "/p2p-circuit").
 function buildDiagram(groupPeers, connectionsByPeer, knownPeers) {
 	const lines = ["graph LR"];
 	const nodeIds = new Set();
-	const activeNodes = new Set();
+	const peerIdById = new Map();
+	const incomingTargets = new Set();
 
 	const outgoingCounts = new Map();
 	const incomingCounts = new Map();
@@ -75,6 +78,7 @@ function buildDiagram(groupPeers, connectionsByPeer, knownPeers) {
 		const id = nodeId(peerId);
 		if (!nodeIds.has(id)) {
 			nodeIds.add(id);
+			peerIdById.set(id, peerId);
 			const label = `${formatKnownPeerLabel(knownPeers, peerId)} (${outgoingCounts.get(peerId) || 0}/${incomingCounts.get(peerId) || 0})`;
 			lines.push(`  ${id}["${escapeLabel(label)}"]`);
 		}
@@ -92,15 +96,18 @@ function buildDiagram(groupPeers, connectionsByPeer, knownPeers) {
 			const arrow = relay ? "-.->" : "-->";
 			lines.push(`  ${fromId} ${arrow}|"${escapeLabel(c.address)}"| ${toId}`);
 			edgeColors.push(relay ? "#f9a825" : "#1e88e5");
-			activeNodes.add(fromId);
-			activeNodes.add(toId);
+			incomingTargets.add(toId);
 		}
 	}
 
 	lines.push("  classDef grayNode fill:#9e9e9e,stroke:#616161,color:#fff;");
+	lines.push("  classDef blueNode fill:#1e88e5,stroke:#1565c0,color:#fff;");
 	lines.push("  classDef greenNode fill:#43a047,stroke:#2e7d32,color:#fff;");
 	for (const id of nodeIds) {
-		lines.push(`  class ${id} ${activeNodes.has(id) ? "greenNode" : "grayNode"};`);
+		const peerId = peerIdById.get(id);
+		const hasInfo = connectionsByPeer.has(peerId);
+		const nodeClass = hasInfo ? "greenNode" : incomingTargets.has(id) ? "blueNode" : "grayNode";
+		lines.push(`  class ${id} ${nodeClass};`);
 	}
 	edgeColors.forEach((color, i) => lines.push(`  linkStyle ${i} stroke:${color},stroke-width:2px;`));
 
@@ -181,7 +188,7 @@ export function initRealmGroupTroubleshooting(api, output) {
 			statusEl.textContent = `Group Troubleshooting already running — expires at ${new Date(session.expiresAtUnixMillis).toLocaleString()}`;
 			startButton.disabled = true;
 		} else if (session.finished) {
-			statusEl.textContent = "Group Troubleshooting finished";
+			statusEl.textContent = `Group Troubleshooting finished — ended at ${new Date(session.expiresAtUnixMillis).toLocaleString()}`;
 			startButton.disabled = false;
 		} else {
 			statusEl.textContent = "";
