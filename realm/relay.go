@@ -29,16 +29,25 @@ type relayReservation struct {
 
 // circuitAddrs turns a relay's own listen addresses into the /p2p-circuit
 // addresses this host is actually dialable at through that relay.
-// circuitv2client.Reserve's response Addrs are the relay's raw addresses
-// (the relay puts its own host.Addrs() in the reservation, not a
-// pre-built circuit address), so that encapsulation has to happen here.
+// circuitv2client.Reserve's response Addrs already have the relay's own
+// /p2p/<relayID> encapsulated by the server (see makeReservationMsg in
+// go-libp2p's circuitv2 relay package), so that component is stripped
+// before re-adding it along with /p2p-circuit, to avoid encapsulating it
+// twice.
 func circuitAddrs(relayID peer.ID, relayAddrs []multiaddr.Multiaddr) []multiaddr.Multiaddr {
+	relayP2PComponent, err := multiaddr.NewComponent("p2p", relayID.String())
+	if err != nil {
+		return nil
+	}
 	circuitSuffix, err := multiaddr.NewMultiaddr("/p2p/" + relayID.String() + "/p2p-circuit")
 	if err != nil {
 		return nil
 	}
 	addrs := make([]multiaddr.Multiaddr, 0, len(relayAddrs))
 	for _, a := range relayAddrs {
+		if id, _ := peer.IDFromP2PAddr(a); id == relayID {
+			a = a.Decapsulate(relayP2PComponent)
+		}
 		addrs = append(addrs, a.Encapsulate(circuitSuffix))
 	}
 	return addrs
