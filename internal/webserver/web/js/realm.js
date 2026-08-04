@@ -45,6 +45,7 @@ export function initRealmTab(api, isAndroid) {
 	const peerIdEl = document.getElementById("realm-peer-id");
 	const generatePeerIdButton = document.getElementById("realm-generate-peer-id-button");
 	const hostnameEl = document.getElementById("realm-hostname");
+	const addressesEl = document.getElementById("realm-addresses");
 	const descriptionInput = document.getElementById("realm-description");
 	const saveDescriptionButton = document.getElementById("realm-save-description-button");
 	const enableMdnsCheckbox = document.getElementById("realm-enable-mdns");
@@ -115,6 +116,20 @@ export function initRealmTab(api, isAndroid) {
 		peerIdEl.textContent = cfg.peerId || "(none)";
 		generatePeerIdButton.classList.toggle("hidden", !!cfg.peerId);
 		hostnameEl.textContent = cfg.hostname || "(unknown)";
+		addressesEl.replaceChildren();
+		if (cfg.addresses && cfg.addresses.length > 0) {
+			for (const addr of cfg.addresses) {
+				const li = document.createElement("li");
+				const code = document.createElement("code");
+				code.textContent = addr;
+				li.appendChild(code);
+				addressesEl.appendChild(li);
+			}
+		} else {
+			const li = document.createElement("li");
+			li.textContent = "(none)";
+			addressesEl.appendChild(li);
+		}
 		if (document.activeElement !== descriptionInput) {
 			descriptionInput.value = cfg.description || "";
 		}

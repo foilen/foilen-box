@@ -20,6 +20,7 @@ type realmConfigResult struct {
 	Permissions        []permissionResult            `json:"permissions"`
 	AvailableActions   []realmmodel.PermissionAction `json:"availableActions"`
 	Hostname           string                        `json:"hostname"`
+	Addresses          []string                      `json:"addresses"`
 	Description        string                        `json:"description"`
 	Enabled            bool                          `json:"enabled"`
 	DhtMode            string                        `json:"dhtMode"`
@@ -128,6 +129,7 @@ func realmConfigResponse(a *api, cfg realmmodel.Config) realmConfigResult {
 		Permissions:        permissions,
 		AvailableActions:   a.realmEngine.AvailableActions(),
 		Hostname:           hostname,
+		Addresses:          a.realmEngine.Addrs(),
 		Description:        cfg.Description,
 		Enabled:            !cfg.Disabled,
 		DhtMode:            cfg.DhtMode,
