@@ -95,6 +95,8 @@ func (m *Manager) processGroup(groupID, groupName string) {
 		return
 	}
 
+	m.reportStarted(groupID, localID, rm)
+
 	conns := []Connection{}
 	for _, p := range m.peers.List() {
 		if p.ID == localID || !hasGroupName(p.GroupNames, groupName) {
@@ -121,6 +123,36 @@ func (m *Manager) processGroup(groupID, groupName string) {
 
 	if err := m.mapsFeature.SetValue(groupID, CommonStoreName, connectionsKey(localID), string(data)); err != nil {
 		log.Printf("group troubleshooting: failed to update connections for group %s: %v", groupID, err)
+	}
+}
+
+// reportStarted writes localID's started entry in response to groupID's
+// current start entry, unless it has already responded to this (or a later)
+// start.
+func (m *Manager) reportStarted(groupID, localID string, rm realmmodel.RealmMap) {
+	startEntry, ok := rm.Entries[startKey]
+	if !ok {
+		return
+	}
+	var start Start
+	if err := json.Unmarshal([]byte(startEntry.Value), &start); err != nil {
+		return
+	}
+
+	if startedEntry, ok := rm.Entries[startedKey(localID)]; ok {
+		var started Started
+		if json.Unmarshal([]byte(startedEntry.Value), &started) == nil && started.StartAtUnixMillis >= start.StartAtUnixMillis {
+			return
+		}
+	}
+
+	started := Started{StartAtUnixMillis: start.StartAtUnixMillis, StartedAtUnixMillis: time.Now().UnixMilli()}
+	data, err := json.Marshal(started)
+	if err != nil {
+		return
+	}
+	if err := m.mapsFeature.SetValue(groupID, CommonStoreName, startedKey(localID), string(data)); err != nil {
+		log.Printf("group troubleshooting: failed to update started entry for group %s: %v", groupID, err)
 	}
 }
 
@@ -163,10 +195,20 @@ func (m *Manager) StartSession(groupID string) error {
 	delete(m.lastWritten, groupID)
 	m.mu.Unlock()
 
-	exp := Expiration{ExpiresAtUnixMillis: time.Now().Add(SessionDuration).UnixMilli()}
-	data, err := json.Marshal(exp)
+	now := time.Now()
+	start := Start{StartAtUnixMillis: now.UnixMilli()}
+	startData, err := json.Marshal(start)
 	if err != nil {
 		return err
 	}
-	return m.mapsFeature.SetValue(groupID, CommonStoreName, expirationKey, string(data))
+	if err := m.mapsFeature.SetValue(groupID, CommonStoreName, startKey, string(startData)); err != nil {
+		return err
+	}
+
+	exp := Expiration{ExpiresAtUnixMillis: now.Add(SessionDuration).UnixMilli()}
+	expData, err := json.Marshal(exp)
+	if err != nil {
+		return err
+	}
+	return m.mapsFeature.SetValue(groupID, CommonStoreName, expirationKey, string(expData))
 }

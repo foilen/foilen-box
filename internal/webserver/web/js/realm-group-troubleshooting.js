@@ -10,7 +10,9 @@ const POLL_INTERVAL_MS = 5000;
 // internal/grouptroubleshooting's Go-side key layout.
 const STORE_NAME = "common";
 const EXPIRATION_KEY = "groupTroubleshooting/expiration";
+const START_KEY = "groupTroubleshooting/start";
 const CONNECTIONS_KEY_RE = /^groupTroubleshooting\/peer\/(.+)\/connections$/;
+const STARTED_KEY_RE = /^groupTroubleshooting\/peer\/(.+)\/started$/;
 
 mermaid.initialize({
 	startOnLoad: false,
@@ -27,12 +29,15 @@ function escapeLabel(text) {
 }
 
 // Parses the "common" map's groupTroubleshooting/* entries into {
-// expiresAtUnixMillis | null, connectionsByPeer: Map<ownerPeerId,
-// [{remotePeerId, address}]> }, ignoring every other entry (specs/*,
-// scripts/*, services/*, peers/*, ...) also living in that store.
+// expiresAtUnixMillis | null, startAtUnixMillis | null, connectionsByPeer:
+// Map<ownerPeerId, [{remotePeerId, address}]>, startedByPeer: Map<peerId,
+// {startAtUnixMillis, startedAtUnixMillis}> }, ignoring every other entry
+// (specs/*, scripts/*, services/*, peers/*, ...) also living in that store.
 function parseEntries(entries) {
 	let expiresAtUnixMillis = null;
+	let startAtUnixMillis = null;
 	const connectionsByPeer = new Map();
+	const startedByPeer = new Map();
 	for (const [key, entry] of Object.entries(entries)) {
 		if (key === EXPIRATION_KEY) {
 			try {
@@ -42,15 +47,48 @@ function parseEntries(entries) {
 			}
 			continue;
 		}
-		const match = CONNECTIONS_KEY_RE.exec(key);
-		if (!match) continue;
-		try {
-			connectionsByPeer.set(match[1], JSON.parse(entry.value) || []);
-		} catch {
-			// ignore malformed entry
+		if (key === START_KEY) {
+			try {
+				startAtUnixMillis = JSON.parse(entry.value).startAtUnixMillis || null;
+			} catch {
+				// ignore malformed entry
+			}
+			continue;
+		}
+		const connMatch = CONNECTIONS_KEY_RE.exec(key);
+		if (connMatch) {
+			try {
+				connectionsByPeer.set(connMatch[1], JSON.parse(entry.value) || []);
+			} catch {
+				// ignore malformed entry
+			}
+			continue;
+		}
+		const startedMatch = STARTED_KEY_RE.exec(key);
+		if (startedMatch) {
+			try {
+				startedByPeer.set(startedMatch[1], JSON.parse(entry.value));
+			} catch {
+				// ignore malformed entry
+			}
 		}
 	}
-	return { expiresAtUnixMillis, connectionsByPeer };
+	return { expiresAtUnixMillis, startAtUnixMillis, connectionsByPeer, startedByPeer };
+}
+
+// Builds [{peerId, latencyMillis}] rows, one per peer that has already
+// reported a started entry for the session identified by startAtUnixMillis
+// (a started entry left over from an earlier session is ignored), sorted by
+// ascending propagation latency.
+function buildLatencyRows(startAtUnixMillis, startedByPeer) {
+	if (!startAtUnixMillis) return [];
+	const rows = [];
+	for (const [peerId, started] of startedByPeer) {
+		if (!started || started.startAtUnixMillis !== startAtUnixMillis) continue;
+		rows.push({ peerId, latencyMillis: started.startedAtUnixMillis - startAtUnixMillis });
+	}
+	rows.sort((a, b) => a.latencyMillis - b.latencyMillis);
+	return rows;
 }
 
 // Builds mermaid flowchart source: one node per group member, colored gray
@@ -125,6 +163,7 @@ export function initRealmGroupTroubleshooting(api, output) {
 	const statusEl = document.getElementById("group-troubleshooting-status");
 	const diagramEl = document.getElementById("group-troubleshooting-diagram");
 	const freezeCheckbox = document.getElementById("group-troubleshooting-freeze");
+	const latencyTbody = document.getElementById("group-troubleshooting-latency-tbody");
 
 	let groups = [];
 	let peers = [];
@@ -164,7 +203,7 @@ export function initRealmGroupTroubleshooting(api, output) {
 	}
 
 	async function renderDiagram(entries) {
-		const { connectionsByPeer } = parseEntries(entries);
+		const { startAtUnixMillis, connectionsByPeer, startedByPeer } = parseEntries(entries);
 		const definition = buildDiagram(groupPeerIds(selectedGroupId), connectionsByPeer, peers);
 		const id = "group-troubleshooting-mermaid-" + renderCounter++;
 		try {
@@ -172,6 +211,25 @@ export function initRealmGroupTroubleshooting(api, output) {
 			diagramEl.innerHTML = svg;
 		} catch (err) {
 			diagramEl.textContent = "Failed to render diagram: " + err.message;
+		}
+		renderLatencyTable(startAtUnixMillis, startedByPeer);
+	}
+
+	function renderLatencyTable(startAtUnixMillis, startedByPeer) {
+		latencyTbody.innerHTML = "";
+		for (const { peerId, latencyMillis } of buildLatencyRows(startAtUnixMillis, startedByPeer)) {
+			const row = document.createElement("tr");
+			const cells = [
+				["Peer", formatKnownPeerLabel(peers, peerId)],
+				["RealmMap propagation latency", (latencyMillis / 1000).toFixed(1) + " s"],
+			];
+			for (const [label, value] of cells) {
+				const cell = document.createElement("td");
+				cell.textContent = value;
+				cell.dataset.label = label;
+				row.appendChild(cell);
+			}
+			latencyTbody.appendChild(row);
 		}
 	}
 
@@ -181,6 +239,7 @@ export function initRealmGroupTroubleshooting(api, output) {
 		if (!session) {
 			statusEl.textContent = "";
 			diagramEl.innerHTML = "";
+			latencyTbody.innerHTML = "";
 			startButton.disabled = false;
 			return;
 		}
