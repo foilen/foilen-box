@@ -794,6 +794,8 @@ func handleRealmConnectService(a *api, params json.RawMessage) (any, error) {
 		openErr = browseropen.OpenVNC(port)
 	case realmmodel.ServiceTypeRDP:
 		openErr = browseropen.OpenRDP(port)
+	case realmmodel.ServiceTypeVPN:
+		openErr = browseropen.OpenOpenVPN(port, a.realmEngine.ConnectedHosts(p.PeerId))
 	default:
 		opened = false
 	}

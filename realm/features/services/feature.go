@@ -152,7 +152,7 @@ func (f *Feature) handleTunnelStream(reg *realm.Registrar) network.StreamHandler
 			s.Close()
 			return
 		}
-		if svc.Type == model.ServiceTypeUDP || svc.Type == model.ServiceTypeVPN {
+		if svc.Type == model.ServiceTypeUDP {
 			_ = json.NewEncoder(s).Encode(tunnelAck{OK: false, Error: "raw UDP forwarding isn't supported yet"})
 			s.Close()
 			return

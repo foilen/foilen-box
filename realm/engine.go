@@ -247,6 +247,56 @@ func (e *Engine) ConnectedAddresses(id string) []string {
 	return addrsToStrings(addrs)
 }
 
+// ConnectedHosts returns the bare IP hosts (no port, deduplicated) of every
+// open connection to the given peer ID. For a relayed connection, this is
+// the relay's IP, not the peer's — that's the address actually dialed over
+// the underlying network, which is what callers need to route around a VPN.
+func (e *Engine) ConnectedHosts(id string) []string {
+	e.mu.Lock()
+	h := e.host
+	e.mu.Unlock()
+	if h == nil {
+		return nil
+	}
+
+	pid, err := peer.Decode(id)
+	if err != nil {
+		return nil
+	}
+
+	seen := make(map[string]struct{})
+	var hosts []string
+	for _, c := range h.Network().ConnsToPeer(pid) {
+		host, err := firstIPHost(c.RemoteMultiaddr())
+		if err != nil {
+			continue
+		}
+		if _, ok := seen[host]; ok {
+			continue
+		}
+		seen[host] = struct{}{}
+		hosts = append(hosts, host)
+	}
+	return hosts
+}
+
+// firstIPHost returns the first /ip4 or /ip6 component's value in a
+// multiaddr, e.g. "/ip4/1.2.3.4/tcp/4001" -> "1.2.3.4".
+func firstIPHost(a multiaddr.Multiaddr) (string, error) {
+	var host string
+	multiaddr.ForEach(a, func(c multiaddr.Component) bool {
+		if c.Protocol().Code == multiaddr.P_IP4 || c.Protocol().Code == multiaddr.P_IP6 {
+			host = c.Value()
+			return false
+		}
+		return true
+	})
+	if host == "" {
+		return "", fmt.Errorf("no ip component in %s", a)
+	}
+	return host, nil
+}
+
 // Restart stops the engine if running and starts it again with cfg. This
 // tears down and rebuilds the libp2p host (new connections, fresh DHT
 // routing table), so prefer Reconcile for ordinary config changes; Restart

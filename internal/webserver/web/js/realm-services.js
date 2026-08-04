@@ -223,7 +223,7 @@ export function initRealmServices(api, output, renderConfig) {
 		}
 		toggleButton.textContent = activeProxies.get(proxyKey(peerId, service.name)) ? "Stop" : "Start";
 
-		const connectableTypes = ["http", "https", "ssh", "vnc", "rdp"];
+		const connectableTypes = ["http", "https", "ssh", "vnc", "rdp", "vpn"];
 		let connectButton = cell.querySelector('[data-role="connect"]');
 		if (connectableTypes.includes(service.type)) {
 			if (!connectButton) {
