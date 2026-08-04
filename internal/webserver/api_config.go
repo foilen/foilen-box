@@ -10,8 +10,9 @@ import (
 // port this server instance actually bound this run (so the textbox starts
 // pre-filled with something sensible when the user unchecks "Random").
 type configResult struct {
-	RandomPort bool `json:"randomPort"`
-	Port       int  `json:"port"`
+	RandomPort         bool `json:"randomPort"`
+	Port               int  `json:"port"`
+	ClearLogsOnStartup bool `json:"clearLogsOnStartup"`
 }
 
 func handleConfigLoadConfig(a *api, _ json.RawMessage) (any, error) {
@@ -20,13 +21,14 @@ func handleConfigLoadConfig(a *api, _ json.RawMessage) (any, error) {
 	if port == 0 {
 		port = a.currentPort
 	}
-	return configResult{RandomPort: cfg.RandomPort, Port: port}, nil
+	return configResult{RandomPort: cfg.RandomPort, Port: port, ClearLogsOnStartup: *cfg.ClearLogsOnStartup}, nil
 }
 
 func handleConfigSaveConfig(a *api, params json.RawMessage) (any, error) {
 	var p struct {
-		RandomPort bool `json:"randomPort"`
-		Port       int  `json:"port"`
+		RandomPort         bool `json:"randomPort"`
+		Port               int  `json:"port"`
+		ClearLogsOnStartup bool `json:"clearLogsOnStartup"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, err
@@ -37,6 +39,7 @@ func handleConfigSaveConfig(a *api, params json.RawMessage) (any, error) {
 	cfg := a.uiConfig.Load()
 	cfg.RandomPort = p.RandomPort
 	cfg.Port = p.Port
+	cfg.ClearLogsOnStartup = &p.ClearLogsOnStartup
 	if err := a.uiConfig.Save(cfg); err != nil {
 		return nil, err
 	}

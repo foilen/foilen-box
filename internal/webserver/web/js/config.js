@@ -4,6 +4,7 @@ export function initConfigTab(api) {
 	const randomPortCheckbox = document.getElementById("config-random-port");
 	const portRow = document.getElementById("config-port-row");
 	const portInput = document.getElementById("config-port");
+	const clearLogsOnStartupCheckbox = document.getElementById("config-clear-logs-on-startup");
 	const saveButton = document.getElementById("config-save-button");
 	const output = document.getElementById("config-output");
 
@@ -20,18 +21,20 @@ export function initConfigTab(api) {
 		randomPortCheckbox.checked = cfg.randomPort;
 		portInput.value = cfg.port;
 		setPortRowVisible(!cfg.randomPort);
+		clearLogsOnStartupCheckbox.checked = cfg.clearLogsOnStartup;
 	});
 
 	saveButton.addEventListener("click", async () => {
 		const randomPort = randomPortCheckbox.checked;
 		const port = Number(portInput.value);
-		console.log("[action] save webui config", { randomPort, port });
+		const clearLogsOnStartup = clearLogsOnStartupCheckbox.checked;
+		console.log("[action] save webui config", { randomPort, port, clearLogsOnStartup });
 		if (!randomPort && (!Number.isInteger(port) || port < 1 || port > 65535)) {
 			output.textContent = "Please enter a valid port between 1 and 65535.";
 			return;
 		}
 		await report(output, async () => {
-			await api.call("config.saveConfig", { randomPort, port });
+			await api.call("config.saveConfig", { randomPort, port, clearLogsOnStartup });
 			output.textContent = "Configuration saved. Restart Foilen Box for it to take effect.";
 		});
 	});

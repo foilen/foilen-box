@@ -13,7 +13,7 @@ func TestUIConfigSaveLoadRoundTrip(t *testing.T) {
 		t.Fatalf("newUIConfigService() error = %v", err)
 	}
 
-	want := uiConfig{RandomPort: false, Port: 12345, TabLoadCounts: map[string]int{"realm": 3}, SubtabLoadCounts: map[string]int{"realm-main": 2}}
+	want := uiConfig{RandomPort: false, Port: 12345, ClearLogsOnStartup: boolPtr(false), TabLoadCounts: map[string]int{"realm": 3}, SubtabLoadCounts: map[string]int{"realm-main": 2}}
 	if err := svc.Save(want); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
@@ -32,8 +32,25 @@ func TestUIConfigLoadMissingFileDefaultsToRandomPort(t *testing.T) {
 	}
 
 	got := svc.Load()
-	if want := (uiConfig{RandomPort: true}); !reflect.DeepEqual(got, want) {
+	if want := (uiConfig{RandomPort: true, ClearLogsOnStartup: boolPtr(true)}); !reflect.DeepEqual(got, want) {
 		t.Errorf("Load() = %+v, want %+v", got, want)
+	}
+}
+
+func TestUIConfigLoadMissingClearLogsFieldDefaultsToTrue(t *testing.T) {
+	dir := t.TempDir()
+	svc, err := newUIConfigService(dir)
+	if err != nil {
+		t.Fatalf("newUIConfigService() error = %v", err)
+	}
+
+	if err := svc.Save(uiConfig{RandomPort: false, Port: 12345}); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	got := svc.Load()
+	if got.ClearLogsOnStartup == nil || !*got.ClearLogsOnStartup {
+		t.Errorf("Load() ClearLogsOnStartup = %v, want true", got.ClearLogsOnStartup)
 	}
 }
 

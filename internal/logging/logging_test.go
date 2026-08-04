@@ -14,7 +14,7 @@ func TestSetupWritesToFile(t *testing.T) {
 	orig := log.Writer()
 	defer log.SetOutput(orig)
 
-	if err := Setup(dir); err != nil {
+	if err := Setup(dir, true); err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
 	log.Print("hello world")
@@ -30,7 +30,7 @@ func TestSetupWritesToFile(t *testing.T) {
 
 func TestRotatesOnSize(t *testing.T) {
 	dir := t.TempDir()
-	w, err := newRotatingWriter(dir)
+	w, err := newRotatingWriter(dir, true)
 	if err != nil {
 		t.Fatalf("newRotatingWriter: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestRotatesOnSize(t *testing.T) {
 
 func TestRotatesOnAge(t *testing.T) {
 	dir := t.TempDir()
-	w, err := newRotatingWriter(dir)
+	w, err := newRotatingWriter(dir, true)
 	if err != nil {
 		t.Fatalf("newRotatingWriter: %v", err)
 	}

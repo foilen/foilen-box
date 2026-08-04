@@ -40,7 +40,12 @@ func Start(configDir string, defaultDhtMode string, hostnameOverride string) (*S
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve config directory: %w", err)
 	}
-	if err := logging.Setup(logDir); err != nil {
+	uiConfigSvc, err := newUIConfigService(logDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize web UI config: %w", err)
+	}
+	uiCfg := uiConfigSvc.Load()
+	if err := logging.Setup(logDir, *uiCfg.ClearLogsOnStartup); err != nil {
 		return nil, fmt.Errorf("failed to set up logging: %w", err)
 	}
 

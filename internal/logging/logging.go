@@ -28,10 +28,11 @@ const (
 var current *rotatingWriter
 
 // Setup points the standard logger at a rotating file inside dir (created if
-// needed), truncating any existing log. Call once, as early as possible, from
-// each entry point (desktop, Android).
-func Setup(dir string) error {
-	w, err := newRotatingWriter(dir)
+// needed). If clear is true, any existing log is truncated; otherwise
+// logging appends to it. Call once, as early as possible, from each entry
+// point (desktop, Android).
+func Setup(dir string, clear bool) error {
+	w, err := newRotatingWriter(dir, clear)
 	if err != nil {
 		return fmt.Errorf("failed to open log file: %w", err)
 	}
@@ -62,12 +63,12 @@ type rotatingWriter struct {
 	openedAt time.Time
 }
 
-func newRotatingWriter(dir string) (*rotatingWriter, error) {
+func newRotatingWriter(dir string, clear bool) (*rotatingWriter, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
 	w := &rotatingWriter{dir: dir}
-	if err := w.open(); err != nil {
+	if err := w.open(clear); err != nil {
 		return nil, err
 	}
 	return w, nil
@@ -76,8 +77,12 @@ func newRotatingWriter(dir string) (*rotatingWriter, error) {
 func (w *rotatingWriter) logPath() string  { return filepath.Join(w.dir, LogFileName) }
 func (w *rotatingWriter) metaPath() string { return filepath.Join(w.dir, metaFileName) }
 
-func (w *rotatingWriter) open() error {
-	f, err := os.OpenFile(w.logPath(), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+func (w *rotatingWriter) open(clear bool) error {
+	flags := os.O_CREATE | os.O_WRONLY | os.O_APPEND
+	if clear {
+		flags = os.O_CREATE | os.O_WRONLY | os.O_TRUNC
+	}
+	f, err := os.OpenFile(w.logPath(), flags, 0o644)
 	if err != nil {
 		return err
 	}
@@ -189,5 +194,5 @@ func (w *rotatingWriter) rotate() error {
 		return err
 	}
 	_ = os.Remove(w.metaPath())
-	return w.open()
+	return w.open(true)
 }
