@@ -1,69 +1,17 @@
 package realm
 
 import (
-	"context"
-	"log"
-	"time"
-
-	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
-	circuitv2client "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/client"
-	"github.com/multiformats/go-multiaddr"
 
 	"foilen-realm/model"
 )
 
-// relayReservationRenewBefore: how far ahead of expiration
-// maintainManualRelayReservation renews a held reservation (server's default
-// TTL is 1h), leaving several keepAliveInterval ticks to retry.
-const relayReservationRenewBefore = 20 * time.Minute
-
-// relayReservation is a standing circuit-relay-v2 reservation this host
-// holds on another peer, and the addresses (see circuitv2client.Reserve) it
-// can be dialed at through that relay.
-type relayReservation struct {
-	peerID     peer.ID
-	addrs      []multiaddr.Multiaddr
-	expiration time.Time
-}
-
-// circuitAddrs turns a relay's own listen addresses into the fully-qualified
-// /p2p-circuit addresses this host (selfID) is dialable at through that
-// relay: <relay-addr>/p2p/<relayID>/p2p-circuit/p2p/<selfID>.
-// circuitv2client.Reserve's response Addrs already have the relay's own
-// /p2p/<relayID> encapsulated by the server (see makeReservationMsg in
-// go-libp2p's circuitv2 relay package), so that component is stripped
-// before re-adding it, to avoid encapsulating it twice.
-func circuitAddrs(relayID peer.ID, relayAddrs []multiaddr.Multiaddr, selfID peer.ID) []multiaddr.Multiaddr {
-	relayP2PComponent, err := multiaddr.NewComponent("p2p", relayID.String())
-	if err != nil {
-		return nil
-	}
-	circuitSuffix, err := multiaddr.NewMultiaddr("/p2p/" + relayID.String() + "/p2p-circuit/p2p/" + selfID.String())
-	if err != nil {
-		return nil
-	}
-	addrs := make([]multiaddr.Multiaddr, 0, len(relayAddrs))
-	for _, a := range relayAddrs {
-		if id, _ := peer.IDFromP2PAddr(a); id == relayID {
-			a = a.Decapsulate(relayP2PComponent)
-		}
-		addrs = append(addrs, a.Encapsulate(circuitSuffix))
-	}
-	return addrs
-}
-
-// groupACL restricts the circuit-relay-v2 server (when cfg.EnableRelayService
-// is on) to peers that share a group with us, so it can't be used as an open
-// relay by strangers who merely find this peer on the public DHT.
-type groupACL struct{ e *Engine }
-
-func (a *groupACL) AllowReserve(p peer.ID, _ multiaddr.Multiaddr) bool {
-	return a.e.peerInCommonGroup(p)
-}
-
-func (a *groupACL) AllowConnect(src peer.ID, _ multiaddr.Multiaddr, dest peer.ID) bool {
-	return a.e.peerInCommonGroup(src) && a.e.peerInCommonGroup(dest)
+// relayServiceEnabled reports whether the currently-applied config has this
+// host willing to relay for other group peers (relay_transport.go).
+func (e *Engine) relayServiceEnabled() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.cfg.EnableRelayService
 }
 
 // peerInCommonGroup reports whether id is a known peer sharing at least one
@@ -107,114 +55,4 @@ func (e *Engine) isAllowed(id peer.ID, action model.PermissionAction) bool {
 		}
 	}
 	return false
-}
-
-// connectedRelayPeers returns every currently-connected common-group peer
-// that last reported cfg.EnableRelayService (groupACL may still refuse if
-// that's since changed). Only connected peers are candidates: reserving
-// through a disconnected one would just force an extra dial.
-func (e *Engine) connectedRelayPeers() []peer.AddrInfo {
-	e.mu.Lock()
-	groups := e.cfg.Groups
-	h := e.host
-	e.mu.Unlock()
-	if h == nil {
-		return nil
-	}
-
-	var candidates []peer.AddrInfo
-	for _, info := range e.peers.List() {
-		if !info.RelayServiceEnabled {
-			continue
-		}
-		if !hasCommonGroup(info.GroupNames, groups) {
-			continue
-		}
-		pid, err := peer.Decode(info.ID)
-		if err != nil || pid == h.ID() {
-			continue
-		}
-		if h.Network().Connectedness(pid) != network.Connected {
-			continue
-		}
-		addrs := parseMultiaddrs(info.Addresses)
-		if len(addrs) == 0 {
-			continue
-		}
-		candidates = append(candidates, peer.AddrInfo{ID: pid, Addrs: addrs})
-	}
-	return candidates
-}
-
-// currentRelayReservationAddrs returns the dialable circuit-relay addrs from
-// every standing reservation this host holds (see
-// maintainManualRelayReservation).
-func (e *Engine) currentRelayReservationAddrs() []multiaddr.Multiaddr {
-	e.relayMu.Lock()
-	defer e.relayMu.Unlock()
-	var addrs []multiaddr.Multiaddr
-	for _, resv := range e.relayReservations {
-		addrs = append(addrs, resv.addrs...)
-	}
-	return addrs
-}
-
-// maintainManualRelayReservation keeps a standing reservation on every
-// currently-connected relay-capable group peer, so this host stays reachable
-// through any of them rather than betting on a single relay. Reservations
-// are announced unconditionally via engine.go's AddrsFactory.
-//
-// Peers no longer connected (or no longer relay/group candidates) have their
-// reservation dropped; peers whose reservation still has more than
-// relayReservationRenewBefore left are left alone; everyone else gets a
-// fresh Reserve call.
-func (e *Engine) maintainManualRelayReservation(ctx context.Context) {
-	e.mu.Lock()
-	h := e.host
-	e.mu.Unlock()
-	if h == nil {
-		return
-	}
-
-	candidates := e.connectedRelayPeers()
-	candidateSet := make(map[peer.ID]struct{}, len(candidates))
-	for _, info := range candidates {
-		candidateSet[info.ID] = struct{}{}
-	}
-
-	e.relayMu.Lock()
-	for pid, resv := range e.relayReservations {
-		if _, stillCandidate := candidateSet[pid]; !stillCandidate {
-			delete(e.relayReservations, pid)
-			continue
-		}
-		if time.Until(resv.expiration) <= relayReservationRenewBefore {
-			delete(e.relayReservations, pid)
-		}
-	}
-	e.relayMu.Unlock()
-
-	for _, info := range candidates {
-		e.relayMu.Lock()
-		_, held := e.relayReservations[info.ID]
-		e.relayMu.Unlock()
-		if held {
-			continue
-		}
-
-		reserveCtx, cancel := context.WithTimeout(ctx, dialTimeout)
-		resv, err := circuitv2client.Reserve(reserveCtx, h, info)
-		cancel()
-		if err != nil {
-			continue
-		}
-
-		e.relayMu.Lock()
-		if e.relayReservations == nil {
-			e.relayReservations = make(map[peer.ID]*relayReservation)
-		}
-		e.relayReservations[info.ID] = &relayReservation{peerID: info.ID, addrs: circuitAddrs(info.ID, resv.Addrs, h.ID()), expiration: resv.Expiration}
-		e.relayMu.Unlock()
-		log.Printf("realm engine: holding standing relay reservation via %s (expires %s)", e.peers.Label(info.ID.String()), resv.Expiration.Format(time.RFC3339))
-	}
 }

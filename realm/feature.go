@@ -124,6 +124,12 @@ func (r *Registrar) IsAllowed(id peer.ID, action model.PermissionAction) bool {
 	return r.e.isAllowed(id, action)
 }
 
+// IsCommonGroupPeer reports whether id is a known peer sharing at least one
+// currently-configured group with us.
+func (r *Registrar) IsCommonGroupPeer(id peer.ID) bool {
+	return r.e.peerInCommonGroup(id)
+}
+
 // Peers returns the shared known/connected-peers store.
 func (r *Registrar) Peers() *peers.Store {
 	return r.e.peers
@@ -133,6 +139,11 @@ func (r *Registrar) Peers() *peers.Store {
 // not already connected, blocking until connected, dialTimeout elapses, or
 // ctx is done. Call before opening an outbound stream so an on-demand action
 // doesn't fail just because the periodic reconnect hasn't reached this peer yet.
+//
+// info.Addresses may include relay addresses (realm/relay_transport.go,
+// appended by realm/features/announce for every common-group peer that
+// reports RelayServiceEnabled), tried alongside direct addresses in the same
+// Connect call.
 func (r *Registrar) EnsureConnected(ctx context.Context, id peer.ID) error {
 	h := r.Host()
 	if h == nil {

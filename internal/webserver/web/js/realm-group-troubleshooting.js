@@ -96,7 +96,7 @@ function buildLatencyRows(startAtUnixMillis, startedByPeer) {
 // something connects to it but it hasn't published its own entry yet, green
 // once we have its entry (i.e. connectionsByPeer.has(peerId)); a solid blue
 // edge for a direct connection, a dashed yellow edge for a relayed one
-// (address contains "/p2p-circuit").
+// (address contains "/realm-relay").
 function buildDiagram(groupPeers, connectionsByPeer, knownPeers) {
 	const lines = ["graph LR"];
 	const nodeIds = new Set();
@@ -130,7 +130,7 @@ function buildDiagram(groupPeers, connectionsByPeer, knownPeers) {
 		for (const c of conns) {
 			const fromId = ensureNode(ownerId);
 			const toId = ensureNode(c.remotePeerId);
-			const relay = c.address.includes("/p2p-circuit");
+			const relay = c.address.includes("/realm-relay");
 			const arrow = relay ? "-.->" : "-->";
 			lines.push(`  ${fromId} ${arrow}|"${escapeLabel(c.address)}"| ${toId}`);
 			edgeColors.push(relay ? "#f9a825" : "#1e88e5");

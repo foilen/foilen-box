@@ -9,8 +9,11 @@ import (
 	"encoding/json"
 	"log"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/libp2p/go-libp2p/core/peer"
 
 	realm "foilen-realm"
 	realmmaps "foilen-realm/features/maps"
@@ -86,6 +89,8 @@ func (f *Feature) Name() string { return FeatureName }
 
 func (f *Feature) Actions() []model.PermissionAction { return nil }
 
+// RegisterHandlers is a no-op: this feature has no per-host state to wire up
+// beyond what New already injected. Per realm.Feature.
 func (f *Feature) RegisterHandlers(reg *realm.Registrar) {}
 
 // RunPeriodic posts this peer's services, scripts, reachability info (on
@@ -253,18 +258,29 @@ func (f *Feature) consumePeerInfo(reg *realm.Registrar, cfg model.Config) {
 	}
 	for _, group := range cfg.Groups {
 		rm, _, _ := f.mapsFeature.GetMap(group.KeyPair.ID, storeName)
+
+		peerInfos := make(map[string]peerAnnounceInfo)
+		var relayIDs []string
 		for key, entry := range rm.Entries {
 			if len(key) <= len(peersKeyPrefix) || key[:len(peersKeyPrefix)] != peersKeyPrefix {
 				continue
 			}
 			peerID := key[len(peersKeyPrefix):]
-			if peerID == "" || peerID == cfg.PeerID.ID {
+			if peerID == "" || strings.Contains(peerID, "/") || peerID == cfg.PeerID.ID {
 				continue
 			}
 			var info peerAnnounceInfo
 			if err := json.Unmarshal([]byte(entry.Value), &info); err != nil {
 				continue
 			}
+			peerInfos[peerID] = info
+			if info.RelayServiceEnabled {
+				relayIDs = append(relayIDs, peerID)
+			}
+		}
+
+		for peerID, info := range peerInfos {
+			entry := rm.Entries[peersKeyPrefix+peerID]
 
 			existing, known := peersStore.Get(peerID)
 			lastSeen := time.UnixMilli(entry.UpdatedAtUnixMillis)
@@ -273,10 +289,28 @@ func (f *Feature) consumePeerInfo(reg *realm.Registrar, cfg model.Config) {
 			}
 			connected := known && existing.Connected
 
+			addrs := info.Addresses
+			if target, err := peer.Decode(peerID); err == nil {
+				for _, relayIDStr := range relayIDs {
+					if relayIDStr == peerID {
+						continue
+					}
+					relayID, err := peer.Decode(relayIDStr)
+					if err != nil {
+						continue
+					}
+					relayAddr, err := realm.RelayDialAddr(relayID, target)
+					if err != nil {
+						continue
+					}
+					addrs = append(addrs, relayAddr.String())
+				}
+			}
+
 			peersStore.Upsert(model.PeerInfo{
 				ID:                  peerID,
 				LastSeen:            lastSeen,
-				Addresses:           info.Addresses,
+				Addresses:           addrs,
 				GroupNames:          existing.GroupNames,
 				Connected:           connected,
 				Hostname:            info.Hostname,

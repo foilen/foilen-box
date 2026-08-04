@@ -527,8 +527,12 @@ func (f *Feature) mutate(groupID, storeName, key string, entry model.MapEntry) e
 		}
 	}
 
-	if _, err := f.store.ApplyEvent(groupID, storeName, storageKey, entry); err != nil {
+	changed, err := f.store.ApplyEvent(groupID, storeName, storageKey, entry)
+	if err != nil {
 		return err
+	}
+	if !changed {
+		return nil
 	}
 
 	ev := model.MapEvent{GroupID: groupID, StoreName: storeName, Key: storageKey, Value: entry.Value, Deleted: entry.Deleted, UpdatedAtUnixMillis: entry.UpdatedAtUnixMillis, OriginPeerID: entry.OriginPeerID, Nonce: entry.Nonce, IdentitySignature: entry.IdentitySignature}

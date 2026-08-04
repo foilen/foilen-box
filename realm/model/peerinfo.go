@@ -20,8 +20,9 @@ type PeerInfo struct {
 	Hostname          string              `json:"hostname"`
 	Description       string              `json:"description"`
 	// RelayServiceEnabled is whether this peer last reported running
-	// cfg.EnableRelayService — worth trying as a relay candidate
-	// (Engine.connectedRelayPeers) instead of blindly probing every peer.
+	// cfg.EnableRelayService, i.e. willing to bridge streams for other
+	// common-group peers (realm/relay_transport.go) — other peers treat it
+	// as a relay candidate for any common-group target.
 	RelayServiceEnabled bool `json:"relayServiceEnabled"`
 	// Version is the peer's self-reported application name and version,
 	// e.g. "FoilenBox - abc1234" (see Engine.SetAppVersion).

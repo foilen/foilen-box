@@ -24,8 +24,9 @@ const (
 // identifyPayload is exchanged both ways over identifyProtocolID. GroupIDs
 // are self-claimed — receiving one only tells the recipient which groups to
 // challenge (challengeGroup), it doesn't grant membership. RelayServiceEnabled
-// feeds Engine.connectedRelayPeers. Addresses is recorded as the peer store's
-// "announce" fallback dial source for reconnecting after discovery drops off.
+// records whether the peer is willing to relay (realm/relay_transport.go).
+// Addresses is recorded as the peer store's "announce" fallback dial source
+// for reconnecting after discovery drops off.
 type identifyPayload struct {
 	Hostname            string   `json:"hostname"`
 	Description         string   `json:"description"`

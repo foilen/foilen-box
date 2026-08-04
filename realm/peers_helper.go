@@ -118,15 +118,11 @@ func (e *Engine) handleFoundPeer(info peer.AddrInfo, groupName, source string) {
 	}
 }
 
-// keepAliveLoop runs relay reservation upkeep, every feature's PeriodicHook,
-// ring maintenance, and DHT swarm trimming every keepAliveInterval.
-// Relay reservation upkeep runs first so a reservation obtained this tick is
-// reflected by "common/announce" (which reads it via AddrsFactory) in the
-// same tick instead of lagging a full keepAliveInterval behind. PeriodicHooks
-// then run before maintainGroupRings since "common/announce" merges gossiped
-// reachability addresses into the peer store before the ring reconnect dials.
+// keepAliveLoop runs every feature's PeriodicHook, ring maintenance, and DHT
+// swarm trimming every keepAliveInterval. PeriodicHooks run before
+// maintainGroupRings since "common/announce" merges gossiped reachability
+// addresses into the peer store before the ring reconnect dials.
 func (e *Engine) keepAliveLoop(ctx context.Context) {
-	e.maintainManualRelayReservation(ctx)
 	e.runPeriodicHooks()
 	e.maintainGroupRings(ctx)
 	e.maintainDHTSwarm()
@@ -137,7 +133,6 @@ func (e *Engine) keepAliveLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
-			e.maintainManualRelayReservation(ctx)
 			e.runPeriodicHooks()
 			e.maintainGroupRings(ctx)
 			e.maintainDHTSwarm()
@@ -148,16 +143,15 @@ func (e *Engine) keepAliveLoop(ctx context.Context) {
 	}
 }
 
-// RunPeriodicNow immediately runs one iteration of the keep-alive tick (relay
-// upkeep, every feature's PeriodicHook, ring maintenance, DHT swarm
-// trimming, and stale-peer pruning) instead of waiting for the next
-// keepAliveInterval tick. No-op if the engine isn't running.
+// RunPeriodicNow immediately runs one iteration of the keep-alive tick
+// (every feature's PeriodicHook, ring maintenance, DHT swarm trimming, and
+// stale-peer pruning) instead of waiting for the next keepAliveInterval
+// tick. No-op if the engine isn't running.
 func (e *Engine) RunPeriodicNow() {
 	ctx := e.Context()
 	if ctx == nil {
 		return
 	}
-	e.maintainManualRelayReservation(ctx)
 	e.runPeriodicHooks()
 	e.maintainGroupRings(ctx)
 	e.maintainDHTSwarm()

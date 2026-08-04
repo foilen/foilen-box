@@ -38,9 +38,13 @@ type Config struct {
 	// Disabled turns the whole networking stack off without discarding identity/groups.
 	Disabled bool `json:"disabled"`
 
-	// EnableRelayService runs a circuit-relay-v2 server for this peer's groups so
-	// NAT-stuck members can reserve a slot and be reached through it. Off by
-	// default (costs bandwidth); useful on a publicly-reachable box.
+	// EnableRelayService offers this peer as an application-level relay
+	// (realm/relay_transport.go) for other members of its groups: other
+	// peers treat it as a relay candidate for any common-group peer once it
+	// reports RelayServiceEnabled (realm/model/peerinfo.go), and it bridges
+	// streams for NAT-stuck peers on request, refusing unless it's actually
+	// connected to the requested target. Off by default (costs bandwidth);
+	// useful on a publicly-reachable box.
 	EnableRelayService bool `json:"enableRelayService"`
 
 	// PeerRetentionDays: days a known peer may go unseen before pruning. 0 =

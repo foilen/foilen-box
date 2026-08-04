@@ -265,6 +265,11 @@ func (s *Store) ApplyEvent(groupID, storeName, key string, entry model.MapEntry)
 		s.mu.Unlock()
 		return false, nil
 	}
+	// contentChanged (as opposed to merely "not stale") is what callers use
+	// to decide whether to log/persist/re-broadcast: a re-post of identical
+	// Value/Deleted (e.g. an unthrottled periodic re-announce) shouldn't
+	// spam logs or fan out across the mesh forever.
+	contentChanged := !hadKey || existing.Value != entry.Value || existing.Deleted != entry.Deleted
 	rm.Entries[key] = entry
 	s.states[id] = rm
 
@@ -287,7 +292,7 @@ func (s *Store) ApplyEvent(groupID, storeName, key string, entry model.MapEntry)
 	wasLive := hadKey && !existing.Deleted
 	isLive := !entry.Deleted
 	var change *model.ChangeEvent
-	if wasLive || isLive {
+	if contentChanged && (wasLive || isLive) {
 		ce := model.ChangeEvent{GroupID: groupID, StoreName: storeName, Key: key}
 		switch {
 		case wasLive && !isLive:
@@ -311,7 +316,7 @@ func (s *Store) ApplyEvent(groupID, storeName, key string, entry model.MapEntry)
 	s.mu.Unlock()
 
 	if err := s.persist(id); err != nil {
-		return true, err
+		return contentChanged, err
 	}
 
 	if change != nil {
@@ -320,7 +325,7 @@ func (s *Store) ApplyEvent(groupID, storeName, key string, entry model.MapEntry)
 		}
 	}
 
-	return true, nil
+	return contentChanged, nil
 }
 
 // EventsSinceForStore returns every event for groupID/storeName with

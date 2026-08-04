@@ -48,6 +48,7 @@ func Start(configDir string, defaultDhtMode string, hostnameOverride string) (*S
 	if err := logging.Setup(logDir, *uiCfg.ClearLogsOnStartup); err != nil {
 		return nil, fmt.Errorf("failed to set up logging: %w", err)
 	}
+	log.Print("----[ App Starting ]----")
 
 	a, err := newAPI(configDir, defaultDhtMode, hostnameOverride)
 	if err != nil {

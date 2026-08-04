@@ -19,9 +19,9 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/transport"
 	"github.com/libp2p/go-libp2p/p2p/discovery/mdns"
 	routingdisc "github.com/libp2p/go-libp2p/p2p/discovery/routing"
-	circuitrelay "github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
 	quictransport "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	libp2pwebrtc "github.com/libp2p/go-libp2p/p2p/transport/webrtc"
@@ -79,10 +79,9 @@ type Engine struct {
 	// starting from the public bootstrap list.
 	lastDHTPeers []peer.AddrInfo
 
-	// relayMu guards relayReservations separately from mu, since maintaining
-	// reservations does network I/O (maintainManualRelayReservation).
-	relayMu           sync.Mutex
-	relayReservations map[peer.ID]*relayReservation
+	// relayTransport is the application-level relay transport (relay_transport.go),
+	// set once per Start after the host is constructed.
+	relayTransport *relayTransport
 }
 
 // New creates an idle Engine. dataDir is where the persistent DHT datastore
@@ -502,26 +501,41 @@ func (e *Engine) Start(cfg model.Config) error {
 	if err != nil {
 		log.Printf("realm engine: %v", err)
 	}
-	// Append the web-announce addr and standing relay reservation addrs
-	// (maintainManualRelayReservation) unconditionally.
+	// Append the web-announce addr unconditionally, and drop the bare
+	// relayListenAddr marker (below): it's only there to make libp2p invoke
+	// Listen and wire up the hop/stop stream handlers, never a real dialable
+	// address (see relay.go), so it must not be advertised to other peers —
+	// they'd try to dial it directly and get "no transport for protocol"
+	// since it doesn't have the /p2p/<relay>/realm-relay/p2p/<target> shape
+	// relayTransport.CanDial requires.
 	opts = append(opts, libp2p.AddrsFactory(func(addrs []multiaddr.Multiaddr) []multiaddr.Multiaddr {
+		filtered := addrs[:0]
+		for _, a := range addrs {
+			if !a.Equal(relayListenAddr) {
+				filtered = append(filtered, a)
+			}
+		}
+		addrs = filtered
 		if webAnnounceAddr != nil {
 			addrs = append(addrs, webAnnounceAddr)
 		}
-		return append(addrs, e.currentRelayReservationAddrs()...)
+		return addrs
 	}))
 
-	if cfg.EnableRelayService {
-		// Circuit-relay-v2 server: lets other group peers relay through this
-		// host (e.g. a publicly-reachable box relaying for NAT-stuck peers).
-		// Gated by groupACL so only peers sharing a group with us can use it.
-		// Default resource limits (2min/128KB) would reset a relayed
-		// connection before hole-punching or real transfer completes; safe to
-		// lift since every client is already groupACL-authenticated.
-		relayResources := circuitrelay.DefaultResources()
-		relayResources.Limit = nil
-		opts = append(opts, libp2p.EnableRelayService(circuitrelay.WithACL(&groupACL{e: e}), circuitrelay.WithResources(relayResources)))
-	}
+	// Application-level relay transport (relay_transport.go): always
+	// registered so this host can both dial through a relay and accept being
+	// relayed to, regardless of cfg.EnableRelayService (that flag only gates
+	// whether this host advertises itself as willing to relay for others,
+	// see realm/features/announce). rt.host is filled in once the host
+	// exists, below.
+	rt := &relayTransport{incoming: make(chan relayAcceptedConn), closed: make(chan struct{})}
+	opts = append(opts,
+		libp2p.Transport(func(u transport.Upgrader, rcmgr network.ResourceManager) (*relayTransport, error) {
+			rt.upgrader, rt.rcmgr = u, rcmgr
+			return rt, nil
+		}),
+		libp2p.ListenAddrs(relayListenAddr),
+	)
 
 	h, err := libp2p.New(opts...)
 	if err != nil {
@@ -539,12 +553,18 @@ func (e *Engine) Start(cfg model.Config) error {
 	e.mdnsSvcs = make(map[string]mdns.Service)
 	e.dhtLoopCancels = make(map[string]context.CancelFunc)
 
+	rt.host = h
+	rt.engine = e
+	e.relayTransport = rt
+
 	h.Network().Notify(&network.NotifyBundle{
 		ConnectedF:    e.onConnected,
 		DisconnectedF: e.onDisconnected,
 	})
 	h.SetStreamHandler(identifyProtocolID, e.handleIdentifyStream)
 	h.SetStreamHandler(groupChallengeProtocolID, e.handleGroupChallengeStream)
+	h.SetStreamHandler(relayHopProtocolID, rt.handleHopStream)
+	h.SetStreamHandler(relayStopProtocolID, rt.handleStopStream)
 
 	reg := &Registrar{e: e}
 	for _, f := range e.features {
@@ -603,9 +623,7 @@ func (e *Engine) Stop() {
 		}
 	}
 
-	e.relayMu.Lock()
-	e.relayReservations = nil
-	e.relayMu.Unlock()
+	e.relayTransport = nil
 
 	log.Printf("realm engine: stopped")
 }

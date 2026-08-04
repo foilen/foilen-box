@@ -174,6 +174,7 @@ realm/features/services/scan.go
 realm/features/services/store.go
 realm/go.mod
 realm/go.sum
+realm/relay_transport.go
 realm/group_challenge.go
 realm/group_challenge_test.go
 realm/jsondb/jsondb.go
