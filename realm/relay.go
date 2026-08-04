@@ -27,6 +27,23 @@ type relayReservation struct {
 	expiration time.Time
 }
 
+// circuitAddrs turns a relay's own listen addresses into the /p2p-circuit
+// addresses this host is actually dialable at through that relay.
+// circuitv2client.Reserve's response Addrs are the relay's raw addresses
+// (the relay puts its own host.Addrs() in the reservation, not a
+// pre-built circuit address), so that encapsulation has to happen here.
+func circuitAddrs(relayID peer.ID, relayAddrs []multiaddr.Multiaddr) []multiaddr.Multiaddr {
+	circuitSuffix, err := multiaddr.NewMultiaddr("/p2p/" + relayID.String() + "/p2p-circuit")
+	if err != nil {
+		return nil
+	}
+	addrs := make([]multiaddr.Multiaddr, 0, len(relayAddrs))
+	for _, a := range relayAddrs {
+		addrs = append(addrs, a.Encapsulate(circuitSuffix))
+	}
+	return addrs
+}
+
 // groupACL restricts the circuit-relay-v2 server (when cfg.EnableRelayService
 // is on) to peers that share a group with us, so it can't be used as an open
 // relay by strangers who merely find this peer on the public DHT.
@@ -187,7 +204,7 @@ func (e *Engine) maintainManualRelayReservation(ctx context.Context) {
 		if e.relayReservations == nil {
 			e.relayReservations = make(map[peer.ID]*relayReservation)
 		}
-		e.relayReservations[info.ID] = &relayReservation{peerID: info.ID, addrs: resv.Addrs, expiration: resv.Expiration}
+		e.relayReservations[info.ID] = &relayReservation{peerID: info.ID, addrs: circuitAddrs(info.ID, resv.Addrs), expiration: resv.Expiration}
 		e.relayMu.Unlock()
 		log.Printf("realm engine: holding standing relay reservation via %s (expires %s)", info.ID, resv.Expiration.Format(time.RFC3339))
 	}
