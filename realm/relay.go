@@ -27,19 +27,19 @@ type relayReservation struct {
 	expiration time.Time
 }
 
-// circuitAddrs turns a relay's own listen addresses into the /p2p-circuit
-// addresses this host is actually dialable at through that relay.
+// circuitAddrs turns a relay's own listen addresses into the fully-qualified
+// /p2p-circuit addresses this host (selfID) is dialable at through that
+// relay: <relay-addr>/p2p/<relayID>/p2p-circuit/p2p/<selfID>.
 // circuitv2client.Reserve's response Addrs already have the relay's own
 // /p2p/<relayID> encapsulated by the server (see makeReservationMsg in
 // go-libp2p's circuitv2 relay package), so that component is stripped
-// before re-adding it along with /p2p-circuit, to avoid encapsulating it
-// twice.
-func circuitAddrs(relayID peer.ID, relayAddrs []multiaddr.Multiaddr) []multiaddr.Multiaddr {
+// before re-adding it, to avoid encapsulating it twice.
+func circuitAddrs(relayID peer.ID, relayAddrs []multiaddr.Multiaddr, selfID peer.ID) []multiaddr.Multiaddr {
 	relayP2PComponent, err := multiaddr.NewComponent("p2p", relayID.String())
 	if err != nil {
 		return nil
 	}
-	circuitSuffix, err := multiaddr.NewMultiaddr("/p2p/" + relayID.String() + "/p2p-circuit")
+	circuitSuffix, err := multiaddr.NewMultiaddr("/p2p/" + relayID.String() + "/p2p-circuit/p2p/" + selfID.String())
 	if err != nil {
 		return nil
 	}
@@ -213,7 +213,7 @@ func (e *Engine) maintainManualRelayReservation(ctx context.Context) {
 		if e.relayReservations == nil {
 			e.relayReservations = make(map[peer.ID]*relayReservation)
 		}
-		e.relayReservations[info.ID] = &relayReservation{peerID: info.ID, addrs: circuitAddrs(info.ID, resv.Addrs), expiration: resv.Expiration}
+		e.relayReservations[info.ID] = &relayReservation{peerID: info.ID, addrs: circuitAddrs(info.ID, resv.Addrs, h.ID()), expiration: resv.Expiration}
 		e.relayMu.Unlock()
 		log.Printf("realm engine: holding standing relay reservation via %s (expires %s)", e.peers.Label(info.ID.String()), resv.Expiration.Format(time.RFC3339))
 	}
