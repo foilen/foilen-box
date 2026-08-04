@@ -385,11 +385,20 @@ func (s *Store) RecordFromPeerForStore(groupID, storeName, peerID string, ts int
 	return s.writeJSON(groupID+".peercursors.json", snapshot)
 }
 
-// persist rewrites both files for id from the in-memory cache.
+// persist rewrites both files for id from the in-memory cache. It snapshots
+// rm.Entries and evs before unlocking: both are reference types, so
+// writeJSON's later reflection-based marshal would otherwise race with
+// concurrent ApplyEvent calls mutating the same underlying map/slice.
 func (s *Store) persist(id string) error {
 	s.mu.Lock()
 	rm := s.states[id]
-	evs := s.events[id]
+	entries := make(map[string]model.MapEntry, len(rm.Entries))
+	for k, e := range rm.Entries {
+		entries[k] = e
+	}
+	rm.Entries = entries
+	evs := make([]model.MapEvent, len(s.events[id]))
+	copy(evs, s.events[id])
 	s.mu.Unlock()
 
 	if err := s.writeJSON(id+".state.json", rm); err != nil {
