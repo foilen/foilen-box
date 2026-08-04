@@ -105,6 +105,16 @@ func (f *Feature) registrar() *realm.Registrar {
 	return f.reg
 }
 
+// peerLabel resolves id to "hostname (description) [shortid]" via the
+// registered engine's peer store, or just the bracketed short id if the
+// feature isn't registered yet or the peer isn't known.
+func (f *Feature) peerLabel(id string) string {
+	if reg := f.registrar(); reg != nil {
+		return reg.Peers().Label(id)
+	}
+	return model.ShortID(id)
+}
+
 func (f *Feature) Name() string { return FeatureName }
 
 func (f *Feature) Actions() []model.PermissionAction {
@@ -127,13 +137,13 @@ func (f *Feature) handleTunnelStream(reg *realm.Registrar) network.StreamHandler
 
 		var header tunnelHeader
 		if err := json.NewDecoder(io.LimitReader(s, maxBytes)).Decode(&header); err != nil {
-			log.Printf("realm services: failed to decode tunnel header from %s: %v", remote, err)
+			log.Printf("realm services: failed to decode tunnel header from %s: %v", reg.Peers().Label(remote.String()), err)
 			s.Close()
 			return
 		}
 
 		if !reg.IsAllowed(remote, ActionConnect) {
-			log.Printf("realm services: tunnel request from %s rejected: no permission", remote)
+			log.Printf("realm services: tunnel request from %s rejected: no permission", reg.Peers().Label(remote.String()))
 			_ = json.NewEncoder(s).Encode(tunnelAck{OK: false, Error: "not allowed"})
 			s.Close()
 			return
@@ -166,7 +176,7 @@ func (f *Feature) handleTunnelStream(reg *realm.Registrar) network.StreamHandler
 		}
 
 		if err := json.NewEncoder(s).Encode(tunnelAck{OK: true}); err != nil {
-			log.Printf("realm services: failed to ack tunnel to %s: %v", remote, err)
+			log.Printf("realm services: failed to ack tunnel to %s: %v", reg.Peers().Label(remote.String()), err)
 			s.Close()
 			conn.Close()
 			return
@@ -286,7 +296,7 @@ func (f *Feature) forward(reg *realm.Registrar, pid peer.ID, serviceName string,
 	}
 
 	if err := reg.EnsureConnected(ctx, pid); err != nil {
-		log.Printf("realm services: peer %s unreachable to open tunnel: %v", pid, err)
+		log.Printf("realm services: peer %s unreachable to open tunnel: %v", reg.Peers().Label(pid.String()), err)
 		conn.Close()
 		return
 	}
@@ -295,7 +305,7 @@ func (f *Feature) forward(reg *realm.Registrar, pid peer.ID, serviceName string,
 	s, err := h.NewStream(streamCtx, pid, TunnelProtocolID)
 	cancel()
 	if err != nil {
-		log.Printf("realm services: peer %s unreachable to open tunnel: %v", pid, err)
+		log.Printf("realm services: peer %s unreachable to open tunnel: %v", reg.Peers().Label(pid.String()), err)
 		conn.Close()
 		return
 	}
@@ -313,7 +323,7 @@ func (f *Feature) forward(reg *realm.Registrar, pid peer.ID, serviceName string,
 		return
 	}
 	if !ack.OK {
-		log.Printf("realm services: %s refused tunnel to %q: %s", pid, serviceName, ack.Error)
+		log.Printf("realm services: %s refused tunnel to %q: %s", reg.Peers().Label(pid.String()), serviceName, ack.Error)
 		s.Close()
 		conn.Close()
 		return
@@ -381,7 +391,7 @@ func (f *Feature) RestoreAll() {
 	}
 	for _, p := range f.store.List() {
 		if _, err := f.StartProxy(p.PeerID, p.ServiceName); err != nil {
-			log.Printf("realm services: failed to restore proxy for peer %s service %q: %v", p.PeerID, p.ServiceName, err)
+			log.Printf("realm services: failed to restore proxy for peer %s service %q: %v", f.peerLabel(p.PeerID), p.ServiceName, err)
 		}
 	}
 }

@@ -132,7 +132,10 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 		appVersion,
 	)
 	speedTestFeature := boxspeedtest.New()
-	smsManager := boxsms.NewManager(mapsFeature, smsConfigSvc, func() string { return realmConfigSvc.Load().PeerID.ID })
+	smsManager := boxsms.NewManager(mapsFeature, smsConfigSvc,
+		func() string { return realmConfigSvc.Load().PeerID.ID },
+		func() []realmmodel.Group { return realmConfigSvc.Load().Groups },
+	)
 	groupTroubleshootingManager := boxgrouptroubleshooting.NewManager(mapsFeature, realmEng, realmPeerStore,
 		func() string { return realmConfigSvc.Load().PeerID.ID },
 		func() []realmmodel.Group { return realmConfigSvc.Load().Groups },

@@ -206,6 +206,6 @@ func (e *Engine) maintainManualRelayReservation(ctx context.Context) {
 		}
 		e.relayReservations[info.ID] = &relayReservation{peerID: info.ID, addrs: circuitAddrs(info.ID, resv.Addrs), expiration: resv.Expiration}
 		e.relayMu.Unlock()
-		log.Printf("realm engine: holding standing relay reservation via %s (expires %s)", info.ID, resv.Expiration.Format(time.RFC3339))
+		log.Printf("realm engine: holding standing relay reservation via %s (expires %s)", e.peers.Label(info.ID.String()), resv.Expiration.Format(time.RFC3339))
 	}
 }

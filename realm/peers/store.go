@@ -52,6 +52,15 @@ func (s *Store) Get(id string) (model.PeerInfo, bool) {
 	return info, ok
 }
 
+// Label returns the known peer's "hostname (description) [shortid]" label,
+// or just the bracketed short id if id isn't known.
+func (s *Store) Label(id string) string {
+	if info, ok := s.Get(id); ok {
+		return info.Label()
+	}
+	return model.ShortID(id)
+}
+
 // addressSourcePriority controls per-source address merge order: LAN (mdns)
 // first, then self-reported (announce), then public-DHT (dht) last since
 // those are least likely reachable directly. Unlisted sources are merged
@@ -271,17 +280,17 @@ func (s *Store) RemoveGroupName(groupName string) {
 }
 
 // PruneStale removes every known, currently-disconnected peer last seen
-// before cutoff, returning the ids removed. Connected peers are never
+// before cutoff, returning the removed peers. Connected peers are never
 // pruned, regardless of their stored LastSeen.
-func (s *Store) PruneStale(cutoff time.Time) []string {
-	var removed []string
+func (s *Store) PruneStale(cutoff time.Time) []model.PeerInfo {
+	var removed []model.PeerInfo
 	s.db.Update(func(d *Data) {
 		for id, p := range d.Peers {
 			if p.Connected || !p.LastSeen.Before(cutoff) {
 				continue
 			}
 			delete(d.Peers, id)
-			removed = append(removed, id)
+			removed = append(removed, p)
 		}
 	})
 	return removed

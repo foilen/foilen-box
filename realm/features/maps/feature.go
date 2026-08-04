@@ -125,6 +125,16 @@ func (f *Feature) registrar() *realm.Registrar {
 	return f.reg
 }
 
+// peerLabel resolves id to "hostname (description) [shortid]" via the
+// registered engine's peer store, or just the bracketed short id if the
+// feature isn't registered yet or the peer isn't known.
+func (f *Feature) peerLabel(id string) string {
+	if reg := f.registrar(); reg != nil {
+		return reg.Peers().Label(id)
+	}
+	return model.ShortID(id)
+}
+
 func (f *Feature) Name() string { return FeatureName }
 
 func (f *Feature) Actions() []model.PermissionAction { return nil }
@@ -281,7 +291,7 @@ func (f *Feature) reconcileDesiredStores(reg *realm.Registrar, groupID string) {
 
 		for _, storeName := range removed {
 			if err := f.store.DeleteMap(groupID, storeName); err != nil {
-				log.Printf("realm maps: failed to purge removed store %q for group %q: %v", storeName, groupID, err)
+				log.Printf("realm maps: failed to purge removed store %q for group %s: %v", storeName, group.Label(), err)
 			}
 		}
 	}
@@ -418,7 +428,7 @@ func (f *Feature) GetMap(groupID, storeName string) (rm model.RealmMap, encrypte
 	}
 	symmetricKey, err := openSymmetricKey(cfg.Encryption.EncryptedSymmetricKey, identityPriv)
 	if err != nil {
-		log.Printf("realm maps: failed to unlock symmetric key for %s/%s: %v", groupID, storeName, err)
+		log.Printf("realm maps: failed to unlock symmetric key for %s/%s: %v", model.GroupLabel(reg.Config().Groups, groupID), storeName, err)
 		return locked, true, false
 	}
 	identityPub := identityPriv.GetPublic()
@@ -427,12 +437,12 @@ func (f *Feature) GetMap(groupID, storeName string) (rm model.RealmMap, encrypte
 	for storageKey, entry := range raw.Entries {
 		ev := model.MapEvent{GroupID: groupID, StoreName: storeName, Key: storageKey, Value: entry.Value, Deleted: entry.Deleted, UpdatedAtUnixMillis: entry.UpdatedAtUnixMillis, OriginPeerID: entry.OriginPeerID, Nonce: entry.Nonce, IdentitySignature: entry.IdentitySignature}
 		if !verifyEncryptedEvent(identityPub, ev) {
-			log.Printf("realm maps: dropping entry with invalid identity signature in %s/%s", groupID, storeName)
+			log.Printf("realm maps: dropping entry with invalid identity signature in %s/%s", model.GroupLabel(reg.Config().Groups, groupID), storeName)
 			continue
 		}
 		realKey, value, err := decryptEntry(entry.Value, entry.Nonce, symmetricKey)
 		if err != nil {
-			log.Printf("realm maps: failed to decrypt entry in %s/%s: %v", groupID, storeName, err)
+			log.Printf("realm maps: failed to decrypt entry in %s/%s: %v", model.GroupLabel(reg.Config().Groups, groupID), storeName, err)
 			continue
 		}
 		decrypted.Entries[realKey] = model.MapEntry{Value: value, UpdatedAtUnixMillis: entry.UpdatedAtUnixMillis, OriginPeerID: entry.OriginPeerID}
@@ -526,7 +536,7 @@ func (f *Feature) mutate(groupID, storeName, key string, entry model.MapEntry) e
 	if err != nil {
 		return err
 	}
-	log.Printf("realm maps: local write to %s/%s key=%q deleted=%v", group.Name, storeName, key, entry.Deleted)
+	log.Printf("realm maps: local write to %s/%s key=%q deleted=%v", group.Label(), storeName, key, entry.Deleted)
 	f.broadcast(reg, group, storeName, env)
 	return nil
 }
@@ -605,7 +615,7 @@ func (f *Feature) broadcastExcept(reg *realm.Registrar, group model.Group, store
 	}
 	recipients := f.incomingSubscribers(group.KeyPair.ID, storeName)
 	if len(recipients) > 0 {
-		log.Printf("realm maps: broadcasting %s/%s key=%q to %d subscriber(s)", group.Name, storeName, env.Key, len(recipients))
+		log.Printf("realm maps: broadcasting %s/%s key=%q to %d subscriber(s)", group.Label(), storeName, env.Key, len(recipients))
 	}
 	for _, peerID := range recipients {
 		if peerID == exceptPeerID {
@@ -615,22 +625,22 @@ func (f *Feature) broadcastExcept(reg *realm.Registrar, group model.Group, store
 		if err != nil {
 			continue
 		}
-		go sendPush(ctx, h, pid, env)
+		go sendPush(ctx, h, pid, reg.Peers().Label(peerID), env)
 	}
 }
 
-func sendPush(ctx context.Context, h host.Host, pid peer.ID, env model.MapEventEnvelope) {
+func sendPush(ctx context.Context, h host.Host, pid peer.ID, label string, env model.MapEventEnvelope) {
 	streamCtx, cancel := context.WithTimeout(ctx, ioTimeout)
 	defer cancel()
 	s, err := h.NewStream(streamCtx, pid, PushProtocolID)
 	if err != nil {
-		log.Printf("realm maps: peer %s unreachable for push: %v", pid, err)
+		log.Printf("realm maps: peer %s unreachable for push: %v", label, err)
 		return
 	}
 	defer s.Close()
 	_ = s.SetDeadline(time.Now().Add(ioTimeout))
 	if err := json.NewEncoder(s).Encode(env); err != nil {
-		log.Printf("realm maps: failed to push to %s: %v", pid, err)
+		log.Printf("realm maps: failed to push to %s: %v", label, err)
 	}
 }
 
@@ -654,7 +664,7 @@ func (f *Feature) subscribeToPeer(reg *realm.Registrar, id peer.ID, group model.
 	s, err := h.NewStream(streamCtx, id, SubscribeProtocolID)
 	cancel()
 	if err != nil {
-		log.Printf("realm maps: peer %s unreachable for subscribe: %v", id, err)
+		log.Printf("realm maps: peer %s unreachable for subscribe: %v", reg.Peers().Label(id.String()), err)
 		return
 	}
 	defer s.Close()
@@ -667,13 +677,13 @@ func (f *Feature) subscribeToPeer(reg *realm.Registrar, id peer.ID, group model.
 		req.Stores = append(req.Stores, storeCursor{StoreName: name, SinceUnix: f.store.LastFromPeerForStore(groupID, name, peerID)})
 	}
 	if err := json.NewEncoder(s).Encode(req); err != nil {
-		log.Printf("realm maps: failed to send subscribe request to %s: %v", id, err)
+		log.Printf("realm maps: failed to send subscribe request to %s: %v", reg.Peers().Label(id.String()), err)
 		return
 	}
 
 	var resp subscribeResponse
 	if err := json.NewDecoder(io.LimitReader(s, maxBytes)).Decode(&resp); err != nil {
-		log.Printf("realm maps: failed to read subscribe response from %s: %v", id, err)
+		log.Printf("realm maps: failed to read subscribe response from %s: %v", reg.Peers().Label(id.String()), err)
 		return
 	}
 
@@ -688,10 +698,10 @@ func (f *Feature) subscribeToPeer(reg *realm.Registrar, id peer.ID, group model.
 	}
 	for storeName, ts := range maxTsByStore {
 		if err := f.store.RecordFromPeerForStore(groupID, storeName, peerID, ts); err != nil {
-			log.Printf("realm maps: failed to persist subscribe cursor for peer %s/%s: %v", id, storeName, err)
+			log.Printf("realm maps: failed to persist subscribe cursor for peer %s/%s: %v", reg.Peers().Label(id.String()), storeName, err)
 		}
 	}
-	log.Printf("realm maps: subscribed to peer %s for group %q stores %v (%d event(s) received)", id, group.Name, storeNames, len(resp.Events))
+	log.Printf("realm maps: subscribed to peer %s for group %s stores %v (%d event(s) received)", reg.Peers().Label(id.String()), group.Label(), storeNames, len(resp.Events))
 }
 
 // sendUnsubscribe tells id to stop pushing us storeNames under groupID,
@@ -706,17 +716,17 @@ func (f *Feature) sendUnsubscribe(reg *realm.Registrar, id peer.ID, groupID stri
 	s, err := h.NewStream(streamCtx, id, UnsubscribeProtocolID)
 	cancel()
 	if err != nil {
-		log.Printf("realm maps: peer %s unreachable for unsubscribe: %v", id, err)
+		log.Printf("realm maps: peer %s unreachable for unsubscribe: %v", reg.Peers().Label(id.String()), err)
 		return
 	}
 	defer s.Close()
 	_ = s.SetDeadline(time.Now().Add(ioTimeout))
 	req := unsubscribeRequest{GroupID: groupID, StoreNames: storeNames}
 	if err := json.NewEncoder(s).Encode(req); err != nil {
-		log.Printf("realm maps: failed to send unsubscribe request to %s: %v", id, err)
+		log.Printf("realm maps: failed to send unsubscribe request to %s: %v", reg.Peers().Label(id.String()), err)
 		return
 	}
-	log.Printf("realm maps: unsubscribed from peer %s for group %q stores %v", id, groupID, storeNames)
+	log.Printf("realm maps: unsubscribed from peer %s for group %s stores %v", reg.Peers().Label(id.String()), model.GroupLabel(reg.Config().Groups, groupID), storeNames)
 }
 
 // applyVerified verifies env's signature against group's key and, if valid,
@@ -724,17 +734,17 @@ func (f *Feature) sendUnsubscribe(reg *realm.Registrar, id peer.ID, groupID stri
 // callers can decide whether to relay it on to their own subscribers.
 func (f *Feature) applyVerified(group model.Group, env model.MapEventEnvelope) bool {
 	if !verifyEvent(group, env) {
-		log.Printf("realm maps: dropping event for group %q with invalid signature", env.GroupID)
+		log.Printf("realm maps: dropping event for group %s with invalid signature", group.Label())
 		return false
 	}
 	entry := model.MapEntry{Value: env.Value, Deleted: env.Deleted, UpdatedAtUnixMillis: env.UpdatedAtUnixMillis, OriginPeerID: env.OriginPeerID, Nonce: env.Nonce, IdentitySignature: env.IdentitySignature}
 	changed, err := f.store.ApplyEvent(env.GroupID, env.StoreName, env.Key, entry)
 	if err != nil {
-		log.Printf("realm maps: failed to persist event for group %q: %v", env.GroupID, err)
+		log.Printf("realm maps: failed to persist event for group %s: %v", group.Label(), err)
 		return false
 	}
 	if changed {
-		log.Printf("realm maps: applied event for %s/%s key=%q deleted=%v from peer %s", group.Name, env.StoreName, env.Key, env.Deleted, env.OriginPeerID)
+		log.Printf("realm maps: applied event for %s/%s key=%q deleted=%v from peer %s", group.Label(), env.StoreName, env.Key, env.Deleted, f.peerLabel(env.OriginPeerID))
 	}
 	return changed
 }
@@ -783,11 +793,11 @@ func (f *Feature) handleSubscribeStream(reg *realm.Registrar) network.StreamHand
 		for i, sc := range req.Stores {
 			storeNames[i] = sc.StoreName
 		}
-		log.Printf("realm maps: received subscribe request from peer %s for group %q stores %v", remotePeerID, req.GroupID, storeNames)
+		log.Printf("realm maps: received subscribe request from peer %s for group %s stores %v", reg.Peers().Label(remotePeerID), model.GroupLabel(reg.Config().Groups, req.GroupID), storeNames)
 
 		group, ok := findGroupByID(reg.Config().Groups, req.GroupID)
 		if !ok {
-			log.Printf("realm maps: rejecting subscribe request from peer %s: not a member of group %q ourselves", remotePeerID, req.GroupID)
+			log.Printf("realm maps: rejecting subscribe request from peer %s: not a member of group %s ourselves", reg.Peers().Label(remotePeerID), model.ShortID(req.GroupID))
 			_ = json.NewEncoder(s).Encode(subscribeResponse{})
 			return
 		}
@@ -801,7 +811,7 @@ func (f *Feature) handleSubscribeStream(reg *realm.Registrar) network.StreamHand
 			}
 		}
 		if !known || !isMember {
-			log.Printf("realm maps: rejecting subscribe request from peer %s: not a confirmed member of group %q", remotePeerID, group.Name)
+			log.Printf("realm maps: rejecting subscribe request from peer %s: not a confirmed member of group %s", reg.Peers().Label(remotePeerID), group.Label())
 			_ = json.NewEncoder(s).Encode(subscribeResponse{})
 			return
 		}
@@ -822,7 +832,7 @@ func (f *Feature) handleSubscribeStream(reg *realm.Registrar) network.StreamHand
 			log.Printf("realm maps: failed to send subscribe response: %v", err)
 			return
 		}
-		log.Printf("realm maps: accepted subscribe request from peer %s for group %q stores %v (%d event(s) sent)", remotePeerID, group.Name, storeNames, len(resp.Events))
+		log.Printf("realm maps: accepted subscribe request from peer %s for group %s stores %v (%d event(s) sent)", reg.Peers().Label(remotePeerID), group.Label(), storeNames, len(resp.Events))
 	}
 }
 
@@ -840,7 +850,7 @@ func (f *Feature) handleUnsubscribeStream(reg *realm.Registrar) network.StreamHa
 			return
 		}
 		remotePeerID := s.Conn().RemotePeer().String()
-		log.Printf("realm maps: received unsubscribe request from peer %s for group %q stores %v", remotePeerID, req.GroupID, req.StoreNames)
+		log.Printf("realm maps: received unsubscribe request from peer %s for group %s stores %v", reg.Peers().Label(remotePeerID), model.GroupLabel(reg.Config().Groups, req.GroupID), req.StoreNames)
 		for _, storeName := range req.StoreNames {
 			f.removeIncomingSub(req.GroupID, storeName, remotePeerID)
 		}
@@ -931,7 +941,7 @@ func (f *Feature) RunPeriodic(reg *realm.Registrar) {
 			for key, e := range rm.Entries {
 				if e.UpdatedAtUnixMillis < cutoff {
 					if err := f.DeleteValue(groupID, storeName, key); err != nil {
-						log.Printf("realm maps: failed to auto-delete expired entry %q in %s/%s: %v", key, groupID, storeName, err)
+						log.Printf("realm maps: failed to auto-delete expired entry %q in %s/%s: %v", key, group.Label(), storeName, err)
 					}
 				}
 			}

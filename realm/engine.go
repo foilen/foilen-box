@@ -570,7 +570,7 @@ func (e *Engine) Start(cfg model.Config) error {
 
 	go e.keepAliveLoop(ctx)
 
-	log.Printf("realm engine: started, host id %s, listening on %v", h.ID(), addrsToStrings(h.Addrs()))
+	log.Printf("realm engine: started, host id %s, listening on %v", model.ShortID(h.ID().String()), addrsToStrings(h.Addrs()))
 	return nil
 }
 

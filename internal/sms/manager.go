@@ -35,6 +35,7 @@ type Manager struct {
 	mapsFeature *realmmaps.Feature
 	cfg         *Service
 	localPeerID func() string
+	localGroups func() []realmmodel.Group
 
 	mu      sync.Mutex
 	bridge  PlatformBridge
@@ -45,13 +46,15 @@ type Manager struct {
 	seededMaps map[string]bool            // "groupId|storeName" -> baseline pass done
 }
 
-// NewManager builds a Manager. localPeerID is called on demand (not cached)
-// since the engine's peer id can change independently of this package.
-func NewManager(mapsFeature *realmmaps.Feature, cfg *Service, localPeerID func() string) *Manager {
+// NewManager builds a Manager. localPeerID and localGroups are called on
+// demand (not cached) since the engine's config can change independently of
+// this package.
+func NewManager(mapsFeature *realmmaps.Feature, cfg *Service, localPeerID func() string, localGroups func() []realmmodel.Group) *Manager {
 	return &Manager{
 		mapsFeature: mapsFeature,
 		cfg:         cfg,
 		localPeerID: localPeerID,
+		localGroups: localGroups,
 		knownKeys:   map[string]map[string]bool{},
 		seededMaps:  map[string]bool{},
 	}
@@ -177,7 +180,7 @@ func (m *Manager) processStore(groupID, storeName string, rm realmmodel.RealmMap
 func (m *Manager) fulfillCreate(groupID, storeName, key string, entry realmmodel.MapEntry) {
 	var req SmsCreateRequest
 	if err := json.Unmarshal([]byte(entry.Value), &req); err != nil {
-		log.Printf("sms: dropping malformed create-request %s/%s %q: %v", groupID, storeName, key, err)
+		log.Printf("sms: dropping malformed create-request %s/%s %q: %v", realmmodel.GroupLabel(m.localGroups(), groupID), storeName, key, err)
 		_ = m.mapsFeature.DeleteValue(groupID, storeName, key)
 		return
 	}
@@ -328,7 +331,7 @@ func (m *Manager) touchEnabledMarker(groupID, storeName string) {
 		return
 	}
 	if err := m.mapsFeature.SetValue(groupID, storeName, enabledKey(localID), enabledMarkerValue); err != nil {
-		log.Printf("sms: failed to refresh enabled marker in %s/%s: %v", groupID, storeName, err)
+		log.Printf("sms: failed to refresh enabled marker in %s/%s: %v", realmmodel.GroupLabel(m.localGroups(), groupID), storeName, err)
 	}
 }
 
@@ -341,7 +344,7 @@ func (m *Manager) clearEnabledMarker(groupID, storeName string) {
 		return
 	}
 	if err := m.mapsFeature.DeleteValue(groupID, storeName, enabledKey(localID)); err != nil {
-		log.Printf("sms: failed to clear enabled marker in %s/%s: %v", groupID, storeName, err)
+		log.Printf("sms: failed to clear enabled marker in %s/%s: %v", realmmodel.GroupLabel(m.localGroups(), groupID), storeName, err)
 	}
 }
 

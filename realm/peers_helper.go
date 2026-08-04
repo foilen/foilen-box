@@ -17,7 +17,7 @@ func (e *Engine) onConnected(_ network.Network, conn network.Conn) {
 
 	// Skip unknown peers and extra simultaneous Conns to an already-connected peer.
 	if info, known := e.peers.Get(remote.String()); known && !info.Connected {
-		log.Printf("realm engine: connected to peer %s (%s)", remote, info.Hostname)
+		log.Printf("realm engine: connected to peer %s", info.Label())
 	}
 
 	e.peers.SetConnected(remote.String(), true)
@@ -47,9 +47,9 @@ func (e *Engine) onDisconnected(net network.Network, conn network.Conn) {
 		return
 	}
 	if len(info.GroupNames) == 0 {
-		log.Printf("realm engine: disconnected from peer %s (%s, no confirmed group)", remote, info.Hostname)
+		log.Printf("realm engine: disconnected from peer %s (no confirmed group)", info.Label())
 	} else {
-		log.Printf("realm engine: disconnected from peer %s (%s, groups: %v)", remote, info.Hostname, info.GroupNames)
+		log.Printf("realm engine: disconnected from peer %s (groups: %v)", info.Label(), info.GroupNames)
 	}
 
 	for _, h := range e.peerDisconnectedHooks {
@@ -78,13 +78,13 @@ func (e *Engine) handleFoundPeer(info peer.AddrInfo, groupName, source string) {
 		return
 	}
 
-	log.Printf("realm engine: peer found via %s: %s (group %q)", source, info.ID, groupName)
+	id := info.ID.String()
+	log.Printf("realm engine: peer found via %s: %s (group %q)", source, e.peers.Label(id), groupName)
 
 	h.Peerstore().AddAddrs(info.ID, info.Addrs, time.Hour)
 
 	addrs := addrsToStrings(info.Addrs)
 
-	id := info.ID.String()
 	existing, _ := e.peers.Get(id)
 
 	connected := h.Network().Connectedness(info.ID) == network.Connected
@@ -110,9 +110,9 @@ func (e *Engine) handleFoundPeer(info peer.AddrInfo, groupName, source string) {
 		go func(dialCtx context.Context, info peer.AddrInfo) {
 			connectCtx, cancel := context.WithTimeout(dialCtx, dialTimeout)
 			defer cancel()
-			log.Printf("realm engine: connecting to newly found peer %s", info.ID)
+			log.Printf("realm engine: connecting to newly found peer %s", e.peers.Label(info.ID.String()))
 			if err := h.Connect(connectCtx, info); err != nil {
-				log.Printf("realm engine: failed to connect to newly found peer %s: %v", info.ID, err)
+				log.Printf("realm engine: failed to connect to newly found peer %s: %v", e.peers.Label(info.ID.String()), err)
 			}
 		}(dialCtx, info)
 	}
@@ -180,10 +180,10 @@ func (e *Engine) pruneStalePeers() {
 	}
 
 	cutoff := time.Now().AddDate(0, 0, -days)
-	for _, id := range e.peers.PruneStale(cutoff) {
-		log.Printf("realm engine: pruned peer %s, not seen in over %d days", id, days)
+	for _, info := range e.peers.PruneStale(cutoff) {
+		log.Printf("realm engine: pruned peer %s, not seen in over %d days", info.Label(), days)
 		for _, h := range e.peerRemovedHooks {
-			h.OnPeerRemoved(id)
+			h.OnPeerRemoved(info.ID)
 		}
 	}
 }

@@ -69,30 +69,30 @@ func (e *Engine) challengeGroup(remote peer.ID, group model.Group) {
 	defer cancel()
 	s, err := h.NewStream(streamCtx, remote, groupChallengeProtocolID)
 	if err != nil {
-		log.Printf("realm engine: failed to open group-challenge stream to %s: %v", remote, err)
+		log.Printf("realm engine: failed to open group-challenge stream to %s: %v", e.peers.Label(remote.String()), err)
 		return
 	}
 	defer s.Close()
 	_ = s.SetDeadline(time.Now().Add(identifyIOTimeout))
 
 	if err := json.NewEncoder(s).Encode(req); err != nil {
-		log.Printf("realm engine: failed to send group-challenge to %s: %v", remote, err)
+		log.Printf("realm engine: failed to send group-challenge to %s: %v", e.peers.Label(remote.String()), err)
 		return
 	}
 
 	var resp groupChallengeResponse
 	if err := json.NewDecoder(io.LimitReader(s, identifyMaxBytes)).Decode(&resp); err != nil {
-		log.Printf("realm engine: failed to read group-challenge response from %s: %v", remote, err)
+		log.Printf("realm engine: failed to read group-challenge response from %s: %v", e.peers.Label(remote.String()), err)
 		return
 	}
 
 	if !verifyGroupChallenge(group, req, resp.SignatureBase64) {
-		log.Printf("realm engine: peer %s failed group-challenge for group %q", remote, group.Name)
+		log.Printf("realm engine: peer %s failed group-challenge for group %q", e.peers.Label(remote.String()), group.Name)
 		return
 	}
 
 	e.peers.AddGroupName(remote.String(), group.Name)
-	log.Printf("realm engine: peer %s confirmed membership in group %q", remote, group.Name)
+	log.Printf("realm engine: peer %s confirmed membership in group %q", e.peers.Label(remote.String()), group.Name)
 
 	reg := &Registrar{e: e}
 	for _, gh := range e.groupConfirmedHooks {
@@ -121,13 +121,13 @@ func (e *Engine) handleGroupChallengeStream(s network.Stream) {
 		return
 	}
 	if req.ResponderID != h.ID().String() {
-		log.Printf("realm engine: group-challenge request meant for %s, not us; ignoring", req.ResponderID)
+		log.Printf("realm engine: group-challenge request meant for %s, not us; ignoring", model.ShortID(req.ResponderID))
 		return
 	}
 
 	group, ok := findGroupByID(groups, req.GroupID)
 	if !ok {
-		log.Printf("realm engine: group-challenge for unknown group %q rejected", req.GroupID)
+		log.Printf("realm engine: group-challenge for unknown group %s rejected", model.ShortID(req.GroupID))
 		return
 	}
 

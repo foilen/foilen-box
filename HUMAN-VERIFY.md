@@ -184,6 +184,7 @@ realm/model/config.go
 realm/model/group.go
 realm/model/identity.go
 realm/model/keypair.go
+realm/model/label.go
 realm/model/map.go
 realm/model/peerinfo.go
 realm/model/permission.go

@@ -129,12 +129,12 @@ func (e *Engine) connectRingCandidates(ctx context.Context, h host.Host, candida
 		if len(addrs) == 0 {
 			continue
 		}
-		log.Printf("realm engine: connecting to ring peer %s", candidate)
+		log.Printf("realm engine: connecting to ring peer %s", e.peers.Label(candidate))
 		dialCtx, cancel := context.WithTimeout(ctx, dialTimeout)
 		err = h.Connect(dialCtx, peer.AddrInfo{ID: pid, Addrs: addrs})
 		cancel()
 		if err != nil {
-			log.Printf("realm engine: ring peer %s unreachable, trying next: %v", candidate, err)
+			log.Printf("realm engine: ring peer %s unreachable, trying next: %v", e.peers.Label(candidate), err)
 			continue
 		}
 		found = append(found, candidate)
@@ -159,9 +159,9 @@ func (e *Engine) disconnectExtraPeers(h host.Host, required map[string]bool) {
 			continue
 		}
 		if err := h.Network().ClosePeer(pid); err != nil {
-			log.Printf("realm engine: failed to disconnect extra peer %s: %v", idStr, err)
+			log.Printf("realm engine: failed to disconnect extra peer %s: %v", info.Label(), err)
 		} else {
-			log.Printf("realm engine: disconnected extra peer %s (outside connection ring, not in use)", idStr)
+			log.Printf("realm engine: disconnected extra peer %s (outside connection ring, not in use)", info.Label())
 		}
 	}
 }
@@ -260,10 +260,10 @@ func (e *Engine) reconnectRingPeerOnce(ctx context.Context, id string) {
 		return
 	}
 
-	log.Printf("realm engine: reconnecting to main peer %s after disconnect", id)
+	log.Printf("realm engine: reconnecting to main peer %s after disconnect", info.Label())
 	dialCtx, cancel := context.WithTimeout(ctx, dialTimeout)
 	defer cancel()
 	if err := h.Connect(dialCtx, peer.AddrInfo{ID: pid, Addrs: addrs}); err != nil {
-		log.Printf("realm engine: reconnect to main peer %s failed: %v", id, err)
+		log.Printf("realm engine: reconnect to main peer %s failed: %v", info.Label(), err)
 	}
 }

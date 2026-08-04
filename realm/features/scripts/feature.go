@@ -80,6 +80,16 @@ func (f *Feature) registrar() *realm.Registrar {
 	return f.reg
 }
 
+// peerLabel resolves id to "hostname (description) [shortid]" via the
+// registered engine's peer store, or just the bracketed short id if the
+// feature isn't registered yet or the peer isn't known.
+func (f *Feature) peerLabel(id string) string {
+	if reg := f.registrar(); reg != nil {
+		return reg.Peers().Label(id)
+	}
+	return model.ShortID(id)
+}
+
 func (f *Feature) Name() string { return FeatureName }
 
 func (f *Feature) Actions() []model.PermissionAction {
@@ -153,12 +163,12 @@ func (f *Feature) handleRunStream(reg *realm.Registrar) network.StreamHandler {
 
 		var req model.ScriptRunRequest
 		if err := json.NewDecoder(io.LimitReader(s, maxBytes)).Decode(&req); err != nil {
-			log.Printf("realm scripts: failed to decode script run request from %s: %v", remote, err)
+			log.Printf("realm scripts: failed to decode script run request from %s: %v", reg.Peers().Label(remote.String()), err)
 			return
 		}
 
 		if !reg.IsAllowed(remote, ActionRun) {
-			log.Printf("realm scripts: script run request from %s rejected: no permission", remote)
+			log.Printf("realm scripts: script run request from %s rejected: no permission", reg.Peers().Label(remote.String()))
 			_ = json.NewEncoder(s).Encode(model.ScriptRunAck{Started: false, Error: "not allowed"})
 			return
 		}
@@ -178,7 +188,7 @@ func (f *Feature) handleRunStream(reg *realm.Registrar) network.StreamHandler {
 		}
 
 		if err := json.NewEncoder(s).Encode(model.ScriptRunAck{Started: true}); err != nil {
-			log.Printf("realm scripts: failed to ack script run to %s: %v", remote, err)
+			log.Printf("realm scripts: failed to ack script run to %s: %v", reg.Peers().Label(remote.String()), err)
 			return
 		}
 
@@ -201,7 +211,7 @@ func (f *Feature) handleRunStream(reg *realm.Registrar) network.StreamHandler {
 				}
 			}
 			if h != nil && ctx != nil {
-				sendCompletion(ctx, h, remote, model.ScriptCompletion{
+				sendCompletion(ctx, h, remote, reg.Peers().Label(remote.String()), model.ScriptCompletion{
 					RunID:      runID,
 					ScriptName: scriptName,
 					ExitCode:   exitCode,
@@ -214,20 +224,20 @@ func (f *Feature) handleRunStream(reg *realm.Registrar) network.StreamHandler {
 }
 
 // sendCompletion makes one best-effort attempt to push the run outcome back;
-// if the peer is offline, it's simply dropped.
-func sendCompletion(ctx context.Context, h host.Host, to peer.ID, completion model.ScriptCompletion) {
+// if the peer is offline, it's simply dropped. label is to's precomputed log label.
+func sendCompletion(ctx context.Context, h host.Host, to peer.ID, label string, completion model.ScriptCompletion) {
 	streamCtx, cancel := context.WithTimeout(ctx, ioTimeout)
 	defer cancel()
 	s, err := h.NewStream(streamCtx, to, CompletionProtocolID)
 	if err != nil {
-		log.Printf("realm scripts: peer %s unreachable to report script completion (dropped): %v", to, err)
+		log.Printf("realm scripts: peer %s unreachable to report script completion (dropped): %v", label, err)
 		return
 	}
 	defer s.Close()
 	_ = s.SetDeadline(time.Now().Add(ioTimeout))
 
 	if err := json.NewEncoder(s).Encode(completion); err != nil {
-		log.Printf("realm scripts: failed to send script completion to %s: %v", to, err)
+		log.Printf("realm scripts: failed to send script completion to %s: %v", label, err)
 	}
 }
 
@@ -240,7 +250,7 @@ func (f *Feature) handleCompletionStream() network.StreamHandler {
 
 		var completion model.ScriptCompletion
 		if err := json.NewDecoder(io.LimitReader(s, maxBytes)).Decode(&completion); err != nil {
-			log.Printf("realm scripts: failed to decode script completion from %s: %v", s.Conn().RemotePeer(), err)
+			log.Printf("realm scripts: failed to decode script completion from %s: %v", f.peerLabel(s.Conn().RemotePeer().String()), err)
 			return
 		}
 

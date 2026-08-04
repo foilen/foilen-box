@@ -95,7 +95,7 @@ func (m *Manager) processGroup(groupID, groupName string) {
 		return
 	}
 
-	m.reportStarted(groupID, localID, rm)
+	m.reportStarted(groupID, groupName, localID, rm)
 
 	conns := []Connection{}
 	for _, p := range m.peers.List() {
@@ -122,14 +122,14 @@ func (m *Manager) processGroup(groupID, groupName string) {
 	}
 
 	if err := m.mapsFeature.SetValue(groupID, CommonStoreName, connectionsKey(localID), string(data)); err != nil {
-		log.Printf("group troubleshooting: failed to update connections for group %s: %v", groupID, err)
+		log.Printf("group troubleshooting: failed to update connections for group %s %s: %v", groupName, realmmodel.ShortID(groupID), err)
 	}
 }
 
 // reportStarted writes localID's started entry in response to groupID's
 // current start entry, unless it has already responded to this (or a later)
 // start.
-func (m *Manager) reportStarted(groupID, localID string, rm realmmodel.RealmMap) {
+func (m *Manager) reportStarted(groupID, groupName, localID string, rm realmmodel.RealmMap) {
 	startEntry, ok := rm.Entries[startKey]
 	if !ok {
 		return
@@ -152,7 +152,7 @@ func (m *Manager) reportStarted(groupID, localID string, rm realmmodel.RealmMap)
 		return
 	}
 	if err := m.mapsFeature.SetValue(groupID, CommonStoreName, startedKey(localID), string(data)); err != nil {
-		log.Printf("group troubleshooting: failed to update started entry for group %s: %v", groupID, err)
+		log.Printf("group troubleshooting: failed to update started entry for group %s %s: %v", groupName, realmmodel.ShortID(groupID), err)
 	}
 }
 
@@ -186,7 +186,7 @@ func (m *Manager) StartSession(groupID string) error {
 	for key := range rm.Entries {
 		if strings.HasPrefix(key, keyPrefix) {
 			if err := m.mapsFeature.DeleteValue(groupID, CommonStoreName, key); err != nil {
-				log.Printf("group troubleshooting: failed to clear previous entry %q for group %s: %v", key, groupID, err)
+				log.Printf("group troubleshooting: failed to clear previous entry %q for group %s: %v", key, realmmodel.GroupLabel(m.localGroups(), groupID), err)
 			}
 		}
 	}

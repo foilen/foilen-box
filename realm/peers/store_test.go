@@ -72,7 +72,7 @@ func TestPruneStale(t *testing.T) {
 
 	removed := s.PruneStale(now.Add(-24 * time.Hour))
 
-	if len(removed) != 1 || removed[0] != "stale" {
+	if len(removed) != 1 || removed[0].ID != "stale" {
 		t.Fatalf("PruneStale() removed = %v, want [stale]", removed)
 	}
 	got := s.List()

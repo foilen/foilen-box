@@ -150,6 +150,6 @@ func (r *Registrar) EnsureConnected(ctx context.Context, id peer.ID) error {
 
 	dialCtx, cancel := context.WithTimeout(ctx, dialTimeout)
 	defer cancel()
-	log.Printf("realm engine: connecting to peer %s", id)
+	log.Printf("realm engine: connecting to peer %s", r.e.peers.Label(id.String()))
 	return h.Connect(dialCtx, peer.AddrInfo{ID: id, Addrs: addrs})
 }

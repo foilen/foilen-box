@@ -124,7 +124,7 @@ func (e *Engine) disconnectDHTSwarmLocked(h host.Host) {
 			remembered = append(remembered, peer.AddrInfo{ID: pid, Addrs: addrs})
 		}
 		if err := h.Network().ClosePeer(pid); err != nil {
-			log.Printf("realm engine: failed to disconnect DHT swarm peer %s: %v", pid, err)
+			log.Printf("realm engine: failed to disconnect DHT swarm peer %s: %v", e.peers.Label(pid.String()), err)
 			continue
 		}
 		disconnected++
@@ -152,12 +152,12 @@ func (e *Engine) reconnectRememberedDHTPeers(ctx context.Context, h host.Host) {
 		if h.Network().Connectedness(info.ID) == network.Connected {
 			continue
 		}
-		log.Printf("realm engine: reconnecting to remembered DHT swarm peer %s", info.ID)
+		log.Printf("realm engine: reconnecting to remembered DHT swarm peer %s", e.peers.Label(info.ID.String()))
 		dialCtx, cancel := context.WithTimeout(ctx, dialTimeout)
 		err := h.Connect(dialCtx, info)
 		cancel()
 		if err != nil {
-			log.Printf("realm engine: failed to reconnect remembered DHT peer %s: %v", info.ID, err)
+			log.Printf("realm engine: failed to reconnect remembered DHT peer %s: %v", e.peers.Label(info.ID.String()), err)
 		}
 	}
 }

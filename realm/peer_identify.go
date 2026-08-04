@@ -45,13 +45,13 @@ func (e *Engine) handleIdentifyStream(s network.Stream) {
 
 	remote := s.Conn().RemotePeer()
 	if _, ok := e.peers.Get(remote.String()); !ok {
-		log.Printf("realm engine: identify request from %s rejected: not a known peer", remote)
+		log.Printf("realm engine: identify request from %s rejected: not a known peer", e.peers.Label(remote.String()))
 		return
 	}
 
 	var reqPayload identifyPayload
 	if err := json.NewDecoder(io.LimitReader(s, identifyMaxBytes)).Decode(&reqPayload); err != nil {
-		log.Printf("realm engine: failed to read identify payload from %s: %v", remote, err)
+		log.Printf("realm engine: failed to read identify payload from %s: %v", e.peers.Label(remote.String()), err)
 		return
 	}
 	e.peers.SetAnnouncedAddresses(remote.String(), reqPayload.Addresses)
@@ -63,7 +63,7 @@ func (e *Engine) handleIdentifyStream(s network.Stream) {
 		return
 	}
 	if err := json.NewEncoder(s).Encode(e.selfIdentifyPayload(h)); err != nil {
-		log.Printf("realm engine: failed to send identify payload to %s: %v", remote, err)
+		log.Printf("realm engine: failed to send identify payload to %s: %v", e.peers.Label(remote.String()), err)
 		return
 	}
 
@@ -85,20 +85,20 @@ func (e *Engine) fetchPeerIdentity(id peer.ID) {
 	defer cancel()
 	s, err := h.NewStream(streamCtx, id, identifyProtocolID)
 	if err != nil {
-		log.Printf("realm engine: failed to open identify stream to %s: %v", id, err)
+		log.Printf("realm engine: failed to open identify stream to %s: %v", e.peers.Label(id.String()), err)
 		return
 	}
 	defer s.Close()
 	_ = s.SetDeadline(time.Now().Add(identifyIOTimeout))
 
 	if err := json.NewEncoder(s).Encode(e.selfIdentifyPayload(h)); err != nil {
-		log.Printf("realm engine: failed to send identify payload to %s: %v", id, err)
+		log.Printf("realm engine: failed to send identify payload to %s: %v", e.peers.Label(id.String()), err)
 		return
 	}
 
 	var payload identifyPayload
 	if err := json.NewDecoder(io.LimitReader(s, identifyMaxBytes)).Decode(&payload); err != nil {
-		log.Printf("realm engine: failed to read identify payload from %s: %v", id, err)
+		log.Printf("realm engine: failed to read identify payload from %s: %v", e.peers.Label(id.String()), err)
 		return
 	}
 	e.peers.SetHostnameDescription(id.String(), payload.Hostname, payload.Description, payload.RelayServiceEnabled, payload.Version)

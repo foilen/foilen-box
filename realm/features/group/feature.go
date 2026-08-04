@@ -67,6 +67,16 @@ func (f *Feature) registrar() *realm.Registrar {
 	return f.reg
 }
 
+// peerLabel resolves id to "hostname (description) [shortid]" via the
+// registered engine's peer store, or just the bracketed short id if the
+// feature isn't registered yet or the peer isn't known.
+func (f *Feature) peerLabel(id string) string {
+	if reg := f.registrar(); reg != nil {
+		return reg.Peers().Label(id)
+	}
+	return model.ShortID(id)
+}
+
 func (f *Feature) Name() string { return FeatureName }
 
 func (f *Feature) Actions() []model.PermissionAction {
@@ -85,9 +95,9 @@ func (f *Feature) RegisterHandlers(reg *realm.Registrar) {
 func (f *Feature) Push(to, name string, kp model.KeyPair) (err error) {
 	defer func() {
 		if err != nil {
-			log.Printf("realm group: push of group %q to %s failed: %v", name, to, err)
+			log.Printf("realm group: push of group %q to %s failed: %v", name, f.peerLabel(to), err)
 		} else {
-			log.Printf("realm group: pushed group %q to %s", name, to)
+			log.Printf("realm group: pushed group %q to %s", name, f.peerLabel(to))
 		}
 	}()
 
@@ -144,19 +154,19 @@ func (f *Feature) handlePushStream(reg *realm.Registrar) network.StreamHandler {
 
 		var req pushRequest
 		if err := json.NewDecoder(io.LimitReader(s, maxBytes)).Decode(&req); err != nil {
-			log.Printf("realm group: failed to decode pushed group from %s: %v", remote, err)
+			log.Printf("realm group: failed to decode pushed group from %s: %v", f.peerLabel(remote.String()), err)
 			return
 		}
 
 		if !reg.IsAllowed(remote, ActionPush) {
-			log.Printf("realm group: pushed group from %s rejected: no permission", remote)
+			log.Printf("realm group: pushed group from %s rejected: no permission", f.peerLabel(remote.String()))
 			_ = json.NewEncoder(s).Encode(pushAck{Imported: false, Error: "not allowed"})
 			return
 		}
 
 		kp, err := realmkeypair.Import(req.PrivateKeyBase64)
 		if err != nil {
-			log.Printf("realm group: pushed group from %s has an invalid key: %v", remote, err)
+			log.Printf("realm group: pushed group from %s has an invalid key: %v", f.peerLabel(remote.String()), err)
 			_ = json.NewEncoder(s).Encode(pushAck{Imported: false, Error: "invalid key"})
 			return
 		}
@@ -170,12 +180,12 @@ func (f *Feature) handlePushStream(reg *realm.Registrar) network.StreamHandler {
 			return
 		}
 		if err := onReceive(req.Name, kp); err != nil {
-			log.Printf("realm group: failed to import group %q pushed from %s: %v", req.Name, remote, err)
+			log.Printf("realm group: failed to import group %q pushed from %s: %v", req.Name, f.peerLabel(remote.String()), err)
 			_ = json.NewEncoder(s).Encode(pushAck{Imported: false, Error: err.Error()})
 			return
 		}
 
-		log.Printf("realm group: imported group %q pushed from %s", req.Name, remote)
+		log.Printf("realm group: imported group %q pushed from %s", req.Name, f.peerLabel(remote.String()))
 		_ = json.NewEncoder(s).Encode(pushAck{Imported: true})
 	}
 }
