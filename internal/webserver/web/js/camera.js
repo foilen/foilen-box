@@ -107,11 +107,33 @@ export function initCameraTab(api) {
 		return status;
 	}
 
+	async function saveConfig() {
+		const selectedDevice = devices.find((d) => d.id === deviceSelect.value);
+		const params = {
+			enabled: enabledCheckbox.checked,
+			deviceId: deviceSelect.value || "",
+			deviceLabel: selectedDevice ? selectedDevice.label : "",
+			resolution: resolutionSelect.value || "1280x720",
+			port: parseInt(portInput.value, 10) || 8554,
+			bindAllInterfaces: bindSelect.value === "all",
+			exposeAsService: exposeServiceCheckbox.checked,
+		};
+		console.log("[action] save camera config", params);
+		const status = await api.call("camera.saveConfig", params);
+		dirty = false;
+		renderStatus(status);
+		output.textContent = "Camera configuration saved.";
+	}
+
 	enabledCheckbox.addEventListener("change", () => {
 		markDirty();
 		configBody.classList.toggle("hidden", !enabledCheckbox.checked);
 		if (enabledCheckbox.checked && devices.length === 0) {
 			report(output, () => refreshDevices());
+		} else if (!enabledCheckbox.checked) {
+			// Unchecking hides camera-config-body, which contains the save
+			// button itself, so it becomes unreachable — save right away.
+			report(output, saveConfig);
 		}
 	});
 	deviceSelect.addEventListener("change", markDirty);
@@ -127,25 +149,7 @@ export function initCameraTab(api) {
 		})
 	);
 
-	saveButton.addEventListener("click", () =>
-		report(output, async () => {
-			const selectedDevice = devices.find((d) => d.id === deviceSelect.value);
-			const params = {
-				enabled: enabledCheckbox.checked,
-				deviceId: deviceSelect.value || "",
-				deviceLabel: selectedDevice ? selectedDevice.label : "",
-				resolution: resolutionSelect.value || "1280x720",
-				port: parseInt(portInput.value, 10) || 8554,
-				bindAllInterfaces: bindSelect.value === "all",
-				exposeAsService: exposeServiceCheckbox.checked,
-			};
-			console.log("[action] save camera config", params);
-			const status = await api.call("camera.saveConfig", params);
-			dirty = false;
-			renderStatus(status);
-			output.textContent = "Camera configuration saved.";
-		})
-	);
+	saveButton.addEventListener("click", () => report(output, saveConfig));
 
 	startButton.addEventListener("click", () =>
 		report(output, async () => {
