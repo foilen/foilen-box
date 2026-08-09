@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The WebView loads the embedded web UI from the Go server's own
+     http://127.0.0.1:<port>/ (see internal/webserver/server.go's Server.URL),
+     which Android 9+ blocks by default (CLEARTEXT_NOT_PERMITTED). -->
+<network-security-config>
+	<domain-config cleartextTrafficPermitted="true">
+		<domain includeSubdomains="false">127.0.0.1</domain>
+		<domain includeSubdomains="false">localhost</domain>
+	</domain-config>
+</network-security-config>

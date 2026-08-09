@@ -42,6 +42,7 @@ android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
 android/app/src/main/res/values/colors.xml
 android/app/src/main/res/values/strings.xml
 android/app/src/main/res/values/themes.xml
+android/app/src/main/res/xml/network_security_config.xml
 android/build.gradle.kts
 android/gradle.properties
 android/gradle/wrapper/gradle-wrapper.jar
