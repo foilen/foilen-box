@@ -1,3 +1,4 @@
+import { initCameraTab } from "./camera.js";
 import { initSpecTab } from "./spec.js";
 import { initTroubleshootingTab } from "./troubleshooting.js";
 import { initEarlyTab } from "./early.js";
@@ -122,6 +123,7 @@ initTroubleshootingTab(api);
 initEarlyTab(api);
 initGpsTab(isAndroid);
 initRealmTab(api, isAndroid);
+initCameraTab(api);
 initAndroidConfigTab(isAndroid);
 initLogsTab(api);
 initConfigTab(api);

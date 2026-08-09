@@ -10,6 +10,7 @@ const (
 	ServiceTypeVPN   = "vpn"
 	ServiceTypeRDP   = "rdp"
 	ServiceTypeSSH   = "ssh"
+	ServiceTypeRTSP  = "rtsp"
 )
 
 // Service is a named local service a peer offers to proxy to, on request

@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	boxcamera "foilen-box/internal/camera"
 	earlyaggregate "foilen-box/internal/early/aggregate"
 	earlyclient "foilen-box/internal/early/client"
 	earlyconfig "foilen-box/internal/early/config"
@@ -63,6 +64,7 @@ type api struct {
 	realmSms                  *boxsms.Manager
 	smsConfig                 *boxsms.Service
 	realmGroupTroubleshooting *boxgrouptroubleshooting.Manager
+	camera                    *boxcamera.Manager
 }
 
 func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*api, error) {
@@ -113,6 +115,10 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 	realmServicesStore, err := realmservices.NewStore(realmConfigSvc.Dir())
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize realm services store: %w", err)
+	}
+	cameraManager, err := boxcamera.NewManager(realmConfigSvc.Dir())
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize camera manager: %w", err)
 	}
 
 	realmEng := realm.New(realmConfigSvc.Dir(), realmPeerStore)
@@ -176,9 +182,13 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 		realmSms:                  smsManager,
 		smsConfig:                 smsConfigSvc,
 		realmGroupTroubleshooting: groupTroubleshootingManager,
+		camera:                    cameraManager,
 	}
 	smsManager.Start()
 	groupTroubleshootingManager.Start()
+	if err := cameraManager.Start(); err != nil {
+		log.Printf("camera: failed to auto-start RTSP server: %v", err)
+	}
 
 	// Auto-start the realm engine if a peer id already exists; failure here
 	// shouldn't block the web UI from starting.
@@ -198,6 +208,7 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 func (a *api) shutdown() {
 	a.realmEngine.Stop()
 	a.realmServices.StopAll()
+	a.camera.Stop()
 	if err := a.realmPeers.Flush(); err != nil {
 		log.Printf("realm: failed to flush peer store: %v", err)
 	}
@@ -377,6 +388,12 @@ var handlers = map[string]handlerFunc{
 	"realm.deleteMap":      handleRealmDeleteMap,
 
 	"realm.runSpeedTest": handleRealmRunSpeedTest,
+
+	"camera.getStatus":    handleCameraGetStatus,
+	"camera.listDevices":  handleCameraListDevices,
+	"camera.saveConfig":   handleCameraSaveConfig,
+	"camera.startCapture": handleCameraStartCapture,
+	"camera.stopCapture":  handleCameraStopCapture,
 
 	"sms.loadConfig":           handleSmsLoadConfig,
 	"sms.saveManagementConfig": handleSmsSaveManagementConfig,

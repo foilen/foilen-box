@@ -18,6 +18,12 @@ func OpenHTTP(port int, secure bool) error {
 	return Open(fmt.Sprintf("%s://127.0.0.1:%d", scheme, port))
 }
 
+// OpenRTSP launches the OS's registered RTSP handler (e.g. VLC) at the
+// local proxy port.
+func OpenRTSP(port int) error {
+	return Open(fmt.Sprintf("rtsp://127.0.0.1:%d/stream", port))
+}
+
 // linuxTerminals are tried in order on linux/bsd; the first found on $PATH is used.
 var linuxTerminals = []string{"x-terminal-emulator", "gnome-terminal", "konsole", "xterm"}
 

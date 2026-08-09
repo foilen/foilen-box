@@ -16,6 +16,8 @@ android/app/src/main/AndroidManifest.xml
 android/app/src/main/java/com/foilen/box/android/AndroidConfigBridge.kt
 android/app/src/main/java/com/foilen/box/android/AndroidConfigPrefs.kt
 android/app/src/main/java/com/foilen/box/android/BootCompletedReceiver.kt
+android/app/src/main/java/com/foilen/box/android/CameraCaptureBridge.kt
+android/app/src/main/java/com/foilen/box/android/CameraForegroundService.kt
 android/app/src/main/java/com/foilen/box/android/MainActivity.kt
 android/app/src/main/java/com/foilen/box/android/RealmForegroundService.kt
 android/app/src/main/java/com/foilen/box/android/SmsPermissionBridge.kt
@@ -50,6 +52,7 @@ android/settings.gradle.kts
 assets/icon.png
 assets/systray.png
 build-nix.sh
+build-run-dev-android.sh
 build-run-dev-desktop.sh
 build-run-dev.sh
 cmd/foilenbox/main.go
@@ -71,6 +74,16 @@ go.work.sum
 install-dev-apk.sh
 internal/browseropen/browseropen.go
 internal/browseropen/connect.go
+internal/camera/annexb.go
+internal/camera/bridge.go
+internal/camera/capture_bridge.go
+internal/camera/capture_ffmpeg.go
+internal/camera/capturer.go
+internal/camera/devices.go
+internal/camera/manager.go
+internal/camera/resolution.go
+internal/camera/rtsp.go
+internal/camera/store.go
 internal/early/aggregate/aggregate.go
 internal/early/aggregate/aggregate_test.go
 internal/early/client/client.go
@@ -102,6 +115,7 @@ internal/troubleshooting/report/report.go
 internal/troubleshooting/whois/whois.go
 internal/troubleshooting/whois/whois_test.go
 internal/webserver/api.go
+internal/webserver/api_camera.go
 internal/webserver/api_config.go
 internal/webserver/api_early.go
 internal/webserver/api_misc.go
@@ -123,6 +137,7 @@ internal/webserver/web/images/icon.png
 internal/webserver/web/index.html
 internal/webserver/web/js/android-config.js
 internal/webserver/web/js/app.js
+internal/webserver/web/js/camera.js
 internal/webserver/web/js/config.js
 internal/webserver/web/js/early.js
 internal/webserver/web/js/favicon.js

@@ -41,14 +41,42 @@ type SmsBridge interface {
 	ShowNotification(title string, body string, deepLink string)
 }
 
+// CameraBridge is implemented by Kotlin's CameraCaptureBridge for native
+// camera capture (CameraX + MediaCodec); nil on desktop, where
+// internal/camera uses ffmpeg instead. See internal/camera.PlatformBridge,
+// the interface the rest of the Go code actually consumes.
+//
+// ListCameras returns a JSON array of {"id":"...","label":"..."} objects.
+// StartCapture tells Android to start encoding deviceID at width x height to
+// H.264 and stream the raw Annex-B bytes to a TCP connection to
+// 127.0.0.1:tcpPort, which the Go side is already listening on; StopCapture
+// tells it to stop. Frame data
+// itself never crosses this gomobile boundary — only these lifecycle calls
+// do — since gomobile call overhead makes it unsuitable for a per-frame data
+// plane (see internal/camera.bridgeCapturer).
+type CameraBridge interface {
+	ListCameras() (string, error)
+	StartCapture(deviceID string, tcpPort int32, width int32, height int32) error
+	StopCapture() error
+}
+
 // StartServer starts the local web UI/API server under filesDir and returns
 // its base URL for a WebView. deviceName replaces os.Hostname() (always
 // "localhost" on Android); osVersion is android.os.Build.VERSION.RELEASE,
 // replacing gopsutil's Linux-only distro detection; both default if "".
 // deviceName only applies on the first call; stateSink/batteryProvider/
-// smsBridge (nilable) are reapplied every call, so RealmForegroundService can
-// start the server on boot before MainActivity wires them up.
-func StartServer(filesDir string, deviceName string, osVersion string, stateSink RealmStateSink, batteryProvider BatteryProvider, smsBridge SmsBridge) (string, error) {
+// smsBridge/cameraBridge (nilable) are reapplied every call, so
+// RealmForegroundService can start the server on boot before MainActivity
+// wires them up.
+func StartServer(
+	filesDir string,
+	deviceName string,
+	osVersion string,
+	stateSink RealmStateSink,
+	batteryProvider BatteryProvider,
+	smsBridge SmsBridge,
+	cameraBridge CameraBridge,
+) (string, error) {
 	mu.Lock()
 	defer mu.Unlock()
 
@@ -72,6 +100,9 @@ func StartServer(filesDir string, deviceName string, osVersion string, stateSink
 	}
 	if smsBridge != nil {
 		server.SetSmsBridge(smsBridge)
+	}
+	if cameraBridge != nil {
+		server.SetCameraBridge(cameraBridge)
 	}
 	return server.URL(), nil
 }

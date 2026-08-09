@@ -161,6 +161,22 @@ type SmsBridge interface {
 	ShowNotification(title string, body string, deepLink string)
 }
 
+// CameraBridge is the platform-specific callback (Android) driving native
+// camera capture; nil on desktop, where internal/camera uses ffmpeg
+// instead. Structurally identical to cmd/mobile.CameraBridge and
+// internal/camera.PlatformBridge — see either's doc for why it's declared
+// independently rather than shared via import.
+type CameraBridge interface {
+	ListCameras() (string, error)
+	StartCapture(deviceID string, tcpPort int32, width int32, height int32) error
+	StopCapture() error
+}
+
+// SetCameraBridge registers the platform-specific camera capture bridge.
+func (s *Server) SetCameraBridge(bridge CameraBridge) {
+	s.api.camera.SetPlatformBridge(bridge)
+}
+
 // PeerCounts returns how many known Realm peers are currently connected out
 // of the total known, for platform UI that can't poll the WebSocket API
 // (e.g. Android's foreground-service notification).

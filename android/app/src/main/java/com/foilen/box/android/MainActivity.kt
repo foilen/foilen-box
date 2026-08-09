@@ -53,9 +53,12 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 	private lateinit var webView: WebView
 	private var filePickerCallback: ValueCallback<Array<Uri>>? = null
 	private lateinit var filePickerLauncher: ActivityResultLauncher<Intent>
+	private lateinit var cameraCaptureBridge: CameraCaptureBridge
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
+
+		cameraCaptureBridge = CameraCaptureBridge(this)
 
 		filePickerLauncher =
 			registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result: ActivityResult ->
@@ -69,6 +72,11 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 
 		webView.settings.javaScriptEnabled = true
 		webView.settings.setGeolocationEnabled(true)
+		// The UI is embedded in the app binary and changes with every app
+		// update, but WebView's HTTP cache lives in app data, which survives
+		// reinstalls — without this, an update can keep serving old cached
+		// JS/CSS from before the update.
+		webView.settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
 		webView.addJavascriptInterface(AndroidConfigBridge(this), "AndroidConfigBridge")
 		webView.addJavascriptInterface(SmsPermissionBridge(this), "SmsPermissionBridge")
 		webView.webChromeClient = object : WebChromeClient() {
@@ -140,7 +148,7 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 		// (e.g. server restarted on a new port); re-check and reload if so.
 		Thread {
 			try {
-				val url = Mobile.startServer(filesDir.absolutePath, deviceName(), Build.VERSION.RELEASE, this, this, this)
+				val url = Mobile.startServer(filesDir.absolutePath, deviceName(), Build.VERSION.RELEASE, this, this, this, cameraCaptureBridge)
 				val currentUrl = webView.url
 				if (currentUrl == null || !currentUrl.startsWith(url)) {
 					runOnUiThread { webView.loadUrl("$url?platform=android") }
@@ -167,7 +175,7 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 		val smsDeepLink = intent.getStringExtra(EXTRA_SMS_DEEP_LINK)
 		Thread {
 			try {
-				val url = Mobile.startServer(filesDir.absolutePath, deviceName(), Build.VERSION.RELEASE, this, this, this)
+				val url = Mobile.startServer(filesDir.absolutePath, deviceName(), Build.VERSION.RELEASE, this, this, this, cameraCaptureBridge)
 				val target = if (smsDeepLink != null) {
 					"$url?platform=android#realm/realm-sms-subtab/${Uri.encode(smsDeepLink)}"
 				} else {

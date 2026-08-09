@@ -47,4 +47,19 @@ dependencies {
 
 	implementation("androidx.core:core-ktx:1.13.1")
 	implementation("androidx.appcompat:appcompat:1.7.0")
+
+	// CameraX, for CameraForegroundService.kt (native camera capture feeding
+	// the Camera/RTSP feature): camera-core/-camera2/-lifecycle only —
+	// capture is wired straight from a Preview use case into a MediaCodec
+	// input Surface, no camera-video/ImageAnalysis needed.
+	val cameraxVersion = "1.5.3"
+	implementation("androidx.camera:camera-core:$cameraxVersion")
+	implementation("androidx.camera:camera-camera2:$cameraxVersion")
+	implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
+
+	// LifecycleService: lets CameraForegroundService be a LifecycleOwner so
+	// CameraX can bindToLifecycle to it directly, without an Activity —
+	// the whole point being that capture survives the screen turning off /
+	// the app being backgrounded.
+	implementation("androidx.lifecycle:lifecycle-service:2.8.7")
 }

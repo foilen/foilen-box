@@ -23,6 +23,7 @@
 
 <div id="tabs">
 	<a class="tab-button active" data-tab="realm" href="#realm">Realm</a>
+	<a class="tab-button" data-tab="camera" href="#camera">Camera</a>
 	<a class="tab-button" data-tab="spec" href="#spec">Spec</a>
 	<a class="tab-button" data-tab="troubleshooting" href="#troubleshooting">Troubleshooting</a>
 	<a class="tab-button" data-tab="early" href="#early">Early</a>
@@ -370,6 +371,7 @@
 				<md-select-option value="vpn"><div slot="headline">vpn</div></md-select-option>
 				<md-select-option value="rdp"><div slot="headline">rdp</div></md-select-option>
 				<md-select-option value="ssh"><div slot="headline">ssh</div></md-select-option>
+				<md-select-option value="rtsp"><div slot="headline">rtsp</div></md-select-option>
 			</md-outlined-select>
 			<md-outlined-text-field type="number" label="Port" id="realm-new-service-port" style="width: 8em;"></md-outlined-text-field>
 			<md-filled-tonal-button id="realm-add-service-button">Add Service</md-filled-tonal-button>
@@ -573,6 +575,62 @@
 	</div>
 
 	<pre id="realm-output" class="output"></pre>
+</section>
+
+<section id="camera" class="tab-panel">
+	<h3>Camera</h3>
+	<p class="hint">Exposes this device's camera as an RTSP stream. On most platforms the camera is only
+		opened while at least one RTSP client is connected; on Android it must be started/stopped with
+		the buttons below instead, since the OS won't allow it to open automatically while the app isn't
+		in the foreground.</p>
+	<div class="row">
+		<md-checkbox id="camera-enabled"></md-checkbox>
+		<label for="camera-enabled">Enable camera exposure via RTSP</label>
+	</div>
+	<div id="camera-config-body" class="hidden">
+		<div class="row">
+			<label>Camera:
+				<md-outlined-select id="camera-device-select"></md-outlined-select>
+			</label>
+			<md-text-button id="camera-refresh-devices-button">Refresh</md-text-button>
+		</div>
+		<div class="row">
+			<label>Resolution:
+				<md-outlined-select id="camera-resolution-select">
+					<md-select-option value="640x480"><div slot="headline">640x480 (SD)</div></md-select-option>
+					<md-select-option value="1280x720" selected><div slot="headline">1280x720 (HD)</div></md-select-option>
+					<md-select-option value="1920x1080"><div slot="headline">1920x1080 (Full HD)</div></md-select-option>
+					<md-select-option value="3840x2160"><div slot="headline">3840x2160 (4K)</div></md-select-option>
+				</md-outlined-select>
+			</label>
+		</div>
+		<div class="row">
+			<md-outlined-text-field type="number" label="RTSP port" id="camera-port" style="width: 8em;"></md-outlined-text-field>
+			<label>Listen on:
+				<md-outlined-select id="camera-bind-select">
+					<md-select-option value="local" selected><div slot="headline">127.0.0.1 (local only)</div></md-select-option>
+					<md-select-option value="all"><div slot="headline">0.0.0.0 (LAN)</div></md-select-option>
+				</md-outlined-select>
+			</label>
+		</div>
+		<p class="hint">0.0.0.0 makes the stream reachable by any device on the local network, with no
+			authentication of its own — keep it at 127.0.0.1 unless you specifically want direct LAN access
+			(e.g. from an NVR app).</p>
+		<div class="row">
+			<md-checkbox id="camera-expose-service"></md-checkbox>
+			<label for="camera-expose-service">Expose in Realm Service automatically</label>
+		</div>
+		<p id="camera-expose-service-hint" class="hint hidden">Enable Realm networking (Realm tab) to expose this camera as a Realm Service.</p>
+		<div class="row">
+			<md-filled-tonal-button id="camera-save-button">Save</md-filled-tonal-button>
+		</div>
+		<div id="camera-manual-control-body" class="row hidden">
+			<md-filled-tonal-button id="camera-start-button">Start streaming</md-filled-tonal-button>
+			<md-filled-tonal-button id="camera-stop-button">Stop streaming</md-filled-tonal-button>
+		</div>
+	</div>
+	<p id="camera-status" class="hint"></p>
+	<pre id="camera-output" class="output"></pre>
 </section>
 
 <section id="spec" class="tab-panel">

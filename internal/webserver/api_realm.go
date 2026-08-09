@@ -620,6 +620,7 @@ var validServiceTypes = map[string]bool{
 	realmmodel.ServiceTypeVPN:   true,
 	realmmodel.ServiceTypeRDP:   true,
 	realmmodel.ServiceTypeSSH:   true,
+	realmmodel.ServiceTypeRTSP:  true,
 }
 
 func handleRealmAddService(a *api, params json.RawMessage) (any, error) {
@@ -798,6 +799,8 @@ func handleRealmConnectService(a *api, params json.RawMessage) (any, error) {
 		openErr = browseropen.OpenRDP(port)
 	case realmmodel.ServiceTypeVPN:
 		openErr = browseropen.OpenOpenVPN(port, a.realmEngine.ConnectedHosts(p.PeerId))
+	case realmmodel.ServiceTypeRTSP:
+		openErr = browseropen.OpenRTSP(port)
 	default:
 		opened = false
 	}

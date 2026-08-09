@@ -56,7 +56,7 @@
           dontInstall = true;
           outputHashMode = "recursive";
           outputHashAlgo = "sha256";
-          outputHash = "sha256-LTBxHE658N6FEnJyEOmQ6gvlzH7htMoXMogrPdnS3mk=";
+          outputHash = "sha256-KTmA64qomWQAFxI3Gq3r+szl1TcaF9qnoqdcFNkRDoQ=";
         };
       in
       {
@@ -73,7 +73,7 @@
             go work vendor
           '';
 
-          vendorHash = "sha256-G7ZpbZ1OJRtvP32aSakmeM2J823LAKcZWzCnwfJKmf8=";
+          vendorHash = "sha256-9PkTpt8Xp719Xe+C4nLmLAgAwhhR9LlwCQMgVS/ppGA=";
 
           # Vendor assets (fonts, JS) are fetched by the vendorFonts/vendorJs
           # FODs above and copied in here, rather than committed to git.
@@ -92,10 +92,14 @@
           ldflags = [
             "-X" "foilen-box/internal/webserver.Version=${gitShortHash}"
             "-X" "'foilen-box/internal/webserver.CommitDate=${gitCommitDate}'"
+            # Points the Camera feature's desktop capturer at a store-path
+            # ffmpeg instead of relying on $PATH, so the packaged app doesn't
+            # depend on ffmpeg being separately installed.
+            "-X" "foilen-box/internal/camera.ffmpegPath=${pkgs.ffmpeg}/bin/ffmpeg"
           ];
 
           nativeBuildInputs = [ pkgs.pkg-config ];
-          buildInputs = [ pkgs.gtk3 pkgs.libayatana-appindicator ];
+          buildInputs = [ pkgs.gtk3 pkgs.libayatana-appindicator pkgs.ffmpeg ];
 
           postInstall = ''
             mv $out/bin/foilenbox $out/bin/foilen-box
@@ -114,6 +118,7 @@
             pkgs.pkg-config
             pkgs.gtk3
             pkgs.libayatana-appindicator
+            pkgs.ffmpeg
           ];
         };
       });
