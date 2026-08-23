@@ -105,7 +105,7 @@ class RealmForegroundService : Service() {
 				this,
 				NOTIFICATION_ID,
 				buildNotification(),
-				ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+				ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
 			)
 		} else {
 			startForeground(NOTIFICATION_ID, buildNotification())
@@ -139,6 +139,15 @@ class RealmForegroundService : Service() {
 			.setOngoing(true)
 			.setContentIntent(contentIntent)
 			.build()
+	}
+
+	// Safety net for FGS types the OS may later start enforcing an execution
+	// time limit on (only dataSync/mediaProcessing today, not connectedDevice) —
+	// stop cleanly instead of getting force-killed with
+	// ForegroundServiceDidNotStopInTimeException.
+	override fun onTimeout(startId: Int, fgsType: Int) {
+		stopForeground(STOP_FOREGROUND_REMOVE)
+		stopSelf(startId)
 	}
 
 	override fun onBind(intent: Intent?): IBinder? = null
