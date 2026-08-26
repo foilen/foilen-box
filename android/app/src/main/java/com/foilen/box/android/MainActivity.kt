@@ -233,10 +233,11 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 		smsManager.sendTextMessage(phoneNumber, null, body, null, null)
 	}
 
-	// mobile.SmsBridge: bulk-imports full SMS history when SMS management is
-	// first enabled. Reading content://sms only needs READ_SMS, not being the
-	// default SMS app. Includes a "raw" full-row dump (dumpRow) to hunt for an
-	// undocumented column reflecting the SMS app's "Trash" state.
+	// mobile.SmsBridge: bulk-imports full SMS+MMS history when SMS management is
+	// first enabled. Reading content://sms and content://mms only needs
+	// READ_SMS, not being the default SMS app. Includes a "raw" full-row dump
+	// (dumpRow) to hunt for an undocumented column reflecting the SMS app's
+	// "Trash" state.
 	override fun readAllSms(): String {
 		val result = JSONArray()
 		contentResolver.query(Telephony.Sms.CONTENT_URI, null, null, null, "${Telephony.Sms.DATE} ASC")
@@ -263,8 +264,102 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 					)
 				}
 			}
+		readAllMmsInto(result)
 		return result.toString()
 	}
+
+	// Appends every MMS (a thread with a media attachment, a group text, or an
+	// RCS/long-SMS fallback the OS stores separately from content://sms) into
+	// result, in the same SmsMessage JSON shape. Attachments themselves aren't
+	// embedded (realm maps cap a synced value at 256KB, see
+	// realm/features/maps/feature.go's maxBytes) — a message with a non-text
+	// part just gets "(media)" appended to its body as a placeholder.
+	private fun readAllMmsInto(result: JSONArray) {
+		contentResolver.query(Telephony.Mms.CONTENT_URI, null, null, null, "${Telephony.Mms.DATE} ASC")
+			?.use { cursor ->
+				val idIdx = cursor.getColumnIndexOrThrow(Telephony.Mms._ID)
+				val dateIdx = cursor.getColumnIndexOrThrow(Telephony.Mms.DATE)
+				val boxIdx = cursor.getColumnIndexOrThrow(Telephony.Mms.MESSAGE_BOX)
+				while (cursor.moveToNext()) {
+					val id = cursor.getLong(idIdx)
+					val outgoing = cursor.getInt(boxIdx) != Telephony.Mms.MESSAGE_BOX_INBOX
+					val address = mmsAddress(id, outgoing) ?: continue
+					// Telephony.Mms.DATE is in epoch seconds, unlike Sms.DATE (millis).
+					val timestampMillis = cursor.getLong(dateIdx) * 1000
+					result.put(
+						JSONObject().apply {
+							put("phoneNumber", address)
+							put("direction", if (outgoing) "outgoing" else "incoming")
+							put("body", mmsBody(id))
+							put("sender", if (outgoing) "" else address)
+							put("receiver", if (outgoing) address else "")
+							put("timestampUnixMillis", timestampMillis)
+							put("raw", dumpRow(cursor))
+						},
+					)
+				}
+			}
+	}
+
+	// content://mms/<id>/addr's "type" column: PduHeaders.FROM / PduHeaders.TO.
+	private val mmsAddrTypeFrom = 137
+	private val mmsAddrTypeTo = 151
+
+	// Returns the sender's address for an incoming MMS, or the first
+	// recipient's for an outgoing one (a group MMS may have several; only one
+	// fits this feature's per-phoneNumber conversation model).
+	private fun mmsAddress(mmsId: Long, outgoing: Boolean): String? {
+		val wantType = if (outgoing) mmsAddrTypeTo else mmsAddrTypeFrom
+		contentResolver.query(Uri.parse("content://mms/$mmsId/addr"), null, null, null, null)?.use { cursor ->
+			val addressIdx = cursor.getColumnIndexOrThrow("address")
+			val typeIdx = cursor.getColumnIndexOrThrow("type")
+			while (cursor.moveToNext()) {
+				if (cursor.getInt(typeIdx) != wantType) continue
+				val address = cursor.getString(addressIdx)
+				if (address != null && address != "insert-address-token") return address
+			}
+		}
+		return null
+	}
+
+	// Concatenates every text/plain part's text, then appends "(media)" if any
+	// other part (image, audio, vcard, ...) is present. "application/smil" is
+	// the MMS layout descriptor, not real content, so it's ignored either way.
+	private fun mmsBody(mmsId: Long): String {
+		val textParts = mutableListOf<String>()
+		var hasMedia = false
+		contentResolver.query(Uri.parse("content://mms/$mmsId/part"), null, null, null, null)?.use { cursor ->
+			val ctIdx = cursor.getColumnIndexOrThrow("ct")
+			val idIdx = cursor.getColumnIndexOrThrow("_id")
+			val textColIdx = cursor.getColumnIndex("text")
+			while (cursor.moveToNext()) {
+				when (val contentType = cursor.getString(ctIdx)) {
+					null, "application/smil" -> {}
+					"text/plain" -> {
+						val inlineText = if (textColIdx >= 0) cursor.getString(textColIdx) else null
+						textParts.add(inlineText ?: readMmsPartText(cursor.getLong(idIdx)) ?: "")
+					}
+					else -> hasMedia = true
+				}
+			}
+		}
+		val text = textParts.joinToString("\n").trim()
+		return when {
+			text.isNotEmpty() && hasMedia -> "$text (media)"
+			text.isNotEmpty() -> text
+			hasMedia -> "(media)"
+			else -> ""
+		}
+	}
+
+	// Some OEMs don't populate part's "text" column inline; falls back to
+	// reading the part's own content stream.
+	private fun readMmsPartText(partId: Long): String? =
+		try {
+			contentResolver.openInputStream(Uri.parse("content://mms/part/$partId"))?.use { it.readBytes().toString(Charsets.UTF_8) }
+		} catch (e: Exception) {
+			null
+		}
 
 	// Reads every column of cursor's current row into a JSONObject; BLOB
 	// columns are summarized by length instead of dumped as text.
