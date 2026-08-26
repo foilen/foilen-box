@@ -1,4 +1,4 @@
-// Package realm owns the go-libp2p host lifecycle for Realm: mDNS/DHT
+// Package realm owns the go-libp2p host lifecycle for Realm: UDP-broadcast/DHT
 // discovery, the connect/keep-alive loop for known group peers, and a
 // pluggable Feature model that lets an application opt into only the
 // capabilities it needs (see Feature).
@@ -20,7 +20,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/transport"
-	"github.com/libp2p/go-libp2p/p2p/discovery/mdns"
 	routingdisc "github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	quictransport "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
@@ -70,7 +69,8 @@ type Engine struct {
 	kadDHT           *dht.IpfsDHT
 	dhtDatastore     *leveldb.Datastore
 	routingDiscovery *routingdisc.RoutingDiscovery
-	mdnsSvcs         map[string]mdns.Service       // by groupKey
+	udpBroadcastConn *net.UDPConn
+	udpBroadcastSeen map[string]struct{}           // own group hashes observed since the last skipped beat
 	dhtLoopCancels   map[string]context.CancelFunc // by groupKey
 
 	// lastDHTPeers remembers the public DHT swarm peers last connected before
@@ -402,24 +402,13 @@ func (e *Engine) reconcileLocked(cfg model.Config) error {
 		}
 	}
 
-	if cfg.EnableMdns && mdnsSupported {
-		desired := groupsByKey(cfg.Groups)
-		for key, svc := range e.mdnsSvcs {
-			if _, ok := desired[key]; !ok {
-				if err := svc.Close(); err != nil {
-					log.Printf("realm engine: failed to close mDNS service: %v", err)
-				}
-				delete(e.mdnsSvcs, key)
-			}
-		}
-		for key, group := range desired {
-			if _, ok := e.mdnsSvcs[key]; !ok {
-				e.startGroupMdnsLocked(h, group)
-			}
-		}
-	} else if len(e.mdnsSvcs) > 0 {
-		log.Printf("realm engine: disabling mDNS")
-		e.stopAllMdnsLocked()
+	switch {
+	case cfg.EnableUdpBroadcast && e.udpBroadcastConn == nil:
+		log.Printf("realm engine: enabling UDP broadcast discovery")
+		e.startUdpBroadcastLocked(ctx, h)
+	case !cfg.EnableUdpBroadcast && e.udpBroadcastConn != nil:
+		log.Printf("realm engine: disabling UDP broadcast discovery")
+		e.stopUdpBroadcastLocked()
 	}
 
 	added := addedGroupKeys(prev.Groups, cfg.Groups)
@@ -432,10 +421,10 @@ func (e *Engine) reconcileLocked(cfg model.Config) error {
 	return nil
 }
 
-// Start brings the host up: identity from cfg.PeerID, mDNS/DHT discovery
-// per cfg.EnableMdns/EnableDht and cfg.DhtMode, and the keep-alive loop for
-// known peers. A no-op if cfg has no peer id yet, cfg.Disabled is set, or
-// the engine is already running.
+// Start brings the host up: identity from cfg.PeerID, UDP-broadcast/DHT
+// discovery per cfg.EnableUdpBroadcast/EnableDht and cfg.DhtMode, and the
+// keep-alive loop for known peers. A no-op if cfg has no peer id yet,
+// cfg.Disabled is set, or the engine is already running.
 func (e *Engine) Start(cfg model.Config) error {
 	if cfg.PeerID.ID == "" || cfg.Disabled {
 		return nil
@@ -550,7 +539,6 @@ func (e *Engine) Start(cfg model.Config) error {
 	e.cancel = cancel
 	e.running = true
 	e.cfg = cfg
-	e.mdnsSvcs = make(map[string]mdns.Service)
 	e.dhtLoopCancels = make(map[string]context.CancelFunc)
 
 	rt.host = h
@@ -582,10 +570,8 @@ func (e *Engine) Start(cfg model.Config) error {
 		}
 	}
 
-	if cfg.EnableMdns && mdnsSupported {
-		for _, group := range cfg.Groups {
-			e.startGroupMdnsLocked(h, group)
-		}
+	if cfg.EnableUdpBroadcast {
+		e.startUdpBroadcastLocked(ctx, h)
 	}
 
 	go e.keepAliveLoop(ctx)
@@ -604,7 +590,7 @@ func (e *Engine) Stop() {
 	}
 
 	e.cancel()
-	e.stopAllMdnsLocked()
+	e.stopUdpBroadcastLocked()
 	e.stopDHTLocked()
 	h := e.host
 	e.host = nil

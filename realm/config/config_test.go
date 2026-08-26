@@ -16,18 +16,18 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	}
 
 	want := model.Config{
-		PeerID:     model.KeyPair{ID: "peer1", PrivateKeyBase64: "abc"},
-		Groups:     []model.Group{{Name: "family", KeyPair: model.KeyPair{ID: "peer2", PrivateKeyBase64: "def"}}},
-		DhtMode:    model.DhtModeClient,
-		EnableMdns: false,
-		EnableDht:  true,
+		PeerID:             model.KeyPair{ID: "peer1", PrivateKeyBase64: "abc"},
+		Groups:             []model.Group{{Name: "family", KeyPair: model.KeyPair{ID: "peer2", PrivateKeyBase64: "def"}}},
+		DhtMode:            model.DhtModeClient,
+		EnableUdpBroadcast: false,
+		EnableDht:          true,
 	}
 	if err := svc.Save(want); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
 
 	got := svc.Load()
-	if got.PeerID != want.PeerID || got.DhtMode != want.DhtMode || got.EnableMdns != want.EnableMdns || got.EnableDht != want.EnableDht {
+	if got.PeerID != want.PeerID || got.DhtMode != want.DhtMode || got.EnableUdpBroadcast != want.EnableUdpBroadcast || got.EnableDht != want.EnableDht {
 		t.Errorf("Load() = %+v, want %+v", got, want)
 	}
 	if len(got.Groups) != 1 || got.Groups[0] != want.Groups[0] {
@@ -43,8 +43,8 @@ func TestLoadMissingFileReturnsPlatformDefault(t *testing.T) {
 	}
 
 	got := svc.Load()
-	want := model.Config{DhtMode: model.DhtModeClient, EnableMdns: true, EnableDht: true}
-	if got.DhtMode != want.DhtMode || got.EnableMdns != want.EnableMdns || got.EnableDht != want.EnableDht || len(got.Groups) != 0 {
+	want := model.Config{DhtMode: model.DhtModeClient, EnableUdpBroadcast: true, EnableDht: true}
+	if got.DhtMode != want.DhtMode || got.EnableUdpBroadcast != want.EnableUdpBroadcast || got.EnableDht != want.EnableDht || len(got.Groups) != 0 {
 		t.Errorf("Load() = %+v, want %+v", got, want)
 	}
 }
@@ -60,8 +60,8 @@ func TestLoadCorruptFileReturnsPlatformDefault(t *testing.T) {
 	}
 
 	got := svc.Load()
-	want := model.Config{DhtMode: model.DhtModeServer, EnableMdns: true, EnableDht: true}
-	if got.DhtMode != want.DhtMode || got.EnableMdns != want.EnableMdns || got.EnableDht != want.EnableDht || len(got.Groups) != 0 {
+	want := model.Config{DhtMode: model.DhtModeServer, EnableUdpBroadcast: true, EnableDht: true}
+	if got.DhtMode != want.DhtMode || got.EnableUdpBroadcast != want.EnableUdpBroadcast || got.EnableDht != want.EnableDht || len(got.Groups) != 0 {
 		t.Errorf("Load() = %+v, want %+v", got, want)
 	}
 }
@@ -72,7 +72,7 @@ func TestPersistedDhtModeOverridesDefaultOnceSaved(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewInDir() error = %v", err)
 	}
-	if err := svc.Save(model.Config{DhtMode: model.DhtModeClient, EnableMdns: true, EnableDht: true}); err != nil {
+	if err := svc.Save(model.Config{DhtMode: model.DhtModeClient, EnableUdpBroadcast: true, EnableDht: true}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
 

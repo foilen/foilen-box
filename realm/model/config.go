@@ -30,10 +30,10 @@ type Config struct {
 	// Services are local services this peer proxies to on request, gated by services.ActionConnect.
 	Services []Service `json:"services"`
 	// Permissions grants peers/groups the right to invoke an action; deny-by-default otherwise.
-	Permissions []Permission `json:"permissions"`
-	DhtMode     string       `json:"dhtMode"`
-	EnableMdns  bool         `json:"enableMdns"`
-	EnableDht   bool         `json:"enableDht"`
+	Permissions        []Permission `json:"permissions"`
+	DhtMode            string       `json:"dhtMode"`
+	EnableUdpBroadcast bool         `json:"enableUdpBroadcast"`
+	EnableDht          bool         `json:"enableDht"`
 
 	// Disabled turns the whole networking stack off without discarding identity/groups.
 	Disabled bool `json:"disabled"`

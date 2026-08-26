@@ -24,7 +24,7 @@ type realmConfigResult struct {
 	Description        string                        `json:"description"`
 	Enabled            bool                          `json:"enabled"`
 	DhtMode            string                        `json:"dhtMode"`
-	EnableMdns         bool                          `json:"enableMdns"`
+	EnableUdpBroadcast bool                          `json:"enableUdpBroadcast"`
 	EnableDht          bool                          `json:"enableDht"`
 	EnableRelayService bool                          `json:"enableRelayService"`
 	PeerRetentionDays  int                           `json:"peerRetentionDays"`
@@ -133,7 +133,7 @@ func realmConfigResponse(a *api, cfg realmmodel.Config) realmConfigResult {
 		Description:        cfg.Description,
 		Enabled:            !cfg.Disabled,
 		DhtMode:            cfg.DhtMode,
-		EnableMdns:         cfg.EnableMdns,
+		EnableUdpBroadcast: cfg.EnableUdpBroadcast,
 		EnableDht:          cfg.EnableDht,
 		EnableRelayService: cfg.EnableRelayService,
 		PeerRetentionDays:  cfg.PeerRetentionDays,
@@ -978,14 +978,14 @@ func handleRealmSetEnabled(a *api, params json.RawMessage) (any, error) {
 
 func handleRealmSetDiscoveryOptions(a *api, params json.RawMessage) (any, error) {
 	var p struct {
-		EnableMdns bool `json:"enableMdns"`
-		EnableDht  bool `json:"enableDht"`
+		EnableUdpBroadcast bool `json:"enableUdpBroadcast"`
+		EnableDht          bool `json:"enableDht"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, err
 	}
 	cfg, err := a.updateRealmConfig(func(c *realmmodel.Config) {
-		c.EnableMdns = p.EnableMdns
+		c.EnableUdpBroadcast = p.EnableUdpBroadcast
 		c.EnableDht = p.EnableDht
 	})
 	if err != nil {

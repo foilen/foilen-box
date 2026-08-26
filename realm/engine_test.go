@@ -63,7 +63,7 @@ func TestStartStopLifecycle(t *testing.T) {
 	}
 	e := newTestEngine(t, dir)
 
-	cfg := model.Config{PeerID: kp, DhtMode: model.DhtModeClient, EnableMdns: true, EnableDht: true}
+	cfg := model.Config{PeerID: kp, DhtMode: model.DhtModeClient, EnableUdpBroadcast: true, EnableDht: true}
 	if err := e.Start(cfg); err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
@@ -97,7 +97,7 @@ func TestRestartWithNewGroup(t *testing.T) {
 	e := newTestEngine(t, dir)
 	defer e.Stop()
 
-	cfg := model.Config{PeerID: kp, DhtMode: model.DhtModeClient, EnableMdns: false, EnableDht: false}
+	cfg := model.Config{PeerID: kp, DhtMode: model.DhtModeClient, EnableUdpBroadcast: false, EnableDht: false}
 	if err := e.Restart(cfg); err != nil {
 		t.Fatalf("Restart() error = %v", err)
 	}
@@ -186,7 +186,7 @@ func TestHandleFoundPeerDoesNotGrantGroupMembership(t *testing.T) {
 		t.Fatalf("peer.Decode() error = %v", err)
 	}
 
-	e.handleFoundPeer(peer.AddrInfo{ID: strangerID}, "family", "mdns")
+	e.handleFoundPeer(peer.AddrInfo{ID: strangerID}, "family", "broadcast")
 
 	info, ok := e.peers.Get(strangerID.String())
 	if !ok {
@@ -206,7 +206,7 @@ func TestReconcileAddingGroupKeepsHostRunning(t *testing.T) {
 	e := newTestEngine(t, dir)
 	defer e.Stop()
 
-	cfg := model.Config{PeerID: kp, DhtMode: model.DhtModeClient, EnableMdns: true, EnableDht: false}
+	cfg := model.Config{PeerID: kp, DhtMode: model.DhtModeClient, EnableUdpBroadcast: true, EnableDht: false}
 	if err := e.Start(cfg); err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
@@ -226,8 +226,8 @@ func TestReconcileAddingGroupKeepsHostRunning(t *testing.T) {
 	if e.HostID() != firstID {
 		t.Errorf("HostID() changed across Reconcile(): %q != %q", e.HostID(), firstID)
 	}
-	if _, ok := e.mdnsSvcs[groupKey(cfg.Groups[0])]; !ok {
-		t.Error("expected mDNS service to be started for newly added group")
+	if e.udpBroadcastConn == nil {
+		t.Error("expected UDP broadcast discovery to still be running after adding a group")
 	}
 
 	// Reconciling with the same config again must be a no-op, not an error.
@@ -238,8 +238,8 @@ func TestReconcileAddingGroupKeepsHostRunning(t *testing.T) {
 		t.Errorf("HostID() changed across no-op Reconcile(): %q != %q", e.HostID(), firstID)
 	}
 
-	// Removing the group again must close its mDNS service without
-	// restarting the host.
+	// Removing the group must not tear down UDP broadcast discovery (it's
+	// scoped to the whole engine, not per-group) or restart the host.
 	cfg.Groups = nil
 	if err := e.Reconcile(cfg); err != nil {
 		t.Fatalf("Reconcile() removing group error = %v", err)
@@ -247,7 +247,16 @@ func TestReconcileAddingGroupKeepsHostRunning(t *testing.T) {
 	if e.HostID() != firstID {
 		t.Errorf("HostID() changed across group-removal Reconcile(): %q != %q", e.HostID(), firstID)
 	}
-	if len(e.mdnsSvcs) != 0 {
-		t.Errorf("expected mDNS service map to be empty after group removal, got %d entries", len(e.mdnsSvcs))
+	if e.udpBroadcastConn == nil {
+		t.Error("expected UDP broadcast discovery to still be running after removing a group")
+	}
+
+	// Disabling UDP broadcast discovery entirely must close the socket.
+	cfg.EnableUdpBroadcast = false
+	if err := e.Reconcile(cfg); err != nil {
+		t.Fatalf("Reconcile() disabling UDP broadcast error = %v", err)
+	}
+	if e.udpBroadcastConn != nil {
+		t.Error("expected UDP broadcast socket to be closed after disabling it")
 	}
 }

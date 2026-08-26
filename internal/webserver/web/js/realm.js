@@ -48,12 +48,7 @@ export function initRealmTab(api, isAndroid) {
 	const addressesEl = document.getElementById("realm-addresses");
 	const descriptionInput = document.getElementById("realm-description");
 	const saveDescriptionButton = document.getElementById("realm-save-description-button");
-	const enableMdnsCheckbox = document.getElementById("realm-enable-mdns");
-	// mDNS isn't supported on Android (see realm.mdnsSupported in the Go
-	// backend); remove the toggle rather than offer one that does nothing.
-	if (isAndroid) {
-		document.getElementById("realm-mdns-row").remove();
-	}
+	const enableUdpBroadcastCheckbox = document.getElementById("realm-enable-udp-broadcast");
 	const enableDhtCheckbox = document.getElementById("realm-enable-dht");
 	const dhtModeSelect = document.getElementById("realm-dht-mode");
 	const peerRetentionDaysInput = document.getElementById("realm-peer-retention-days");
@@ -133,7 +128,7 @@ export function initRealmTab(api, isAndroid) {
 		if (document.activeElement !== descriptionInput) {
 			descriptionInput.value = cfg.description || "";
 		}
-		enableMdnsCheckbox.checked = cfg.enableMdns;
+		enableUdpBroadcastCheckbox.checked = cfg.enableUdpBroadcast;
 		enableDhtCheckbox.checked = cfg.enableDht;
 		dhtModeSelect.value = cfg.dhtMode || "client";
 		if (document.activeElement !== peerRetentionDaysInput) {
@@ -244,16 +239,16 @@ export function initRealmTab(api, isAndroid) {
 
 	function saveDiscoveryOptions() {
 		return report(output, async () => {
-			console.log("[action] change discovery options", { enableMdns: enableMdnsCheckbox.checked, enableDht: enableDhtCheckbox.checked });
+			console.log("[action] change discovery options", { enableUdpBroadcast: enableUdpBroadcastCheckbox.checked, enableDht: enableDhtCheckbox.checked });
 			renderConfig(
 				await api.call("realm.setDiscoveryOptions", {
-					enableMdns: enableMdnsCheckbox.checked,
+					enableUdpBroadcast: enableUdpBroadcastCheckbox.checked,
 					enableDht: enableDhtCheckbox.checked,
 				})
 			);
 		});
 	}
-	enableMdnsCheckbox.addEventListener("change", saveDiscoveryOptions);
+	enableUdpBroadcastCheckbox.addEventListener("change", saveDiscoveryOptions);
 	enableDhtCheckbox.addEventListener("change", saveDiscoveryOptions);
 
 	dhtModeSelect.addEventListener("change", () =>

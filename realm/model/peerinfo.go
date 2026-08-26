@@ -13,7 +13,7 @@ type PeerInfo struct {
 	// Store's address source priority. Not set directly by callers.
 	Addresses []string `json:"addresses"`
 	// AddressesBySource holds each source's own last-reported addresses
-	// (e.g. "mdns", "dht", "announce") so none clobber each other; Addresses is derived from this.
+	// (e.g. "broadcast", "dht", "announce") so none clobber each other; Addresses is derived from this.
 	AddressesBySource map[string][]string `json:"addressesBySource,omitempty"`
 	GroupNames        []string            `json:"groupNames"`
 	Connected         bool                `json:"connected"`

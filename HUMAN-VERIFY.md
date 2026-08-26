@@ -170,7 +170,9 @@ realm/config/config_test.go
 realm/connection_ring.go
 realm/connection_ring_test.go
 realm/discovery_dht.go
-realm/discovery_mdns.go
+realm/discovery_udpbroadcast.go
+realm/discovery_udpbroadcast_unix.go
+realm/discovery_udpbroadcast_windows.go
 realm/engine.go
 realm/engine_test.go
 realm/expose_web.go

@@ -61,14 +61,14 @@ func (s *Store) Label(id string) string {
 	return model.ShortID(id)
 }
 
-// addressSourcePriority controls per-source address merge order: LAN (mdns)
-// first, then self-reported (announce), then public-DHT (dht) last since
-// those are least likely reachable directly. Unlisted sources are merged
-// afterwards, sorted by name for determinism.
-var addressSourcePriority = []string{"mdns", "announce", "dht"}
+// addressSourcePriority controls per-source address merge order: LAN
+// (broadcast) first, then self-reported (announce), then public-DHT (dht)
+// last since those are least likely reachable directly. Unlisted sources are
+// merged afterwards, sorted by name for determinism.
+var addressSourcePriority = []string{"broadcast", "announce", "dht"}
 
 // Upsert records/updates a peer's usage info. source identifies who's
-// reporting info.Addresses (e.g. "mdns", "dht", "announce"); merged per
+// reporting info.Addresses (e.g. "broadcast", "dht", "announce"); merged per
 // addressSourcePriority before storing. Pass source "" to leave addresses untouched.
 func (s *Store) Upsert(info model.PeerInfo, source string) {
 	s.db.Update(func(d *Data) {
@@ -195,11 +195,11 @@ func (s *Store) SetAnnouncedAddresses(id string, addrs []string) {
 }
 
 // discoveredSources are the address sources populated by live discovery
-// (mDNS/DHT) rather than the authoritative "common" RealmMap, and thus the
-// ones that can go stale once a peer stops being rediscovered.
-var discoveredSources = []string{"mdns", "dht"}
+// (UDP broadcast/DHT) rather than the authoritative "common" RealmMap, and
+// thus the ones that can go stale once a peer stops being rediscovered.
+var discoveredSources = []string{"broadcast", "dht"}
 
-// ClearDiscoveredAddresses drops peer id's mdns/dht address buckets,
+// ClearDiscoveredAddresses drops peer id's broadcast/dht address buckets,
 // keeping "announce" (sourced from the "common" RealmMap) intact, and
 // recomputes merged Addresses. Reports whether the peer was known.
 func (s *Store) ClearDiscoveredAddresses(id string) bool {
@@ -224,8 +224,8 @@ func (s *Store) ClearDiscoveredAddresses(id string) bool {
 	return found
 }
 
-// ClearAllDiscoveredAddresses drops the mdns/dht address buckets for every
-// known peer, keeping each peer's "announce" bucket intact.
+// ClearAllDiscoveredAddresses drops the broadcast/dht address buckets for
+// every known peer, keeping each peer's "announce" bucket intact.
 func (s *Store) ClearAllDiscoveredAddresses() {
 	s.db.Update(func(d *Data) {
 		for id, p := range d.Peers {
