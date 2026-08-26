@@ -13,9 +13,14 @@ const ESM_ORIGIN = "https://esm.sh";
 
 // name: subdirectory under <output-dir> and the fixed local entry filename
 // referenced by index.html / app JS.
+//
+// Pin every url to an exact version (no "@11"-style ranges): esm.sh
+// resolves a range to whatever the latest matching release is at fetch
+// time, so an unpinned range silently changes the fetched content (and
+// flake.nix's vendorJs outputHash) whenever a new release ships upstream.
 const ENTRIES = [
 	{ name: "material-web", url: "https://esm.sh/@material/web@2.5.0/all.js" },
-	{ name: "mermaid", url: "https://esm.sh/mermaid@11" },
+	{ name: "mermaid", url: "https://esm.sh/mermaid@11.17.2" },
 ];
 
 // Matches real import/export specifiers while avoiding false positives on
