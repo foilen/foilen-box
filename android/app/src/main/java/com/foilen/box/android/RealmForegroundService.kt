@@ -49,6 +49,9 @@ class RealmForegroundService : Service() {
 
 	override fun onCreate() {
 		super.onCreate()
+		isRunning = true
+		AndroidConfigPrefs.setServiceExpected(this, true)
+		ServiceWatchdog.schedule(this)
 		createNotificationChannel()
 		showNotification()
 		handler.post(peerCountRefresher)
@@ -156,6 +159,8 @@ class RealmForegroundService : Service() {
 	// signal that they're done, unlike a plain app switch — so this is the
 	// one place the engine actually gets torn down.
 	override fun onTaskRemoved(rootIntent: Intent?) {
+		AndroidConfigPrefs.setServiceExpected(this, false)
+		ServiceWatchdog.cancel(this)
 		Thread {
 			try {
 				Mobile.stopServer()
@@ -168,6 +173,7 @@ class RealmForegroundService : Service() {
 	}
 
 	override fun onDestroy() {
+		isRunning = false
 		handler.removeCallbacks(peerCountRefresher)
 		multicastLock?.let { if (it.isHeld) it.release() }
 		multicastLock = null
@@ -187,6 +193,13 @@ class RealmForegroundService : Service() {
 
 	companion object {
 		private const val TAG = "FoilenBox"
+
+		// Process-local liveness flag: false whenever this process was never
+		// started or was killed (statics reset with the process), which is
+		// exactly when WatchdogReceiver should restart the service.
+		@Volatile
+		var isRunning = false
+			private set
 		private const val NOTIFICATION_CHANNEL_ID = "realm_peer_service"
 		private const val NOTIFICATION_ID = 2
 		private const val EXTRA_ENABLED = "enabled"

@@ -12,6 +12,7 @@ import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.provider.Settings
 import android.provider.Telephony
 import android.telephony.SmsManager
@@ -138,6 +139,8 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 			)
 		}
 
+		requestIgnoreBatteryOptimizations()
+
 		startServerAndLoad()
 		ContextCompat.startForegroundService(this, Intent(this, RealmForegroundService::class.java))
 	}
@@ -161,6 +164,22 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 
 	// No onDestroy override: RealmForegroundService owns the engine and stops it
 	// only when the user swipes the app away (RealmForegroundService.onTaskRemoved).
+
+	// Without this exemption the OS SIGKILLs RealmForegroundService's process
+	// under Doze/memory pressure and doesn't reliably restart it, so the realm
+	// engine stops syncing until the app is reopened.
+	private fun requestIgnoreBatteryOptimizations() {
+		val powerManager = getSystemService(PowerManager::class.java) ?: return
+		if (powerManager.isIgnoringBatteryOptimizations(packageName)) return
+		try {
+			startActivity(
+				Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+					.setData(Uri.parse("package:$packageName")),
+			)
+		} catch (e: Exception) {
+			Log.w(TAG, "failed to request battery optimization exemption", e)
+		}
+	}
 
 	private fun hasLocationPermission(): Boolean =
 		ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==

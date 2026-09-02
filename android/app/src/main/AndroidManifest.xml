@@ -9,6 +9,7 @@
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
 	<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+	<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 	<uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
 	<uses-permission android:name="android.permission.READ_SMS" />
 	<uses-permission android:name="android.permission.SEND_SMS" />
@@ -47,6 +48,10 @@
 			android:name=".CameraForegroundService"
 			android:exported="false"
 			android:foregroundServiceType="camera" />
+
+		<receiver
+			android:name=".WatchdogReceiver"
+			android:exported="false" />
 
 		<receiver
 			android:name=".BootCompletedReceiver"
