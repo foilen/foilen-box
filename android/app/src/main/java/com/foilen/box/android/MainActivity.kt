@@ -152,9 +152,11 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 		Thread {
 			try {
 				val url = Mobile.startServer(filesDir.absolutePath, deviceName(), Build.VERSION.RELEASE, this, this, this, cameraCaptureBridge)
-				val currentUrl = webView.url
-				if (currentUrl == null || !currentUrl.startsWith(url)) {
-					runOnUiThread { webView.loadUrl("$url?platform=android") }
+				runOnUiThread {
+					val currentUrl = webView.url
+					if (currentUrl == null || !currentUrl.startsWith(url)) {
+						webView.loadUrl("$url?platform=android")
+					}
 				}
 			} catch (e: Exception) {
 				Log.e(TAG, "failed to verify server on resume", e)

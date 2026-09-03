@@ -24,7 +24,7 @@ object ServiceWatchdog {
 	fun schedule(context: Context) {
 		val alarmManager = context.getSystemService(AlarmManager::class.java) ?: return
 		alarmManager.setInexactRepeating(
-			AlarmManager.ELAPSED_REALTIME,
+			AlarmManager.ELAPSED_REALTIME_WAKEUP,
 			SystemClock.elapsedRealtime() + AlarmManager.INTERVAL_FIFTEEN_MINUTES,
 			AlarmManager.INTERVAL_FIFTEEN_MINUTES,
 			pendingIntent(context),
