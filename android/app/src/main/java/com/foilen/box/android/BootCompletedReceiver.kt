@@ -23,7 +23,7 @@ class BootCompletedReceiver : BroadcastReceiver() {
 		if (!AndroidConfigPrefs.isBootAutostartEnabled(context)) return
 
 		ContextCompat.startForegroundService(context, Intent(context, RealmForegroundService::class.java))
-		// Repeating alarms don't survive a reboot; re-arm the watchdog here.
+		// KEEP-policy no-op if WorkManager already restored it post-reboot.
 		ServiceWatchdog.schedule(context)
 	}
 }

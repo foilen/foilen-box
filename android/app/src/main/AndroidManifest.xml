@@ -50,10 +50,6 @@
 			android:foregroundServiceType="camera" />
 
 		<receiver
-			android:name=".WatchdogReceiver"
-			android:exported="false" />
-
-		<receiver
 			android:name=".BootCompletedReceiver"
 			android:exported="true"
 			android:permission="android.permission.RECEIVE_BOOT_COMPLETED">

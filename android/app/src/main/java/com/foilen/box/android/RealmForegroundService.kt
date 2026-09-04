@@ -27,8 +27,12 @@ import mobile.Mobile
  * service directly (boot autostart) with no MainActivity around;
  * Mobile.startServer is idempotent and safe to call from both places.
  *
- * The engine is only torn down when the task is actually removed (app swiped
- * away from recents), not on a plain app switch.
+ * The engine keeps running for the life of the process. It is NOT torn down
+ * on onTaskRemoved: that callback also fires when the OS trims the
+ * backgrounded task under memory pressure, and treating it as "the user is
+ * done" is what previously left the box silently offline for hours. The
+ * only way to stop it is the explicit Realm on/off toggle in the web UI
+ * (setRealmEnabled), or a force-stop / disabling boot autostart + reboot.
  */
 class RealmForegroundService : Service() {
 
@@ -50,12 +54,21 @@ class RealmForegroundService : Service() {
 	override fun onCreate() {
 		super.onCreate()
 		isRunning = true
-		AndroidConfigPrefs.setServiceExpected(this, true)
-		ServiceWatchdog.schedule(this)
 		createNotificationChannel()
+		// Must call startForeground promptly after startForegroundService,
+		// even if Realm was turned off — drop it again right after.
 		showNotification()
-		handler.post(peerCountRefresher)
-		acquireMulticastLock()
+
+		val realmEnabled = AndroidConfigPrefs.isRealmEnabled(this)
+		AndroidConfigPrefs.setServiceExpected(this, realmEnabled)
+		if (realmEnabled) {
+			ServiceWatchdog.schedule(this)
+			handler.post(peerCountRefresher)
+			acquireMulticastLock()
+		} else {
+			ServiceWatchdog.cancel(this)
+			stopForeground(STOP_FOREGROUND_REMOVE)
+		}
 		Thread {
 			try {
 				Mobile.startServer(
@@ -74,11 +87,17 @@ class RealmForegroundService : Service() {
 	}
 
 	private fun acquireMulticastLock() {
+		if (multicastLock?.isHeld == true) return
 		val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
 		val lock = wifiManager.createMulticastLock(TAG)
 		lock.setReferenceCounted(false)
 		lock.acquire()
 		multicastLock = lock
+	}
+
+	private fun releaseMulticastLock() {
+		multicastLock?.let { if (it.isHeld) it.release() }
+		multicastLock = null
 	}
 
 	// Same fallback as MainActivity.deviceName().
@@ -88,14 +107,25 @@ class RealmForegroundService : Service() {
 	override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
 		if (intent?.hasExtra(EXTRA_ENABLED) == true) {
 			if (intent.getBooleanExtra(EXTRA_ENABLED, true)) {
+				AndroidConfigPrefs.setRealmEnabled(this, true)
+				AndroidConfigPrefs.setServiceExpected(this, true)
+				ServiceWatchdog.schedule(this)
+				acquireMulticastLock()
 				showNotification()
 				handler.removeCallbacks(peerCountRefresher)
 				handler.postDelayed(peerCountRefresher, PEER_COUNT_REFRESH_MS)
 			} else {
 				// Realm is off, so there are no peer connections left to keep
-				// alive — drop the foreground notification. The service itself
-				// keeps running so it can restore it if re-enabled.
+				// alive — drop the foreground notification and stop expecting
+				// the service, so the watchdog stops resurrecting it and a
+				// START_STICKY restart doesn't bring it back. The service
+				// itself keeps running so it can restore everything if
+				// re-enabled in this same process.
+				AndroidConfigPrefs.setRealmEnabled(this, false)
+				AndroidConfigPrefs.setServiceExpected(this, false)
+				ServiceWatchdog.cancel(this)
 				handler.removeCallbacks(peerCountRefresher)
+				releaseMulticastLock()
 				stopForeground(STOP_FOREGROUND_REMOVE)
 			}
 		}
@@ -155,28 +185,23 @@ class RealmForegroundService : Service() {
 
 	override fun onBind(intent: Intent?): IBinder? = null
 
-	// The task being removed (app swiped away from recents) is the user's
-	// signal that they're done, unlike a plain app switch — so this is the
-	// one place the engine actually gets torn down.
+	// Deliberately does NOT tear down the engine. onTaskRemoved fires both
+	// on a genuine swipe-away and when the OS trims the backgrounded task,
+	// and the two are indistinguishable here; stopping the engine on the
+	// latter is what left the box offline for hours. Re-assert the watchdog
+	// (in case this arrived on a service the OS restarted) and let the
+	// engine keep running until an explicit Realm-off toggle.
 	override fun onTaskRemoved(rootIntent: Intent?) {
-		AndroidConfigPrefs.setServiceExpected(this, false)
-		ServiceWatchdog.cancel(this)
-		Thread {
-			try {
-				Mobile.stopServer()
-			} catch (e: Exception) {
-				Log.w(TAG, "failed to stop server on task removal", e)
-			}
-		}.start()
-		stopSelf()
+		if (AndroidConfigPrefs.isServiceExpected(this)) {
+			ServiceWatchdog.schedule(this)
+		}
 		super.onTaskRemoved(rootIntent)
 	}
 
 	override fun onDestroy() {
 		isRunning = false
 		handler.removeCallbacks(peerCountRefresher)
-		multicastLock?.let { if (it.isHeld) it.release() }
-		multicastLock = null
+		releaseMulticastLock()
 		super.onDestroy()
 	}
 
@@ -196,7 +221,7 @@ class RealmForegroundService : Service() {
 
 		// Process-local liveness flag: false whenever this process was never
 		// started or was killed (statics reset with the process), which is
-		// exactly when WatchdogReceiver should restart the service.
+		// exactly when WatchdogWorker should restart the service.
 		@Volatile
 		var isRunning = false
 			private set

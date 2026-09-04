@@ -164,8 +164,8 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 		}.start()
 	}
 
-	// No onDestroy override: RealmForegroundService owns the engine and stops it
-	// only when the user swipes the app away (RealmForegroundService.onTaskRemoved).
+	// No onDestroy override: RealmForegroundService owns the engine and keeps it
+	// running until an explicit Realm-off toggle in the web UI.
 
 	// Without this exemption the OS SIGKILLs RealmForegroundService's process
 	// under Doze/memory pressure and doesn't reliably restart it, so the realm

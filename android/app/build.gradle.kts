@@ -62,4 +62,10 @@ dependencies {
 	// the whole point being that capture survives the screen turning off /
 	// the app being backgrounded.
 	implementation("androidx.lifecycle:lifecycle-service:2.8.7")
+
+	// WorkManager: the RealmForegroundService watchdog. Runs in a fresh
+	// process (unfreezing the app), survives reboots on its own, and fires
+	// during Doze maintenance windows — none of which an AlarmManager
+	// setInexactRepeating alarm reliably does.
+	implementation("androidx.work:work-runtime-ktx:2.10.0")
 }
