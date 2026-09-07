@@ -168,7 +168,8 @@ type SmsBridge interface {
 // independently rather than shared via import.
 type CameraBridge interface {
 	ListCameras() (string, error)
-	StartCapture(deviceID string, tcpPort int32, width int32, height int32) error
+	ListMicrophones() (string, error)
+	StartCapture(deviceID string, audioDeviceID string, tcpPort int32, width int32, height int32) error
 	StopCapture() error
 }
 

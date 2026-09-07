@@ -4,10 +4,12 @@
 	<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 	<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 	<uses-permission android:name="android.permission.CAMERA" />
+	<uses-permission android:name="android.permission.RECORD_AUDIO" />
 	<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 	<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 	<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 	<uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
@@ -43,11 +45,12 @@
 		<!-- Started only while an RTSP client is actually connected (see
 		     CameraCaptureBridge/internal/camera.Manager); promoted to
 		     foreground for exactly that duration, independent of whether
-		     MainActivity is open or the screen is on. -->
+		     MainActivity is open or the screen is on. The microphone type
+		     applies only while a mic is also selected. -->
 		<service
 			android:name=".CameraForegroundService"
 			android:exported="false"
-			android:foregroundServiceType="camera" />
+			android:foregroundServiceType="camera|microphone" />
 
 		<receiver
 			android:name=".BootCompletedReceiver"

@@ -3,6 +3,7 @@ package camera
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"sync"
 	"time"
@@ -23,6 +24,8 @@ type Status struct {
 	Enabled           bool   `json:"enabled"`
 	DeviceID          string `json:"deviceId"`
 	DeviceLabel       string `json:"deviceLabel"`
+	AudioDeviceID     string `json:"audioDeviceId"`
+	AudioDeviceLabel  string `json:"audioDeviceLabel"`
 	Port              int    `json:"port"`
 	BindAllInterfaces bool   `json:"bindAllInterfaces"`
 	ExposeAsService   bool   `json:"exposeAsService"`
@@ -46,6 +49,8 @@ type SaveConfigParams struct {
 	Enabled           bool
 	DeviceID          string
 	DeviceLabel       string
+	AudioDeviceID     string
+	AudioDeviceLabel  string
 	Port              int
 	BindAllInterfaces bool
 	ExposeAsService   bool
@@ -61,10 +66,12 @@ type Manager struct {
 	mu     sync.Mutex
 	bridge PlatformBridge // nil on desktop
 
-	server *gortsplib.Server
-	stream *gortsplib.ServerStream
-	media  *description.Media
-	format *format.H264
+	server      *gortsplib.Server
+	stream      *gortsplib.ServerStream
+	media       *description.Media
+	format      *format.H264
+	audioMedia  *description.Media
+	audioFormat *format.MPEG4Audio
 
 	playingSessions map[*gortsplib.ServerSession]struct{}
 	stopTimer       *time.Timer
@@ -122,6 +129,14 @@ func (m *Manager) ListDevices() ([]Device, error) {
 	return c.listDevices()
 }
 
+// ListAudioDevices enumerates locally available microphones.
+func (m *Manager) ListAudioDevices() ([]Device, error) {
+	m.mu.Lock()
+	c := m.capturerSnapshotLocked()
+	m.mu.Unlock()
+	return c.listAudioDevices()
+}
+
 // GetStatus returns the current configuration and live capture state.
 func (m *Manager) GetStatus() Status {
 	m.mu.Lock()
@@ -135,6 +150,8 @@ func (m *Manager) statusLocked() Status {
 		Enabled:           cfg.Enabled,
 		DeviceID:          cfg.DeviceID,
 		DeviceLabel:       cfg.DeviceLabel,
+		AudioDeviceID:     cfg.AudioDeviceID,
+		AudioDeviceLabel:  cfg.AudioDeviceLabel,
 		Port:              cfg.Port,
 		BindAllInterfaces: cfg.BindAllInterfaces,
 		ExposeAsService:   cfg.ExposeAsService,
@@ -163,6 +180,8 @@ func (m *Manager) SaveConfig(p SaveConfigParams) (Status, error) {
 		Enabled:           p.Enabled,
 		DeviceID:          p.DeviceID,
 		DeviceLabel:       p.DeviceLabel,
+		AudioDeviceID:     p.AudioDeviceID,
+		AudioDeviceLabel:  p.AudioDeviceLabel,
 		Port:              p.Port,
 		BindAllInterfaces: p.BindAllInterfaces,
 		ExposeAsService:   p.ExposeAsService,
@@ -176,7 +195,7 @@ func (m *Manager) SaveConfig(p SaveConfigParams) (Status, error) {
 	}
 	m.store.Update(func(d *Data) { *d = next })
 
-	if (prev.DeviceID != next.DeviceID || prev.Resolution != next.Resolution) && m.capturing {
+	if (prev.DeviceID != next.DeviceID || prev.Resolution != next.Resolution || prev.AudioDeviceID != next.AudioDeviceID) && m.capturing {
 		m.stopCaptureLocked()
 	}
 
@@ -184,7 +203,7 @@ func (m *Manager) SaveConfig(p SaveConfigParams) (Status, error) {
 	case prev.Enabled && !next.Enabled:
 		m.stopCaptureLocked()
 		m.stopServerLocked()
-	case next.Enabled && (!prev.Enabled || prev.Port != next.Port || prev.BindAllInterfaces != next.BindAllInterfaces):
+	case next.Enabled && (!prev.Enabled || prev.Port != next.Port || prev.BindAllInterfaces != next.BindAllInterfaces || prev.AudioDeviceID != next.AudioDeviceID):
 		m.stopCaptureLocked()
 		m.stopServerLocked()
 		if err := m.startServerLocked(next); err != nil {
@@ -297,8 +316,24 @@ func (m *Manager) startCaptureLocked() {
 	m.lastError = ""
 
 	c := m.capturerSnapshotLocked()
-	stream, media, h264Format := m.stream, m.media, m.format
-	go m.runCapture(ctx, cfg.DeviceID, cfg.Resolution, stream, media, h264Format, c)
+	refs := captureRefs{
+		stream:      m.stream,
+		media:       m.media,
+		h264Format:  m.format,
+		audioMedia:  m.audioMedia,
+		audioFormat: m.audioFormat,
+	}
+	go m.runCapture(ctx, cfg, refs, c)
+}
+
+// captureRefs bundles the RTSP stream and its media/format handles captured
+// under m.mu for a runCapture goroutine.
+type captureRefs struct {
+	stream      *gortsplib.ServerStream
+	media       *description.Media
+	h264Format  *format.H264
+	audioMedia  *description.Media
+	audioFormat *format.MPEG4Audio
 }
 
 // stopCaptureLocked cancels the running capture, if any; the goroutine
@@ -311,42 +346,34 @@ func (m *Manager) stopCaptureLocked() {
 	}
 }
 
-// runCapture reads deviceID's Annex-B H.264 output via c and publishes it
-// to stream until ctx is cancelled or the source ends/errors.
-func (m *Manager) runCapture(
-	ctx context.Context,
-	deviceID string,
-	resolution string,
-	stream *gortsplib.ServerStream,
-	media *description.Media,
-	h264Format *format.H264,
-	c capturer,
-) {
-	reader, err := c.start(ctx, deviceID, resolution)
+// runCapture starts capture for cfg via c and publishes it to the RTSP
+// stream until ctx is cancelled or the source ends/errors. The audio track,
+// when a microphone is selected, arrives either muxed into an MPEG-TS video
+// stream (ffmpeg) or as a separate AAC stream alongside raw Annex-B video
+// (the Android bridge) — see captureStream.
+func (m *Manager) runCapture(ctx context.Context, cfg Data, refs captureRefs, c capturer) {
+	cs, err := c.start(ctx, cfg.DeviceID, cfg.Resolution, cfg.AudioDeviceID)
 	if err != nil {
 		m.mu.Lock()
 		m.capturing = false
 		m.captureCancel = nil
 		m.lastError = err.Error()
 		m.mu.Unlock()
-		log.Printf("camera: failed to start capture (device %q): %v", deviceID, err)
+		log.Printf("camera: failed to start capture (device %q): %v", cfg.DeviceID, err)
 		return
 	}
-	log.Printf("camera: capture started (device %q)", deviceID)
-	defer reader.Close()
+	log.Printf("camera: capture started (device %q)", cfg.DeviceID)
+	defer cs.Close()
 
-	enc, err := h264Format.CreateEncoder()
-	if err != nil {
-		m.mu.Lock()
-		m.capturing = false
-		m.captureCancel = nil
-		m.lastError = err.Error()
-		m.mu.Unlock()
-		return
+	var runErr error
+	switch {
+	case cs.muxed && refs.audioMedia != nil:
+		runErr = runMuxedCapture(ctx, cs.video, refs.stream, refs.media, refs.h264Format, refs.audioMedia, refs.audioFormat)
+	case cs.audio != nil && refs.audioMedia != nil:
+		runErr = runSplitCapture(ctx, cs.video, cs.audio, refs.stream, refs.media, refs.h264Format, refs.audioMedia, refs.audioFormat)
+	default:
+		runErr = m.runH264Capture(ctx, cs.video, refs)
 	}
-	pub := newH264Publisher(stream, media, h264Format, enc, 0)
-
-	runErr := readAnnexBUnits(ctx, reader, pub.publish)
 
 	m.mu.Lock()
 	m.capturing = false
@@ -359,4 +386,15 @@ func (m *Manager) runCapture(
 		log.Printf("camera: capture stopped")
 	}
 	m.mu.Unlock()
+}
+
+// runH264Capture publishes a raw Annex-B H.264 elementary stream from reader
+// to the RTSP video media until ctx is cancelled or reader ends/errors.
+func (m *Manager) runH264Capture(ctx context.Context, reader io.Reader, refs captureRefs) error {
+	enc, err := refs.h264Format.CreateEncoder()
+	if err != nil {
+		return err
+	}
+	pub := newH264Publisher(refs.stream, refs.media, refs.h264Format, enc, 0)
+	return readAnnexBUnits(ctx, reader, pub.publish)
 }

@@ -20,6 +20,8 @@ type Data struct {
 	Enabled           bool   `json:"enabled"`
 	DeviceID          string `json:"deviceId"`
 	DeviceLabel       string `json:"deviceLabel"`
+	AudioDeviceID     string `json:"audioDeviceId"`
+	AudioDeviceLabel  string `json:"audioDeviceLabel"`
 	Port              int    `json:"port"`
 	BindAllInterfaces bool   `json:"bindAllInterfaces"`
 	ExposeAsService   bool   `json:"exposeAsService"`

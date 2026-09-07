@@ -22,7 +22,11 @@ func (h *rtspHandler) OnConnClose(*gortsplib.ServerHandlerOnConnCloseCtx)     {}
 func (h *rtspHandler) OnSessionOpen(*gortsplib.ServerHandlerOnSessionOpenCtx) {}
 
 func (h *rtspHandler) OnSessionClose(ctx *gortsplib.ServerHandlerOnSessionCloseCtx) {
-	h.mgr.sessionStoppedPlaying(ctx.Session)
+	// Runs on the session goroutine that Server.Close() waits for. Manager.mu
+	// is held across stopServerLocked's Server.Close() call (e.g. from
+	// SaveConfig), so notifying synchronously here would deadlock: Close()
+	// waits for this goroutine, this goroutine waits for mu. Dispatch async.
+	go h.mgr.sessionStoppedPlaying(ctx.Session)
 }
 
 func (h *rtspHandler) OnDescribe(_ *gortsplib.ServerHandlerOnDescribeCtx) (*base.Response, *gortsplib.ServerStream, error) {
@@ -65,7 +69,20 @@ func (m *Manager) startServerLocked(cfg Data) error {
 		Type:    description.MediaTypeVideo,
 		Formats: []format.Format{h264Format},
 	}
-	desc := &description.Session{Medias: []*description.Media{media}}
+	medias := []*description.Media{media}
+
+	var audioMedia *description.Media
+	var audioFormat *format.MPEG4Audio
+	if cfg.AudioDeviceID != "" {
+		audioFormat = newMPEG4AudioFormat()
+		audioMedia = &description.Media{
+			Type:    description.MediaTypeAudio,
+			Formats: []format.Format{audioFormat},
+		}
+		medias = append(medias, audioMedia)
+	}
+
+	desc := &description.Session{Medias: medias}
 
 	server := &gortsplib.Server{
 		Handler:     &rtspHandler{mgr: m},
@@ -85,6 +102,8 @@ func (m *Manager) startServerLocked(cfg Data) error {
 	m.stream = stream
 	m.media = media
 	m.format = h264Format
+	m.audioMedia = audioMedia
+	m.audioFormat = audioFormat
 	log.Printf("camera: RTSP server listening on rtsp://%s/stream", server.RTSPAddress)
 	return nil
 }
@@ -102,6 +121,8 @@ func (m *Manager) stopServerLocked() {
 	}
 	m.media = nil
 	m.format = nil
+	m.audioMedia = nil
+	m.audioFormat = nil
 }
 
 // currentStream returns the running ServerStream, or nil if the camera

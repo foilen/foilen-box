@@ -389,11 +389,12 @@ var handlers = map[string]handlerFunc{
 
 	"realm.runSpeedTest": handleRealmRunSpeedTest,
 
-	"camera.getStatus":    handleCameraGetStatus,
-	"camera.listDevices":  handleCameraListDevices,
-	"camera.saveConfig":   handleCameraSaveConfig,
-	"camera.startCapture": handleCameraStartCapture,
-	"camera.stopCapture":  handleCameraStopCapture,
+	"camera.getStatus":        handleCameraGetStatus,
+	"camera.listDevices":      handleCameraListDevices,
+	"camera.listAudioDevices": handleCameraListAudioDevices,
+	"camera.saveConfig":       handleCameraSaveConfig,
+	"camera.startCapture":     handleCameraStartCapture,
+	"camera.stopCapture":      handleCameraStopCapture,
 
 	"sms.loadConfig":           handleSmsLoadConfig,
 	"sms.saveManagementConfig": handleSmsSaveManagementConfig,

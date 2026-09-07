@@ -46,17 +46,20 @@ type SmsBridge interface {
 // internal/camera uses ffmpeg instead. See internal/camera.PlatformBridge,
 // the interface the rest of the Go code actually consumes.
 //
-// ListCameras returns a JSON array of {"id":"...","label":"..."} objects.
-// StartCapture tells Android to start encoding deviceID at width x height to
-// H.264 and stream the raw Annex-B bytes to a TCP connection to
-// 127.0.0.1:tcpPort, which the Go side is already listening on; StopCapture
-// tells it to stop. Frame data
-// itself never crosses this gomobile boundary — only these lifecycle calls
-// do — since gomobile call overhead makes it unsuitable for a per-frame data
-// plane (see internal/camera.bridgeCapturer).
+// ListCameras/ListMicrophones return a JSON array of
+// {"id":"...","label":"..."} objects. StartCapture tells Android to start
+// encoding deviceID at width x height to H.264 and stream the raw Annex-B
+// bytes to a TCP connection to 127.0.0.1:tcpPort, which the Go side is
+// already listening on; when audioDeviceID is non-empty it opens a second
+// connection carrying AAC audio (each connection tagged with a leading
+// 'V'/'A' byte). StopCapture tells it to stop. Frame data itself never
+// crosses this gomobile boundary — only these lifecycle calls do — since
+// gomobile call overhead makes it unsuitable for a per-frame data plane
+// (see internal/camera.bridgeCapturer).
 type CameraBridge interface {
 	ListCameras() (string, error)
-	StartCapture(deviceID string, tcpPort int32, width int32, height int32) error
+	ListMicrophones() (string, error)
+	StartCapture(deviceID string, audioDeviceID string, tcpPort int32, width int32, height int32) error
 	StopCapture() error
 }
 

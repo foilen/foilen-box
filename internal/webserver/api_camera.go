@@ -26,6 +26,14 @@ func handleCameraListDevices(a *api, _ json.RawMessage) (any, error) {
 	return map[string]any{"devices": devices}, nil
 }
 
+func handleCameraListAudioDevices(a *api, _ json.RawMessage) (any, error) {
+	devices, err := a.camera.ListAudioDevices()
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"devices": devices}, nil
+}
+
 func handleCameraStartCapture(a *api, _ json.RawMessage) (any, error) {
 	return a.camera.StartCapture()
 }
@@ -39,6 +47,8 @@ func handleCameraSaveConfig(a *api, params json.RawMessage) (any, error) {
 		Enabled           bool   `json:"enabled"`
 		DeviceID          string `json:"deviceId"`
 		DeviceLabel       string `json:"deviceLabel"`
+		AudioDeviceID     string `json:"audioDeviceId"`
+		AudioDeviceLabel  string `json:"audioDeviceLabel"`
 		Port              int    `json:"port"`
 		BindAllInterfaces bool   `json:"bindAllInterfaces"`
 		ExposeAsService   bool   `json:"exposeAsService"`
@@ -60,6 +70,8 @@ func handleCameraSaveConfig(a *api, params json.RawMessage) (any, error) {
 		Enabled:           p.Enabled,
 		DeviceID:          p.DeviceID,
 		DeviceLabel:       p.DeviceLabel,
+		AudioDeviceID:     p.AudioDeviceID,
+		AudioDeviceLabel:  p.AudioDeviceLabel,
 		Port:              p.Port,
 		BindAllInterfaces: p.BindAllInterfaces,
 		ExposeAsService:   p.ExposeAsService,

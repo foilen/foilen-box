@@ -73,7 +73,7 @@
             go work vendor
           '';
 
-          vendorHash = "sha256-9PkTpt8Xp719Xe+C4nLmLAgAwhhR9LlwCQMgVS/ppGA=";
+          vendorHash = "sha256-E/EJpXq/J5ynXj2H7aZvcUFcmsSU5bomXeKMhEsbEoQ=";
 
           # Vendor assets (fonts, JS) are fetched by the vendorFonts/vendorJs
           # FODs above and copied in here, rather than committed to git.

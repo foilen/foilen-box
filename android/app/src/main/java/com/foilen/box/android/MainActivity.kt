@@ -126,8 +126,10 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 			)
 		}
 
-		if (!hasCameraPermission()) {
-			ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_REQUEST)
+		val cameraPerms = arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+			.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
+		if (cameraPerms.isNotEmpty()) {
+			ActivityCompat.requestPermissions(this, cameraPerms.toTypedArray(), CAMERA_PERMISSION_REQUEST)
 		}
 
 		// Required on Android 13+ for RealmForegroundService's foreground notification.

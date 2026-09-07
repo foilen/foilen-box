@@ -37,10 +37,16 @@ class CameraCaptureBridge(context: Context) : CameraBridge {
 		return result.toString()
 	}
 
-	override fun startCapture(deviceId: String, tcpPort: Int, width: Int, height: Int) {
+	// The platform exposes a single logical capture input (AudioSource.MIC);
+	// the OS routes it to whatever physical mic it deems primary.
+	override fun listMicrophones(): String =
+		JSONArray().put(JSONObject().apply { put("id", "mic"); put("label", "Microphone") }).toString()
+
+	override fun startCapture(deviceId: String, audioDeviceId: String, tcpPort: Int, width: Int, height: Int) {
 		val intent = Intent(appContext, CameraForegroundService::class.java)
 			.setAction(CameraForegroundService.ACTION_START)
 			.putExtra(CameraForegroundService.EXTRA_DEVICE_ID, deviceId)
+			.putExtra(CameraForegroundService.EXTRA_AUDIO_DEVICE_ID, audioDeviceId)
 			.putExtra(CameraForegroundService.EXTRA_PORT, tcpPort)
 			.putExtra(CameraForegroundService.EXTRA_WIDTH, width)
 			.putExtra(CameraForegroundService.EXTRA_HEIGHT, height)

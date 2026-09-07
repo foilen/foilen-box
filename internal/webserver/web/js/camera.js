@@ -11,6 +11,7 @@ export function initCameraTab(api) {
 	const enabledCheckbox = document.getElementById("camera-enabled");
 	const configBody = document.getElementById("camera-config-body");
 	const deviceSelect = document.getElementById("camera-device-select");
+	const audioSelect = document.getElementById("camera-audio-select");
 	const refreshDevicesButton = document.getElementById("camera-refresh-devices-button");
 	const resolutionSelect = document.getElementById("camera-resolution-select");
 	const portInput = document.getElementById("camera-port");
@@ -25,6 +26,7 @@ export function initCameraTab(api) {
 	const output = document.getElementById("camera-output");
 
 	let devices = [];
+	let audioDevices = [];
 	let dirty = false;
 
 	function markDirty() {
@@ -54,10 +56,36 @@ export function initCameraTab(api) {
 		}
 	}
 
-	async function refreshDevices(selectedId) {
-		const result = await api.call("camera.listDevices");
+	async function syncAudioOptions(selectedId) {
+		const want = selectedId ?? audioSelect.value;
+		audioSelect.innerHTML = "";
+		const entries = [{ id: "", label: "None (no audio)" }, ...audioDevices];
+		for (const device of entries) {
+			const option = document.createElement("md-select-option");
+			option.value = device.id;
+			const headline = document.createElement("div");
+			headline.slot = "headline";
+			headline.textContent = device.label || device.id;
+			option.appendChild(headline);
+			audioSelect.appendChild(option);
+		}
+		await new Promise((resolve) => requestAnimationFrame(resolve));
+		if (want && entries.some((d) => d.id === want)) {
+			audioSelect.value = want;
+		} else {
+			audioSelect.value = "";
+		}
+	}
+
+	async function refreshDevices(selectedId, selectedAudioId) {
+		const [result, audioResult] = await Promise.all([
+			api.call("camera.listDevices"),
+			api.call("camera.listAudioDevices"),
+		]);
 		devices = result.devices || [];
+		audioDevices = audioResult.devices || [];
 		await syncDeviceOptions(selectedId);
+		await syncAudioOptions(selectedAudioId);
 	}
 
 	function renderStatus(status) {
@@ -102,17 +130,20 @@ export function initCameraTab(api) {
 		// the device list if the one-shot fetch below raced camera readiness at
 		// page load and came back empty.
 		if (status.enabled && devices.length === 0) {
-			await refreshDevices(status.deviceId);
+			await refreshDevices(status.deviceId, status.audioDeviceId);
 		}
 		return status;
 	}
 
 	async function saveConfig() {
 		const selectedDevice = devices.find((d) => d.id === deviceSelect.value);
+		const selectedAudio = audioDevices.find((d) => d.id === audioSelect.value);
 		const params = {
 			enabled: enabledCheckbox.checked,
 			deviceId: deviceSelect.value || "",
 			deviceLabel: selectedDevice ? selectedDevice.label : "",
+			audioDeviceId: audioSelect.value || "",
+			audioDeviceLabel: selectedAudio ? selectedAudio.label : "",
 			resolution: resolutionSelect.value || "1280x720",
 			port: parseInt(portInput.value, 10) || 8554,
 			bindAllInterfaces: bindSelect.value === "all",
@@ -137,6 +168,7 @@ export function initCameraTab(api) {
 		}
 	});
 	deviceSelect.addEventListener("change", markDirty);
+	audioSelect.addEventListener("change", markDirty);
 	resolutionSelect.addEventListener("change", markDirty);
 	portInput.addEventListener("input", markDirty);
 	bindSelect.addEventListener("change", markDirty);
@@ -145,7 +177,7 @@ export function initCameraTab(api) {
 	refreshDevicesButton.addEventListener("click", () =>
 		report(output, async () => {
 			console.log("[action] refresh camera devices");
-			await refreshDevices(deviceSelect.value);
+			await refreshDevices(deviceSelect.value, audioSelect.value);
 		})
 	);
 
