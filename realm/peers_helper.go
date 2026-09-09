@@ -66,7 +66,7 @@ func (e *Engine) onDisconnected(net network.Network, conn network.Conn) {
 	}
 }
 
-// handleFoundPeer records a peer surfaced by mDNS/DHT discovery under
+// handleFoundPeer records a peer surfaced by UDP broadcast/DHT discovery under
 // groupName's rendezvous channel. The channel only narrows the search and
 // doesn't prove membership, so groupName isn't trusted here — GroupNames is
 // only populated once the peer passes a signed group-challenge (peer_identify.go).
@@ -224,8 +224,8 @@ func groupsByKey(groups []model.Group) map[string]model.Group {
 }
 
 // groupKey identifies a group across Reconcile calls: the group's key pair
-// is what actually defines its mDNS service and DHT topic, so a rename
-// (same key pair, different Name) must not be treated as add+remove.
+// is what actually defines its broadcast group hash and DHT topic, so a
+// rename (same key pair, different Name) must not be treated as add+remove.
 func groupKey(group model.Group) string {
 	return group.KeyPair.PrivateKeyBase64
 }

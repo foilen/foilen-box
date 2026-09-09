@@ -306,7 +306,7 @@ func (e *Engine) Restart(cfg model.Config) error {
 }
 
 // Reconcile applies cfg with minimal disruption: starts/stops the engine as
-// needed, or if already running, adjusts mDNS/DHT discovery and per-group
+// needed, or if already running, adjusts UDP broadcast/DHT discovery and per-group
 // loops in place without touching the host or existing connections. Only a
 // peer identity, listen-port, relay-service, or web-listener change forces a
 // full Restart.

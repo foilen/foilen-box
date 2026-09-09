@@ -142,8 +142,8 @@ func (s *Store) Flush() error {
 
 // SetConnected updates the connected flag for a known peer, if present.
 // Transitioning to connected also refreshes LastSeen, since a live
-// connection is itself proof the peer was just seen (discovery via
-// mDNS/DHT otherwise only refreshes LastSeen on its own periodic cadence).
+// connection is itself proof the peer was just seen (discovery via UDP
+// broadcast/DHT otherwise only refreshes LastSeen on its own periodic cadence).
 func (s *Store) SetConnected(id string, connected bool) {
 	s.db.Update(func(d *Data) {
 		p, ok := d.Peers[id]

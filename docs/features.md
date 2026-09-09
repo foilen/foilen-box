@@ -25,7 +25,7 @@ would want:
   actions/handlers of its own — it satisfies `Feature` mainly to hook into the engine's periodic tick)
 
 Realm (module `foilen-realm`, at `realm/`) is a standalone libp2p library:
-peer identity, group membership, discovery (mDNS/DHT), and a permission
+peer identity, group membership, discovery (UDP broadcast/DHT), and a permission
 system, with everything a peer can actually *do* implemented as a pluggable
 **Feature**. Foilen Box (the `foilen-box` module) is just one consumer of
 this library — it happens to register every built-in feature

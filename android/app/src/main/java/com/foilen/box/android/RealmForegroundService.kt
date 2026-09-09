@@ -36,8 +36,11 @@ import mobile.Mobile
  */
 class RealmForegroundService : Service() {
 
-	// Without this lock, Android drops incoming Wi-Fi multicast (mDNS/LAN peer
-	// discovery), forcing peer discovery through the public DHT only.
+	// Realm's LAN discovery (realm/discovery_udpbroadcast.go) sends/receives
+	// plain UDP broadcast to 255.255.255.255. Broadcast frames fall under
+	// Android's non-unicast Wi-Fi filter, so without this lock the radio
+	// drops incoming discovery packets, forcing peer discovery through the
+	// public DHT only.
 	private var multicastLock: WifiManager.MulticastLock? = null
 
 	private val handler = Handler(Looper.getMainLooper())
@@ -56,13 +59,13 @@ class RealmForegroundService : Service() {
 	}
 
 	// Peers stay connected over their own established sockets — the multicast
-	// lock is only needed to *discover new* peers via mDNS, not to keep
-	// existing ones alive. Holding it permanently disables the Wi-Fi radio's
-	// hardware multicast filter, so it wakes the radio/CPU for every LAN
-	// mDNS/SSDP/broadcast packet, even overnight with a stable, fully
-	// connected peer set. Instead, duty-cycle it: acquire only for one tick
-	// out of every DUTY_CYCLE_TICKS, which still gives regular chances to
-	// discover new LAN peers without holding it open continuously.
+	// lock is only needed to *discover new* peers via the UDP broadcast beacon,
+	// not to keep existing ones alive. Holding it permanently disables the
+	// Wi-Fi radio's non-unicast filter, so it wakes the radio/CPU for every
+	// broadcast/multicast packet on the LAN, even overnight with a stable,
+	// fully connected peer set. Instead, duty-cycle it: acquire only for one
+	// tick out of every DUTY_CYCLE_TICKS, which still gives regular chances to
+	// discover new peers without holding it open continuously.
 	private fun refreshMulticastLockDutyCycle() {
 		dutyCycleTick = (dutyCycleTick + 1) % DUTY_CYCLE_TICKS
 		if (dutyCycleTick == 0) {

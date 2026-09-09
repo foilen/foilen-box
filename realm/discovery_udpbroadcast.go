@@ -74,7 +74,7 @@ func (e *Engine) stopUdpBroadcastLocked() {
 // unix and Windows). Broadcasting to the limited-broadcast address, rather
 // than each interface's directed broadcast address, avoids enumerating
 // network interfaces — which is SELinux-blocked for regular apps on Android
-// (golang/go#40569), the reason mDNS couldn't be used there.
+// (golang/go#40569).
 func listenUdpBroadcast() (*net.UDPConn, error) {
 	lc := net.ListenConfig{
 		Control: func(_, _ string, c syscall.RawConn) error {
