@@ -44,10 +44,31 @@ class RealmForegroundService : Service() {
 
 	// Peer counts aren't push-notified from Go, so the notification text is
 	// kept fresh by polling Mobile.connectedPeersCount/peersTotalCount.
+	// Same tick also drives the multicast lock duty cycle below.
+	private var dutyCycleTick = 0
+
 	private val peerCountRefresher = object : Runnable {
 		override fun run() {
 			updateNotification()
+			refreshMulticastLockDutyCycle()
 			handler.postDelayed(this, PEER_COUNT_REFRESH_MS)
+		}
+	}
+
+	// Peers stay connected over their own established sockets — the multicast
+	// lock is only needed to *discover new* peers via mDNS, not to keep
+	// existing ones alive. Holding it permanently disables the Wi-Fi radio's
+	// hardware multicast filter, so it wakes the radio/CPU for every LAN
+	// mDNS/SSDP/broadcast packet, even overnight with a stable, fully
+	// connected peer set. Instead, duty-cycle it: acquire only for one tick
+	// out of every DUTY_CYCLE_TICKS, which still gives regular chances to
+	// discover new LAN peers without holding it open continuously.
+	private fun refreshMulticastLockDutyCycle() {
+		dutyCycleTick = (dutyCycleTick + 1) % DUTY_CYCLE_TICKS
+		if (dutyCycleTick == 0) {
+			acquireMulticastLock()
+		} else {
+			releaseMulticastLock()
 		}
 	}
 
@@ -228,7 +249,11 @@ class RealmForegroundService : Service() {
 		private const val NOTIFICATION_CHANNEL_ID = "realm_peer_service"
 		private const val NOTIFICATION_ID = 2
 		private const val EXTRA_ENABLED = "enabled"
-		private const val PEER_COUNT_REFRESH_MS = 30_000L
+		private const val PEER_COUNT_REFRESH_MS = 5 * 60_000L
+
+		// Multicast lock duty cycle: held for 1 tick out of every 6
+		// (~5 min on / ~25 min off at PEER_COUNT_REFRESH_MS = 5 min).
+		private const val DUTY_CYCLE_TICKS = 6
 
 		// The service is already running (started from MainActivity.onCreate)
 		// by the time Realm can be toggled from the web UI, so a plain
