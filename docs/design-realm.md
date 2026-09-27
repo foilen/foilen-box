@@ -164,6 +164,13 @@ An application-level replacement for circuit-relay-v2:
 - Missing or corrupt files load as defaults instead of failing (same behavior as the other config services).
 - `config.New` applies the platform default DHT mode only when `realm.json` doesn't exist yet; a persisted
   value always wins.
+- `features/maps/store.go` is the exception: it uses a single leveldb database (`$dir/realm-maps-db`)
+  instead of jsondb, since a map can grow large and jsondb would rewrite the whole value on every mutation.
+  Keys are namespaced per map (`/<mapID>/mapmeta`, `/<mapID>/state/<key>`, `/<mapID>/event/<key>`,
+  `/mapindex/<mapID>` for cheap startup enumeration, `/peercursor/<groupID>`), so a mutation touches only the
+  changed entry. Entries and events are never cached in full in memory — only the small per-map `mapmeta` and
+  the peer cursors are — so memory stays bounded by the number of maps, not the number of entries within them.
+  Like the DHT's leveldb datastore, the `Store` must be `Close`d before another `Store` opens the same dir.
 
 ## Key pairs (`keypair`, `model/keypair.go`)
 
@@ -192,8 +199,9 @@ load and on import (never trusted from input).
 - LWW merge rejects only strictly older events, so same-millisecond mutations still apply in call order.
   Only a real content change is logged, persisted and re-broadcast, so periodic identical re-posts don't
   flood the mesh.
-- `persist` snapshots entries before unlocking since JSON marshaling would otherwise race with concurrent
-  `ApplyEvent` calls.
+- `ApplyEvent` holds `s.mu` across both the leveldb read (the LWW check) and the batched write of the
+  `state`/`event` keys, replacing the old design's full in-memory-map rewrite with two point writes. Listener
+  callbacks still run after unlocking, to avoid blocking other `Store` calls and any reentrancy risk.
 - `Store.Subscribe` doesn't dedupe listeners, so the feature installs its own listener only once even though
   `RegisterHandlers` runs on every host creation.
 - Auto-delete sweep: at most hourly, at a minute chosen randomly at startup so members don't all sweep at the

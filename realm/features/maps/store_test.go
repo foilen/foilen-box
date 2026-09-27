@@ -1,8 +1,6 @@
 package maps
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"foilen-realm/model"
@@ -117,6 +115,9 @@ func TestPeerCursorIsPerPeerAndPerStore(t *testing.T) {
 		t.Fatalf("LastFromPeerForStore(group1, store1, peerB) = %d after stale update, want unchanged 10", got)
 	}
 
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
 	reloaded, err := NewStore(dir)
 	if err != nil {
 		t.Fatalf("reload NewStore: %v", err)
@@ -168,14 +169,9 @@ func TestDeleteMapRemovesMapFromListSummariesAndDisk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	id := mapID("group1", "store1")
-	statePath := filepath.Join(dir, subDirName, id+".state.json")
-	eventsPath := filepath.Join(dir, subDirName, id+".events.json")
-	if _, err := os.Stat(statePath); err != nil {
-		t.Fatalf("expected %s to exist before delete: %v", statePath, err)
-	}
-	if _, err := os.Stat(eventsPath); err != nil {
-		t.Fatalf("expected %s to exist before delete: %v", eventsPath, err)
+	summaries := s.ListSummaries([]model.Group{{Name: "g", KeyPair: model.KeyPair{ID: "group1"}}})
+	if len(summaries) != 1 {
+		t.Fatalf("ListSummaries before delete = %+v, want one map", summaries)
 	}
 
 	if err := s.DeleteMap("group1", "store1"); err != nil {
@@ -186,16 +182,9 @@ func TestDeleteMapRemovesMapFromListSummariesAndDisk(t *testing.T) {
 		t.Fatalf("DeleteMap on already-deleted map: %v", err)
 	}
 
-	summaries := s.ListSummaries([]model.Group{{Name: "g", KeyPair: model.KeyPair{ID: "group1"}}})
+	summaries = s.ListSummaries([]model.Group{{Name: "g", KeyPair: model.KeyPair{ID: "group1"}}})
 	if len(summaries) != 0 {
 		t.Fatalf("ListSummaries after DeleteMap = %+v, want none", summaries)
-	}
-
-	if _, err := os.Stat(statePath); !os.IsNotExist(err) {
-		t.Fatalf("expected %s to be removed, stat err = %v", statePath, err)
-	}
-	if _, err := os.Stat(eventsPath); !os.IsNotExist(err) {
-		t.Fatalf("expected %s to be removed, stat err = %v", eventsPath, err)
 	}
 }
 
@@ -209,6 +198,9 @@ func TestStorePersistsAcrossReload(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if err := s.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
 	reloaded, err := NewStore(dir)
 	if err != nil {
 		t.Fatalf("reload NewStore: %v", err)

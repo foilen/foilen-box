@@ -1,19 +1,25 @@
 package maps
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
-	"os"
+	"maps"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"sync"
+
+	ds "github.com/ipfs/go-datastore"
+	dsq "github.com/ipfs/go-datastore/query"
+	leveldb "github.com/ipfs/go-ds-leveldb"
 
 	"foilen-realm/model"
 )
 
-const subDirName = "realm-maps"
+const dbDirName = "realm-maps-db"
 
 var unsafeChars = regexp.MustCompile(`[^A-Za-z0-9._-]`)
 
@@ -26,13 +32,16 @@ type listenerEntry struct {
 	fn func(model.ChangeEvent)
 }
 
+type mapInfo struct {
+	GroupID   string `json:"groupId"`
+	StoreName string `json:"storeName"`
+}
+
 type Store struct {
-	dir string
+	db *leveldb.Datastore
 
-	mu     sync.Mutex
-	states map[string]model.RealmMap
-	events map[string][]model.MapEvent
-
+	mu          sync.Mutex
+	mapMeta     map[string]mapInfo
 	peerCursors map[string]map[string]map[string]int64
 
 	listeners      []listenerEntry
@@ -40,80 +49,103 @@ type Store struct {
 }
 
 func NewStore(dir string) (*Store, error) {
-	mapsDir := filepath.Join(dir, subDirName)
-	if err := os.MkdirAll(mapsDir, 0o755); err != nil {
-		return nil, err
-	}
-	s := &Store{dir: mapsDir, states: map[string]model.RealmMap{}, events: map[string][]model.MapEvent{}, peerCursors: map[string]map[string]map[string]int64{}}
-
-	entries, err := os.ReadDir(mapsDir)
+	db, err := leveldb.NewDatastore(filepath.Join(dir, dbDirName), nil)
 	if err != nil {
 		return nil, err
 	}
-	for _, entry := range entries {
-		if entry.IsDir() {
+	s := &Store{db: db, mapMeta: map[string]mapInfo{}, peerCursors: map[string]map[string]map[string]int64{}}
+
+	ctx := context.Background()
+
+	idxEntries, err := queryRest(ctx, db, dsq.Query{Prefix: "/mapindex", KeysOnly: true})
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	for _, e := range idxEntries {
+		id := strings.TrimPrefix(e.Key, "/mapindex/")
+		data, err := db.Get(ctx, ds.NewKey("/"+id+"/mapmeta"))
+		if err != nil {
 			continue
 		}
-		name := entry.Name()
-		switch {
-		case len(name) > len(".state.json") && name[len(name)-len(".state.json"):] == ".state.json":
-			id := name[:len(name)-len(".state.json")]
-			data, err := os.ReadFile(filepath.Join(mapsDir, name))
-			if err != nil {
-				continue
-			}
-			var rm model.RealmMap
-			if err := json.Unmarshal(data, &rm); err != nil {
-				continue
-			}
-			s.states[id] = rm
-		case len(name) > len(".events.json") && name[len(name)-len(".events.json"):] == ".events.json":
-			id := name[:len(name)-len(".events.json")]
-			data, err := os.ReadFile(filepath.Join(mapsDir, name))
-			if err != nil {
-				continue
-			}
-			var evs []model.MapEvent
-			if err := json.Unmarshal(data, &evs); err != nil {
-				continue
-			}
-			s.events[id] = evs
-		case len(name) > len(".peercursors.json") && name[len(name)-len(".peercursors.json"):] == ".peercursors.json":
-			groupID := name[:len(name)-len(".peercursors.json")]
-			data, err := os.ReadFile(filepath.Join(mapsDir, name))
-			if err != nil {
-				continue
-			}
-			var cursors map[string]map[string]int64
-			if err := json.Unmarshal(data, &cursors); err != nil {
-				continue
-			}
-			s.peerCursors[groupID] = cursors
+		var info mapInfo
+		if err := json.Unmarshal(data, &info); err != nil {
+			continue
 		}
+		s.mapMeta[id] = info
 	}
+
+	cursorEntries, err := queryRest(ctx, db, dsq.Query{Prefix: "/peercursor"})
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	for _, e := range cursorEntries {
+		groupID := strings.TrimPrefix(e.Key, "/peercursor/")
+		var cursors map[string]map[string]int64
+		if err := json.Unmarshal(e.Value, &cursors); err != nil {
+			continue
+		}
+		s.peerCursors[groupID] = cursors
+	}
+
 	return s, nil
+}
+
+func (s *Store) Close() error {
+	return s.db.Close()
+}
+
+func queryRest(ctx context.Context, db *leveldb.Datastore, q dsq.Query) ([]dsq.Entry, error) {
+	results, err := db.Query(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	return results.Rest()
+}
+
+func (s *Store) stateEntries(ctx context.Context, id string) map[string]model.MapEntry {
+	prefix := "/" + id + "/state"
+	entries, err := queryRest(ctx, s.db, dsq.Query{Prefix: prefix})
+	if err != nil {
+		log.Printf("realm maps: query %s failed: %v", prefix, err)
+		return nil
+	}
+	out := make(map[string]model.MapEntry, len(entries))
+	for _, e := range entries {
+		key := strings.TrimPrefix(e.Key, prefix+"/")
+		var me model.MapEntry
+		if err := json.Unmarshal(e.Value, &me); err != nil {
+			continue
+		}
+		out[key] = me
+	}
+	return out
 }
 
 // Maps
 
 func (s *Store) ListSummaries(cfgGroups []model.Group) []model.RealmMapSummary {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	metaSnapshot := make(map[string]mapInfo, len(s.mapMeta))
+	maps.Copy(metaSnapshot, s.mapMeta)
+	s.mu.Unlock()
 
 	groupNames := make(map[string]string, len(cfgGroups))
 	for _, g := range cfgGroups {
 		groupNames[g.KeyPair.ID] = g.Name
 	}
 
-	result := make([]model.RealmMapSummary, 0, len(s.states))
-	for _, rm := range s.states {
-		groupName, ok := groupNames[rm.GroupID]
+	ctx := context.Background()
+	result := make([]model.RealmMapSummary, 0, len(metaSnapshot))
+	for id, info := range metaSnapshot {
+		groupName, ok := groupNames[info.GroupID]
 		if !ok {
 			continue
 		}
 		count := 0
 		var maxUpdated int64
-		for _, e := range rm.Entries {
+		for _, e := range s.stateEntries(ctx, id) {
 			if e.Deleted {
 				continue
 			}
@@ -123,9 +155,9 @@ func (s *Store) ListSummaries(cfgGroups []model.Group) []model.RealmMapSummary {
 			}
 		}
 		result = append(result, model.RealmMapSummary{
-			GroupID:             rm.GroupID,
+			GroupID:             info.GroupID,
 			GroupName:           groupName,
-			StoreName:           rm.StoreName,
+			StoreName:           info.StoreName,
 			EntryCount:          count,
 			UpdatedAtUnixMillis: maxUpdated,
 		})
@@ -140,15 +172,9 @@ func (s *Store) ListSummaries(cfgGroups []model.Group) []model.RealmMapSummary {
 }
 
 func (s *Store) GetMap(groupID, storeName string) model.RealmMap {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	rm, ok := s.states[mapID(groupID, storeName)]
+	id := mapID(groupID, storeName)
 	result := model.RealmMap{GroupID: groupID, StoreName: storeName, Entries: map[string]model.MapEntry{}}
-	if !ok {
-		return result
-	}
-	for k, e := range rm.Entries {
+	for k, e := range s.stateEntries(context.Background(), id) {
 		if !e.Deleted {
 			result.Entries[k] = e
 		}
@@ -156,38 +182,62 @@ func (s *Store) GetMap(groupID, storeName string) model.RealmMap {
 	return result
 }
 
+func (s *Store) ensureMapMetaLocked(ctx context.Context, id, groupID, storeName string) error {
+	if _, ok := s.mapMeta[id]; ok {
+		return nil
+	}
+	info := mapInfo{GroupID: groupID, StoreName: storeName}
+	data, err := json.Marshal(info)
+	if err != nil {
+		return err
+	}
+	if err := s.db.Put(ctx, ds.NewKey("/"+id+"/mapmeta"), data); err != nil {
+		return err
+	}
+	if err := s.db.Put(ctx, ds.NewKey("/mapindex/"+id), []byte{}); err != nil {
+		return err
+	}
+	s.mapMeta[id] = info
+	return nil
+}
+
 func (s *Store) CreateMap(groupID, storeName string) error {
 	id := mapID(groupID, storeName)
 
 	s.mu.Lock()
-	if _, ok := s.states[id]; ok {
-		s.mu.Unlock()
-		return nil
-	}
-	s.states[id] = model.RealmMap{GroupID: groupID, StoreName: storeName, Entries: map[string]model.MapEntry{}}
-	s.events[id] = nil
-	s.mu.Unlock()
-
-	return s.persist(id)
+	defer s.mu.Unlock()
+	return s.ensureMapMetaLocked(context.Background(), id, groupID, storeName)
 }
 
 func (s *Store) DeleteMap(groupID, storeName string) error {
 	id := mapID(groupID, storeName)
+	ctx := context.Background()
 
 	s.mu.Lock()
-	delete(s.states, id)
-	delete(s.events, id)
+	delete(s.mapMeta, id)
 	s.mu.Unlock()
 
-	var firstErr error
-	for _, suffix := range []string{".state.json", ".events.json"} {
-		if err := os.Remove(filepath.Join(s.dir, id+suffix)); err != nil && !errors.Is(err, os.ErrNotExist) {
-			if firstErr == nil {
-				firstErr = err
-			}
+	if err := s.db.Delete(ctx, ds.NewKey("/mapindex/"+id)); err != nil {
+		return err
+	}
+
+	entries, err := queryRest(ctx, s.db, dsq.Query{Prefix: "/" + id, KeysOnly: true})
+	if err != nil {
+		return err
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+	batch, err := s.db.Batch(ctx)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if err := batch.Delete(ctx, ds.NewKey(e.Key)); err != nil {
+			return err
 		}
 	}
-	return firstErr
+	return batch.Commit(ctx)
 }
 
 // Events
@@ -213,36 +263,68 @@ func (s *Store) Subscribe(fn func(model.ChangeEvent)) (unsubscribe func()) {
 
 func (s *Store) ApplyEvent(groupID, storeName, key string, entry model.MapEntry) (bool, error) {
 	id := mapID(groupID, storeName)
+	ctx := context.Background()
+	stateKey := ds.NewKey("/" + id + "/state/" + key)
+	eventKey := ds.NewKey("/" + id + "/event/" + key)
 
 	s.mu.Lock()
-	rm, ok := s.states[id]
-	if !ok {
-		rm = model.RealmMap{GroupID: groupID, StoreName: storeName, Entries: map[string]model.MapEntry{}}
+
+	if err := s.ensureMapMetaLocked(ctx, id, groupID, storeName); err != nil {
+		s.mu.Unlock()
+		return false, err
 	}
 
-	existing, hadKey := rm.Entries[key]
+	var existing model.MapEntry
+	hadKey := false
+	switch data, err := s.db.Get(ctx, stateKey); {
+	case err == nil:
+		if err := json.Unmarshal(data, &existing); err != nil {
+			s.mu.Unlock()
+			return false, err
+		}
+		hadKey = true
+	case errors.Is(err, ds.ErrNotFound):
+	default:
+		s.mu.Unlock()
+		return false, err
+	}
+
 	if hadKey && existing.UpdatedAtUnixMillis > entry.UpdatedAtUnixMillis {
 		s.mu.Unlock()
 		return false, nil
 	}
 
 	contentChanged := !hadKey || existing.Value != entry.Value || existing.Deleted != entry.Deleted
-	rm.Entries[key] = entry
-	s.states[id] = rm
 
-	evs := s.events[id]
-	replaced := false
-	for i := range evs {
-		if evs[i].Key == key {
-			evs[i] = model.MapEvent{GroupID: groupID, StoreName: storeName, Key: key, Value: entry.Value, Deleted: entry.Deleted, UpdatedAtUnixMillis: entry.UpdatedAtUnixMillis, OriginPeerID: entry.OriginPeerID, Nonce: entry.Nonce, IdentitySignature: entry.IdentitySignature}
-			replaced = true
-			break
-		}
+	entryData, err := json.Marshal(entry)
+	if err != nil {
+		s.mu.Unlock()
+		return false, err
 	}
-	if !replaced {
-		evs = append(evs, model.MapEvent{GroupID: groupID, StoreName: storeName, Key: key, Value: entry.Value, Deleted: entry.Deleted, UpdatedAtUnixMillis: entry.UpdatedAtUnixMillis, OriginPeerID: entry.OriginPeerID, Nonce: entry.Nonce, IdentitySignature: entry.IdentitySignature})
+	ev := model.MapEvent{GroupID: groupID, StoreName: storeName, Key: key, Value: entry.Value, Deleted: entry.Deleted, UpdatedAtUnixMillis: entry.UpdatedAtUnixMillis, OriginPeerID: entry.OriginPeerID, Nonce: entry.Nonce, IdentitySignature: entry.IdentitySignature}
+	eventData, err := json.Marshal(ev)
+	if err != nil {
+		s.mu.Unlock()
+		return false, err
 	}
-	s.events[id] = evs
+
+	batch, err := s.db.Batch(ctx)
+	if err != nil {
+		s.mu.Unlock()
+		return false, err
+	}
+	if err := batch.Put(ctx, stateKey, entryData); err != nil {
+		s.mu.Unlock()
+		return false, err
+	}
+	if err := batch.Put(ctx, eventKey, eventData); err != nil {
+		s.mu.Unlock()
+		return false, err
+	}
+	if err := batch.Commit(ctx); err != nil {
+		s.mu.Unlock()
+		return false, err
+	}
 
 	wasLive := hadKey && !existing.Deleted
 	isLive := !entry.Deleted
@@ -270,10 +352,6 @@ func (s *Store) ApplyEvent(groupID, storeName, key string, entry model.MapEntry)
 	}
 	s.mu.Unlock()
 
-	if err := s.persist(id); err != nil {
-		return contentChanged, err
-	}
-
 	if change != nil {
 		for _, fn := range listenersSnapshot {
 			fn(*change)
@@ -285,14 +363,22 @@ func (s *Store) ApplyEvent(groupID, storeName, key string, entry model.MapEntry)
 
 func (s *Store) EventsSinceForStore(groupID, storeName string, sinceUnix int64) []model.MapEvent {
 	id := mapID(groupID, storeName)
+	prefix := "/" + id + "/event"
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	entries, err := queryRest(context.Background(), s.db, dsq.Query{Prefix: prefix})
+	if err != nil {
+		log.Printf("realm maps: query %s failed: %v", prefix, err)
+		return nil
+	}
 
 	var result []model.MapEvent
-	for _, e := range s.events[id] {
-		if e.UpdatedAtUnixMillis > sinceUnix {
-			result = append(result, e)
+	for _, e := range entries {
+		var ev model.MapEvent
+		if err := json.Unmarshal(e.Value, &ev); err != nil {
+			continue
+		}
+		if ev.UpdatedAtUnixMillis > sinceUnix {
+			result = append(result, ev)
 		}
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].UpdatedAtUnixMillis < result[j].UpdatedAtUnixMillis })
@@ -328,43 +414,17 @@ func (s *Store) RecordFromPeerForStore(groupID, storeName, peerID string, ts int
 	snapshot := make(map[string]map[string]int64, len(byStore))
 	for st, m := range byStore {
 		inner := make(map[string]int64, len(m))
-		for k, v := range m {
-			inner[k] = v
-		}
+		maps.Copy(inner, m)
 		snapshot[st] = inner
 	}
 	s.mu.Unlock()
 
-	return s.writeJSON(groupID+".peercursors.json", snapshot)
-}
-
-// Persistence
-
-func (s *Store) persist(id string) error {
-	s.mu.Lock()
-	rm := s.states[id]
-	entries := make(map[string]model.MapEntry, len(rm.Entries))
-	for k, e := range rm.Entries {
-		entries[k] = e
-	}
-	rm.Entries = entries
-	evs := make([]model.MapEvent, len(s.events[id]))
-	copy(evs, s.events[id])
-	s.mu.Unlock()
-
-	if err := s.writeJSON(id+".state.json", rm); err != nil {
-		return err
-	}
-	return s.writeJSON(id+".events.json", evs)
-}
-
-func (s *Store) writeJSON(name string, v any) error {
-	data, err := json.MarshalIndent(v, "", "  ")
+	data, err := json.Marshal(snapshot)
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(s.dir, name), data, 0o644); err != nil {
-		log.Printf("realm maps: failed to write %s: %v", name, err)
+	if err := s.db.Put(context.Background(), ds.NewKey("/peercursor/"+groupID), data); err != nil {
+		log.Printf("realm maps: failed to write peer cursors for group %s: %v", groupID, err)
 		return err
 	}
 	return nil

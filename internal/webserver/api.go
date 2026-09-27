@@ -52,6 +52,7 @@ type api struct {
 	realmScripts              *realmscripts.Feature
 	realmServices             *realmservices.Feature
 	realmServicesStore        *realmservices.Store
+	realmMapsStore            *realmmaps.Store
 	realmMapsFeature          *realmmaps.Feature
 	realmSpeedTest            *boxspeedtest.Feature
 	realmIdentity             *realmidentity.Feature
@@ -152,6 +153,7 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 		realmScripts:              scriptsFeature,
 		realmServices:             servicesFeature,
 		realmServicesStore:        realmServicesStore,
+		realmMapsStore:            realmMapsStore,
 		realmMapsFeature:          mapsFeature,
 		realmSpeedTest:            speedTestFeature,
 		realmIdentity:             identityFeature,
@@ -188,6 +190,9 @@ func (a *api) shutdown() {
 	}
 	if err := a.realmServicesStore.Flush(); err != nil {
 		log.Printf("realm: failed to flush services store: %v", err)
+	}
+	if err := a.realmMapsStore.Close(); err != nil {
+		log.Printf("realm: failed to close maps store: %v", err)
 	}
 }
 
