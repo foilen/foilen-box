@@ -107,10 +107,9 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 	servicesFeature := realmservices.New(realmServicesStore)
 	mapsFeature := realmmaps.New(realmMapsStore)
 	announceFeature := realmannounce.New(mapsFeature,
-		func() string { return appspec.Report(dataDir) },
-		func() realmannounce.SpecSummary {
-			s := appspec.GetSummary(dataDir)
-			return realmannounce.SpecSummary{OS: s.OS, CPU: s.CPU, Mem: s.Mem, Battery: s.Battery, GPU: s.GPU, Disk: s.Disk}
+		func() (string, realmannounce.SpecSummary) {
+			text, s := appspec.GetSpec(dataDir)
+			return text, realmannounce.SpecSummary{OS: s.OS, CPU: s.CPU, Mem: s.Mem, Battery: s.Battery, GPU: s.GPU, Disk: s.Disk}
 		},
 		func() string { return resolveHostname(hostnameOverride) },
 		appVersion,

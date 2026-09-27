@@ -20,6 +20,18 @@ type Summary struct {
 }
 
 func GetSummary(extraPath string) Summary {
+	return buildSummary(extraPath, batteryInfos())
+}
+
+// GetSpec gathers system info once and returns both the human-readable report and its
+// summary, so fields backed by flaky sources (e.g. the Android battery bridge) can't
+// disagree between the two just because they'd otherwise be probed twice.
+func GetSpec(extraPath string) (string, Summary) {
+	battery := batteryInfos()
+	return buildReport(extraPath, battery), buildSummary(extraPath, battery)
+}
+
+func buildSummary(extraPath string, battery []batteryInfo) Summary {
 	var s Summary
 
 	s.OS = osName()
@@ -44,9 +56,9 @@ func GetSummary(extraPath string) Summary {
 		s.Mem = fmt.Sprintf("%s / %s used", formatBytes(vmem.Used), formatBytes(vmem.Total))
 	}
 
-	if infos := batteryInfos(); len(infos) > 0 {
-		names := make([]string, len(infos))
-		for i, info := range infos {
+	if len(battery) > 0 {
+		names := make([]string, len(battery))
+		for i, info := range battery {
 			names[i] = info.String()
 		}
 		s.Battery = strings.Join(names, ", ")
@@ -68,6 +80,10 @@ func GetSummary(extraPath string) Summary {
 }
 
 func Report(extraPath string) string {
+	return buildReport(extraPath, batteryInfos())
+}
+
+func buildReport(extraPath string, battery []batteryInfo) string {
 	var sb strings.Builder
 
 	sb.WriteString("=== Operating System ===\n")
@@ -118,9 +134,9 @@ func Report(extraPath string) string {
 	}
 	sb.WriteString("\n")
 
-	if infos := batteryInfos(); len(infos) > 0 {
+	if len(battery) > 0 {
 		sb.WriteString("=== Battery ===\n")
-		for _, info := range infos {
+		for _, info := range battery {
 			fmt.Fprintf(&sb, "%s\n", info)
 		}
 		sb.WriteString("\n")

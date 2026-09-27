@@ -119,7 +119,11 @@ See `pattern-encrypted-realmmap-feature.md` for the general pattern.
 - GPU detection shells out to OS tools since gopsutil has no GPU support. On Linux, AMD marketing names come
   from `amdgpu.ids` since lspci can't disambiguate SKUs sharing a device id. On Windows, `AdapterRAM` is
   32-bit and overflows above 4GB, so VRAM comes from the registry and `AdapterRAM` is only a fallback.
-- Battery: on Android, sysfs is usually SELinux-blocked, so Kotlin's `BatteryManager` provides it.
+- Battery: on Android, sysfs is usually SELinux-blocked, so Kotlin's `BatteryManager` provides it. That bridge
+  call is occasionally flaky (a single read can transiently come back empty), so `GetSpec` reads it once per
+  call and reuses the result for both the report text and the summary — reading it twice (once per output) let
+  the two disagree, e.g. the periodic announce's summary showing no battery while the report text it was
+  bundled with did.
 - Disk usage falls back to the app storage path on Android, where the sandbox often can't stat system mounts.
 
 ## Logging (`internal/logging`)

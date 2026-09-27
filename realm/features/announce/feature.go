@@ -48,8 +48,7 @@ type peerAnnounceInfo struct {
 
 type Feature struct {
 	mapsFeature *realmmaps.Feature
-	specText    func() string
-	specSummary func() SpecSummary
+	spec        func() (string, SpecSummary)
 	hostname    func() string
 	appVersion  func() string
 
@@ -59,8 +58,8 @@ type Feature struct {
 	postedInfo    peerAnnounceInfo
 }
 
-func New(mapsFeature *realmmaps.Feature, specText func() string, specSummary func() SpecSummary, hostname func() string, appVersion func() string) *Feature {
-	return &Feature{mapsFeature: mapsFeature, specText: specText, specSummary: specSummary, hostname: hostname, appVersion: appVersion}
+func New(mapsFeature *realmmaps.Feature, spec func() (string, SpecSummary), hostname func() string, appVersion func() string) *Feature {
+	return &Feature{mapsFeature: mapsFeature, spec: spec, hostname: hostname, appVersion: appVersion}
 }
 
 func (f *Feature) Name() string { return FeatureName }
@@ -78,10 +77,10 @@ func (f *Feature) RunPeriodic(reg *realm.Registrar) {
 	postSpec := f.dueForSpecPost()
 	var specJSON []byte
 	if postSpec {
-		summary := f.specSummary()
+		text, summary := f.spec()
 		peerSpec := model.PeerSpec{
 			PeerID:    cfg.PeerID.ID,
-			Text:      f.specText(),
+			Text:      text,
 			OS:        summary.OS,
 			CPU:       summary.CPU,
 			Mem:       summary.Mem,
