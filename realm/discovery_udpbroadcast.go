@@ -17,32 +17,19 @@ import (
 	"foilen-realm/model"
 )
 
-// udpBroadcastPort is the fixed LAN discovery port, shared by every Realm
-// node regardless of group membership: only the group hashes carried in each
-// broadcast (see udpBroadcastMessage) are group-scoped.
 const udpBroadcastPort = 58421
 
-// udpBroadcastMinInterval/udpBroadcastMaxInterval bound the random delay
-// between broadcasts: random (not fixed) so many nodes on the same LAN don't
-// keep beating in lockstep.
 const (
 	udpBroadcastMinInterval = 2 * time.Minute
 	udpBroadcastMaxInterval = 3 * time.Minute
 )
 
-// udpBroadcastMessage is the wire format sent to 255.255.255.255:58421.
-// GroupHashes uses groupTopic's daily hash(date+group-private-key) (same
-// construction as the DHT rendezvous topic) instead of the group's id/name,
-// so a passive LAN observer can't tell which groups exist without already
-// knowing a group's key.
 type udpBroadcastMessage struct {
 	PeerID      string   `json:"peerId"`
 	GroupHashes []string `json:"groupHashes"`
 	Addrs       []string `json:"addrs"`
 }
 
-// startUdpBroadcastLocked opens the shared broadcast/listen socket and starts
-// the receive and send loops. Must be called with e.mu held.
 func (e *Engine) startUdpBroadcastLocked(ctx context.Context, h host.Host) {
 	conn, err := listenUdpBroadcast()
 	if err != nil {
@@ -57,8 +44,6 @@ func (e *Engine) startUdpBroadcastLocked(ctx context.Context, h host.Host) {
 	go e.runUdpBroadcastSendLoop(ctx, conn, h)
 }
 
-// stopUdpBroadcastLocked closes the broadcast socket, if running. Must be
-// called with e.mu held.
 func (e *Engine) stopUdpBroadcastLocked() {
 	if e.udpBroadcastConn != nil {
 		if err := e.udpBroadcastConn.Close(); err != nil {
@@ -69,12 +54,6 @@ func (e *Engine) stopUdpBroadcastLocked() {
 	e.udpBroadcastSeen = nil
 }
 
-// listenUdpBroadcast binds the shared send/receive socket on udpBroadcastPort
-// and sets SO_BROADCAST on it (required to send to 255.255.255.255 on both
-// unix and Windows). Broadcasting to the limited-broadcast address, rather
-// than each interface's directed broadcast address, avoids enumerating
-// network interfaces — which is SELinux-blocked for regular apps on Android
-// (golang/go#40569).
 func listenUdpBroadcast() (*net.UDPConn, error) {
 	lc := net.ListenConfig{
 		Control: func(_, _ string, c syscall.RawConn) error {
@@ -118,9 +97,6 @@ func (e *Engine) runUdpBroadcastReceiveLoop(ctx context.Context, conn *net.UDPCo
 	}
 }
 
-// handleUdpBroadcastMessage records every one of msg's group hashes that
-// matches one of our own groups as seen (markUdpGroupHashSeen), and surfaces
-// the sender as a found peer if at least one matched.
 func (e *Engine) handleUdpBroadcastMessage(msg udpBroadcastMessage, h host.Host) {
 	if msg.PeerID == h.ID().String() {
 		return
@@ -158,9 +134,6 @@ func (e *Engine) handleUdpBroadcastMessage(msg udpBroadcastMessage, h host.Host)
 	e.handleFoundPeer(peer.AddrInfo{ID: pid, Addrs: addrs}, matchedGroup, "broadcast")
 }
 
-// describeUdpGroupHashes maps each of hashes to the label of our own group it
-// matches (today's groupTopic), or "unknown" if it matches none of our
-// groups, for logging purposes only.
 func (e *Engine) describeUdpGroupHashes(hashes []string) string {
 	e.mu.Lock()
 	groups := e.cfg.Groups
@@ -234,14 +207,6 @@ func (e *Engine) runUdpBroadcastSendLoop(ctx context.Context, conn *net.UDPConn,
 	}
 }
 
-// allUdpGroupHashesSeenAndReset reports whether every one of hashes has been
-// observed via a received broadcast since the last time this returned true,
-// clearing the seen set on a true result so the next beat starts fresh —
-// skipping a beat doesn't restart the random timer, it just leaves this tick
-// silent; two different peers advertising different subsets of our groups
-// can jointly satisfy this before either does alone. An empty hashes (no
-// groups configured) is vacuously satisfied, so a groupless node never
-// broadcasts.
 func (e *Engine) allUdpGroupHashesSeenAndReset(hashes []string) bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()

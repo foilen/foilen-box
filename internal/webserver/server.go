@@ -1,7 +1,3 @@
-// Package webserver serves the vanilla-JS web UI (embedded from the
-// repository's web/ directory) and a WebSocket API backing it, bound to
-// 127.0.0.1 only. It is used identically by the desktop binary and the
-// Android gomobile-bound library (cmd/mobile).
 package webserver
 
 import (
@@ -22,7 +18,6 @@ import (
 //go:embed all:web
 var webFS embed.FS
 
-// Server is a running instance of the local web UI + API.
 type Server struct {
 	listener net.Listener
 	httpSrv  *http.Server
@@ -30,22 +25,17 @@ type Server struct {
 	token    string
 }
 
-// Start binds a random free port on 127.0.0.1 and begins serving in the
-// background. configDir persists local config (""=default resolution on
-// desktop; app's private files dir on Android). defaultDhtMode is the
-// per-platform default for a freshly created Realm config. hostnameOverride,
-// if set, replaces os.Hostname() (Android's is always "localhost").
 func Start(configDir string, defaultDhtMode string, hostnameOverride string) (*Server, error) {
-	logDir, err := resolveConfigDir(configDir)
+	configDir, err := resolveConfigDir(configDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve config directory: %w", err)
 	}
-	uiConfigSvc, err := newUIConfigService(logDir)
+	uiConfigSvc, err := newUIConfigService(configDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize web UI config: %w", err)
 	}
 	uiCfg := uiConfigSvc.Load()
-	if err := logging.Setup(logDir, *uiCfg.ClearLogsOnStartup); err != nil {
+	if err := logging.Setup(configDir, *uiCfg.ClearLogsOnStartup); err != nil {
 		return nil, fmt.Errorf("failed to set up logging: %w", err)
 	}
 	log.Print("----[ App Starting ]----")
@@ -54,7 +44,6 @@ func Start(configDir string, defaultDhtMode string, hostnameOverride string) (*S
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize API: %w", err)
 	}
-	a.logDir = logDir
 
 	token, err := newToken()
 	if err != nil {
@@ -68,7 +57,7 @@ func Start(configDir string, defaultDhtMode string, hostnameOverride string) (*S
 
 	port := listener.Addr().(*net.TCPAddr).Port
 	a.currentPort = port
-	if err := os.WriteFile(filepath.Join(logDir, "ui-port.txt"), []byte(strconv.Itoa(port)), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(configDir, "ui-port.txt"), []byte(strconv.Itoa(port)), 0o644); err != nil {
 		return nil, fmt.Errorf("failed to write ui-port.txt: %w", err)
 	}
 	a.realmSms.SetBaseURL(fmt.Sprintf("http://%s/", listener.Addr().String()))
@@ -101,8 +90,6 @@ func Start(configDir string, defaultDhtMode string, hostnameOverride string) (*S
 	return s, nil
 }
 
-// listenForUI binds a random free port on 127.0.0.1, unless cfg pins one; falls
-// back to random if the pinned port can't be bound.
 func listenForUI(cfg uiConfig) (net.Listener, error) {
 	if cfg.RandomPort || cfg.Port == 0 {
 		return net.Listen("tcp", "127.0.0.1:0")
@@ -115,9 +102,6 @@ func listenForUI(cfg uiConfig) (net.Listener, error) {
 	return listener, nil
 }
 
-// resolveConfigDir mirrors the resolution in internal/early/config and
-// foilen-realm/config ($FOILEN_BOX_CONFIG_DIR, else ~/.foilen-box) so the log
-// file lands alongside the rest of this peer's state.
 func resolveConfigDir(configDir string) (string, error) {
 	if configDir != "" {
 		return configDir, nil
@@ -132,40 +116,24 @@ func resolveConfigDir(configDir string) (string, error) {
 	return filepath.Join(home, ".foilen-box"), nil
 }
 
-// URL returns the base http://127.0.0.1:<port>/ address the UI is served on.
 func (s *Server) URL() string {
 	return fmt.Sprintf("http://%s/", s.listener.Addr().String())
 }
 
-// RealmStateSink is the platform-specific callback (Android) invoked when
-// Realm networking is toggled, so a tied resource (e.g. a foreground-service
-// notification) can be updated to match.
 type RealmStateSink interface {
 	SetRealmEnabled(enabled bool)
 }
 
-// SetRealmStateSink registers the platform-specific callback invoked
-// whenever Realm's enabled/disabled state changes.
 func (s *Server) SetRealmStateSink(sink RealmStateSink) {
 	s.api.realmStateSink = sink
 }
 
-// SmsBridge is the platform-specific callback (Android) letting internal/sms
-// send/import real texts and show notifications; nil on desktop.
-// Structurally identical to cmd/mobile.SmsBridge and
-// internal/sms.PlatformBridge — see either's doc for why it's declared
-// independently rather than shared via import.
 type SmsBridge interface {
 	SendSms(phoneNumber string, body string) error
 	ReadAllSms() (string, error)
 	ShowNotification(title string, body string, deepLink string)
 }
 
-// CameraBridge is the platform-specific callback (Android) driving native
-// camera capture; nil on desktop, where internal/camera uses ffmpeg
-// instead. Structurally identical to cmd/mobile.CameraBridge and
-// internal/camera.PlatformBridge — see either's doc for why it's declared
-// independently rather than shared via import.
 type CameraBridge interface {
 	ListCameras() (string, error)
 	ListMicrophones() (string, error)
@@ -173,14 +141,10 @@ type CameraBridge interface {
 	StopCapture() error
 }
 
-// SetCameraBridge registers the platform-specific camera capture bridge.
 func (s *Server) SetCameraBridge(bridge CameraBridge) {
 	s.api.camera.SetPlatformBridge(bridge)
 }
 
-// PeerCounts returns how many known Realm peers are currently connected out
-// of the total known, for platform UI that can't poll the WebSocket API
-// (e.g. Android's foreground-service notification).
 func (s *Server) PeerCounts() (connected int, total int) {
 	for _, p := range s.api.realmPeers.List() {
 		total++
@@ -191,18 +155,14 @@ func (s *Server) PeerCounts() (connected int, total int) {
 	return connected, total
 }
 
-// SetSmsBridge registers the platform-specific SMS bridge.
 func (s *Server) SetSmsBridge(bridge SmsBridge) {
 	s.api.realmSms.SetBridge(bridge)
 }
 
-// HandleIncomingSms forwards a freshly-received text (from Kotlin's
-// SmsReceivedReceiver, via cmd/mobile.SmsReceived) to the SMS feature.
 func (s *Server) HandleIncomingSms(sender, body string, timestampMillis int64) error {
 	return s.api.realmSms.HandleIncomingSms(sender, body, timestampMillis)
 }
 
-// Stop shuts the server down.
 func (s *Server) Stop() error {
 	s.api.shutdown()
 	return s.httpSrv.Close()

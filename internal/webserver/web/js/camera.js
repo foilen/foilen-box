@@ -2,11 +2,6 @@ import { report } from "./util.js";
 
 const CAMERA_STATUS_POLL_INTERVAL_MS = 5000;
 
-// Camera is a standalone top-level feature: its config lives entirely on
-// internal/camera.Manager (camera.getStatus/listDevices/saveConfig), not in
-// the shared realm config, since it's purely local-device configuration. It
-// only touches Realm to optionally advertise itself as a Realm Service, so
-// the "expose as service" checkbox is disabled while Realm is off.
 export function initCameraTab(api) {
 	const enabledCheckbox = document.getElementById("camera-enabled");
 	const configBody = document.getElementById("camera-config-body");
@@ -45,9 +40,6 @@ export function initCameraTab(api) {
 			option.appendChild(headline);
 			deviceSelect.appendChild(option);
 		}
-		// <md-outlined-select> registers newly-slotted <md-select-option>s via
-		// an async slotchange, so setting .value in the same tick as the
-		// appendChild loop above silently no-ops — wait a frame first.
 		await new Promise((resolve) => requestAnimationFrame(resolve));
 		if (want && devices.some((d) => d.id === want)) {
 			deviceSelect.value = want;
@@ -125,10 +117,6 @@ export function initCameraTab(api) {
 		const [status, realmConfig] = await Promise.all([api.call("camera.getStatus"), api.call("realm.loadConfig")]);
 		renderStatus(status);
 		renderRealmEnabled(realmConfig.enabled);
-		// Camera has no per-visit activation hook (it's a top-level tab, not a
-		// lazily-activated subtab), so this periodic poll is also what recovers
-		// the device list if the one-shot fetch below raced camera readiness at
-		// page load and came back empty.
 		if (status.enabled && devices.length === 0) {
 			await refreshDevices(status.deviceId, status.audioDeviceId);
 		}
@@ -162,8 +150,6 @@ export function initCameraTab(api) {
 		if (enabledCheckbox.checked && devices.length === 0) {
 			report(output, () => refreshDevices());
 		} else if (!enabledCheckbox.checked) {
-			// Unchecking hides camera-config-body, which contains the save
-			// button itself, so it becomes unreachable — save right away.
 			report(output, saveConfig);
 		}
 	});

@@ -8,9 +8,6 @@ import (
 	"github.com/gen2brain/beeep"
 )
 
-// NotifyClick shows a notification that opens url when clicked, via
-// terminal-notifier's -open flag. Falls back to a plain notification if
-// terminal-notifier isn't installed (beeep's osascript path has no click support).
 func NotifyClick(title, body, url string) error {
 	path, err := exec.LookPath("terminal-notifier")
 	if err != nil {

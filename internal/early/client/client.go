@@ -1,4 +1,3 @@
-// Package client is an HTTP client for https://developers.early.app/.
 package client
 
 import (
@@ -17,12 +16,8 @@ const (
 	timeout = 30 * time.Second
 )
 
-// dateFormat matches Early's expected query-parameter timestamp layout.
 const dateFormat = "2006-01-02T15:04:05.000"
 
-// Client is a stateful, single-session Early API client: Connect stores a
-// bearer token on the struct for subsequent calls, matching the original
-// Java client's design (not safe for concurrent use by design).
 type Client struct {
 	httpClient *http.Client
 	token      string
@@ -32,7 +27,6 @@ func New() *Client {
 	return &Client{httpClient: &http.Client{Timeout: timeout}}
 }
 
-// https://developers.early.app/#72c12d32-0275-4491-859e-3be83bfaa3e9
 func (c *Client) Connect(cfg model.ConfigEarly) error {
 	reqBody, err := json.Marshal(model.SignInRequest{APIKey: cfg.APIKey, APISecret: cfg.APISecret})
 	if err != nil {
@@ -55,7 +49,6 @@ func (c *Client) Connect(cfg model.ConfigEarly) error {
 	return nil
 }
 
-// https://developers.early.app/#98b4f754-ebcd-4706-b9b0-93244c24e033
 func (c *Client) TimeEntries(from, to time.Time) (*model.TimeEntriesResponse, error) {
 	url := fmt.Sprintf("%s/time-entries/%s/%s", baseURL, from.Format(dateFormat), to.Format(dateFormat))
 	body, err := c.get(url, c.token)
@@ -69,7 +62,6 @@ func (c *Client) TimeEntries(from, to time.Time) (*model.TimeEntriesResponse, er
 	return &resp, nil
 }
 
-// https://developers.early.app/#ad0986b6-aae6-4b25-acc2-333b6822b6e6
 func (c *Client) TimeEntryDelete(id string) (*model.Response, error) {
 	url := fmt.Sprintf("%s/time-entries/%s", baseURL, id)
 	body, err := c.delete(url, c.token)
@@ -82,9 +74,6 @@ func (c *Client) TimeEntryDelete(id string) (*model.Response, error) {
 	}
 	return &resp, nil
 }
-
-// Unlike Java's HttpURLConnection, Go's http.Client never errors on non-2xx
-// responses, so the body is always read straight from resp.Body.
 
 func (c *Client) get(url, bearerToken string) ([]byte, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)

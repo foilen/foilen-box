@@ -1,15 +1,10 @@
-import { report, formatGroupLabel, formatIdentityLabel, formatPeerLabel, syncList, syncCells } from "./util.js";
+import { report, formatGroupLabel, formatIdentityLabel, formatPeerLabel, syncList, syncCells, syncSelectOptions } from "./util.js";
 import { updateHash } from "./hash.js";
 
 const SMS_POLL_INTERVAL_MS = 5000;
 const SMS_PERMISSION_POLL_INTERVAL_MS = 500;
 const SMS_PERMISSION_POLL_TIMEOUT_MS = 60000;
 
-// Resolves immediately if SMS permissions are already granted (or
-// SmsPermissionBridge isn't present, e.g. desktop); otherwise triggers
-// Android's permission dialog and polls hasPermission() until the user
-// responds or the timeout elapses — there's no native callback for the
-// dialog's result.
 function ensureSmsPermission() {
 	if (typeof window.SmsPermissionBridge === "undefined") return Promise.resolve();
 	if (window.SmsPermissionBridge.hasPermission()) return Promise.resolve();
@@ -29,32 +24,6 @@ function ensureSmsPermission() {
 	});
 }
 
-// Patches an <md-outlined-select>'s options in place so the selected option
-// survives a refresh (same helper as realm-maps.js's own copy).
-function syncOptions(select, entries) {
-	const previousValue = select.value;
-	syncList(
-		select,
-		entries,
-		([value]) => value,
-		([value, label]) => {
-			const option = document.createElement("md-select-option");
-			option.value = value;
-			option.innerHTML = `<div slot="headline">${label}</div>`;
-			return option;
-		},
-		(option, [, label]) => {
-			const headline = option.querySelector('[slot="headline"]');
-			if (headline.textContent !== label) headline.textContent = label;
-		}
-	);
-	select.value = previousValue;
-}
-
-// Wires the SMS subtab: an Android-only collapsible config section
-// (create/select the "SMS-<suffix>" realmmap this device manages), a store
-// picker on every platform, and a conversation list/detail view backed by
-// internal/sms's WebSocket API.
 export function initRealmSms(api, output, isAndroid) {
 	const configSection = document.getElementById("sms-config");
 	if (!isAndroid) {
@@ -82,21 +51,16 @@ export function initRealmSms(api, output, isAndroid) {
 	let peers = [];
 	let stores = [];
 	let smsCfg = { enabled: false, groupId: "", storeName: "" };
-	let selectedStore = null; // { groupId, storeName } | null
+	let selectedStore = null;
 	let selectedPhone = null;
-	// Guards the reply "Send from peer" default so it applies once per opened
-	// conversation, not clobbering a peer the user picked manually on refresh.
 	let replyPeerAutoSet = false;
 
 	function storeLabel(s) {
 		return `${s.groupName} / ${s.storeName}`;
 	}
 
-	// Only peers that manage the selected store can fulfill a create-request
-	// (internal/sms.Manager.fulfillCreate), so "Send from peer" is restricted
-	// to enabledPeerIds.
 	function renderPeerOptions(select, enabledPeerIds) {
-		syncOptions(
+		syncSelectOptions(
 			select,
 			peers.filter((p) => enabledPeerIds.has(p.id)).map((p) => [p.id, formatPeerLabel(p)])
 		);
@@ -115,13 +79,10 @@ export function initRealmSms(api, output, isAndroid) {
 	}
 
 	function renderStoreOptions() {
-		syncOptions(storeSelect, stores.map((s) => [`${s.groupId}|${s.storeName}`, storeLabel(s)]));
+		syncSelectOptions(storeSelect, stores.map((s) => [`${s.groupId}|${s.storeName}`, storeLabel(s)]));
 		if (selectedStore) storeSelect.value = `${selectedStore.groupId}|${selectedStore.storeName}`;
 	}
 
-	// Writes the viewed store/conversation into location.hash's "extra" segment
-	// (see hash.js) so a refresh or notification deep link (see
-	// cmd/mobile.SmsBridge.showNotification) can restore this exact view.
 	function syncHash() {
 		if (!selectedStore) return;
 		let extra = `${selectedStore.groupId}|${selectedStore.storeName}`;
@@ -144,9 +105,6 @@ export function initRealmSms(api, output, isAndroid) {
 		syncHash();
 	}
 
-	// Prepopulates "Send from peer" with the peer that recorded the most
-	// recent incoming message, or the most recent message overall if there's
-	// no incoming one yet (a conversation the user just started).
 	function applyReplyPeerDefault(messages) {
 		if (replyPeerAutoSet || messages.length === 0) return;
 		let defaultPeerId = null;
@@ -231,8 +189,6 @@ export function initRealmSms(api, output, isAndroid) {
 	}
 
 	async function refreshSms() {
-		// Re-fetch the store list every refresh, not just at init, so a store
-		// created locally or synced in from a peer later still shows up.
 		await loadStores();
 		if (!selectedStore && stores.length > 0) {
 			selectStore(stores[0].groupId, stores[0].storeName);
@@ -305,7 +261,6 @@ export function initRealmSms(api, output, isAndroid) {
 
 	closeConversationButton.addEventListener("click", () => closeConversation());
 
-	// Android-only management configuration.
 	let existingStoreSelect, enabledCheckbox;
 	if (isAndroid) {
 		const configToggle = document.getElementById("sms-config-toggle");
@@ -323,8 +278,6 @@ export function initRealmSms(api, output, isAndroid) {
 			configToggle.textContent = (collapsed ? "▶" : "▼") + " Configuration (Android only)";
 		}
 
-		// Disabled until a store has been created/selected — there's nothing
-		// to toggle before then.
 		function updateEnabledCheckboxState() {
 			enabledCheckbox.disabled = !(smsCfg.groupId && smsCfg.storeName);
 		}
@@ -436,11 +389,8 @@ export function initRealmSms(api, output, isAndroid) {
 		refreshSms();
 	}
 
-	// Only encrypted stores are valid for management — SMS content is never
-	// stored unencrypted (an unencrypted "SMS-*" map can still be viewed
-	// read-only via the store picker above).
 	function renderExistingStoreOptions() {
-		syncOptions(
+		syncSelectOptions(
 			existingStoreSelect,
 			stores.filter((s) => s.encryptionIdentityId).map((s) => [`${s.groupId}|${s.storeName}`, storeLabel(s)])
 		);
@@ -453,8 +403,8 @@ export function initRealmSms(api, output, isAndroid) {
 			groups = cfg.groups || [];
 			identities = cfg.identities || [];
 			if (isAndroid) {
-				syncOptions(document.getElementById("sms-config-group"), groups.map((g) => [g.id, formatGroupLabel(g)]));
-				syncOptions(
+				syncSelectOptions(document.getElementById("sms-config-group"), groups.map((g) => [g.id, formatGroupLabel(g)]));
+				syncSelectOptions(
 					document.getElementById("sms-config-identity"),
 					identities.map((identity) => [identity.id, formatIdentityLabel(identity)])
 				);
@@ -464,9 +414,6 @@ export function initRealmSms(api, output, isAndroid) {
 			peers = updatedPeers;
 			refreshPeerOptions();
 		},
-		// extra is "groupId|storeName" or "groupId|storeName|phoneNumber" (see
-		// syncHash) — restores the store/conversation from a refresh or
-		// notification deep link (cmd/mobile.SmsBridge.showNotification).
 		onSubtabActivated: (extra) =>
 			report(output, async () => {
 				const [groupId, storeName, phoneNumber] = extra ? extra.split("|") : [];

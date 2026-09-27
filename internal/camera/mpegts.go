@@ -17,15 +17,11 @@ import (
 	"github.com/bluenviron/mediacommon/v2/pkg/formats/mpegts/codecs"
 )
 
-// Audio is captured as AAC-LC at a fixed rate/layout so the RTSP session
-// description (built before capture starts) always matches the stream.
 const (
 	audioSampleRate   = 48000
 	audioChannelCount = 2
 )
 
-// newMPEG4AudioFormat returns the RTP format advertised for the camera's
-// audio track: AAC-LC at audioSampleRate / audioChannelCount.
 func newMPEG4AudioFormat() *format.MPEG4Audio {
 	return &format.MPEG4Audio{
 		PayloadTyp: 97,
@@ -40,10 +36,6 @@ func newMPEG4AudioFormat() *format.MPEG4Audio {
 	}
 }
 
-// runMuxedCapture reads an MPEG-TS stream (H.264 video + AAC audio, as
-// produced by ffmpegCapturer.start with an audio device selected) from
-// reader and publishes each track to its RTSP media until ctx is cancelled
-// or the source ends/errors.
 func runMuxedCapture(
 	ctx context.Context,
 	reader io.Reader,
@@ -96,10 +88,6 @@ func runMuxedCapture(
 	}
 }
 
-// aacPublisher writes AAC access units into an RTSP ServerStream as RTP
-// packets, timestamped off wall-clock elapsed time since the muxed ffmpeg
-// output carries no timestamps this pipeline preserves (mirrors
-// h264Publisher).
 type aacPublisher struct {
 	stream *gortsplib.ServerStream
 	media  *description.Media

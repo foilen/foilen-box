@@ -12,10 +12,6 @@ import (
 	"sync"
 )
 
-// ffmpegPath is the ffmpeg binary to invoke. Empty (the default) resolves
-// "ffmpeg" via $PATH; Nix builds override it via
-// -ldflags -X foilen-box/internal/camera.ffmpegPath=/nix/store/.../bin/ffmpeg
-// so the packaged app doesn't depend on ffmpeg being separately installed.
 var ffmpegPath string
 
 func ffmpegBinary() string {
@@ -25,10 +21,6 @@ func ffmpegBinary() string {
 	return "ffmpeg"
 }
 
-// ffmpegCapturer captures a local webcam via ffmpeg's OS-native input
-// backend (v4l2/avfoundation/dshow), encoding to raw Annex-B H.264 on
-// stdout. Used on every desktop platform; Android uses capture_android.go's
-// bridgeCapturer instead.
 type ffmpegCapturer struct{}
 
 func (ffmpegCapturer) listDevices() ([]Device, error) {
@@ -48,10 +40,7 @@ func (ffmpegCapturer) start(ctx context.Context, deviceID, resolution, audioDevi
 		"-c:v", "libx264",
 		"-preset", "ultrafast",
 		"-tune", "zerolatency",
-		// x264 defaults to one slice per encoder thread (visible as multiple
-		// VCL NALs per frame); readAnnexBUnits treats a VCL NAL as ending an
-		// access unit, so multi-slice frames would get split into several
-		// bogus access units. sliced-threads=0 keeps it to one slice/frame.
+
 		"-x264-params", "sliced-threads=0",
 		"-pix_fmt", "yuv420p",
 	)
@@ -80,10 +69,6 @@ func (ffmpegCapturer) start(ctx context.Context, deviceID, resolution, audioDevi
 	return &captureStream{Closer: proc, video: proc, muxed: audioDeviceID != ""}, nil
 }
 
-// ffmpegInputArgs returns ffmpeg's OS-specific input args addressing
-// deviceID (as returned by listDevices) at resolution (a "WIDTHxHEIGHT"
-// string), plus a microphone input when audioDeviceID is non-empty (as
-// returned by listAudioDevices).
 func ffmpegInputArgs(deviceID, resolution, audioDeviceID string) ([]string, error) {
 	switch runtime.GOOS {
 	case "linux":
@@ -93,8 +78,7 @@ func ffmpegInputArgs(deviceID, resolution, audioDeviceID string) ([]string, erro
 		}
 		return args, nil
 	case "darwin":
-		// avfoundation takes a single combined "<video>:<audio>" input;
-		// "none" explicitly selects no audio device.
+
 		audio := "none"
 		if audioDeviceID != "" {
 			audio = audioDeviceID
@@ -110,18 +94,12 @@ func ffmpegInputArgs(deviceID, resolution, audioDeviceID string) ([]string, erro
 	}
 }
 
-// ffmpegProcess adapts a running ffmpeg subprocess's stdout to an
-// io.ReadCloser: Close kills the process and reaps it.
 type ffmpegProcess struct {
 	cmd    *exec.Cmd
 	stdout io.ReadCloser
 	stderr *tailBuffer
 }
 
-// Read forwards stdout; when the stream ends because ffmpeg exited with a
-// failure it replaces the bare io.EOF with an error carrying ffmpeg's last
-// stderr lines, so callers (e.g. the MPEG-TS header read) surface why ffmpeg
-// quit instead of an opaque "EOF".
 func (p *ffmpegProcess) Read(b []byte) (int, error) {
 	n, err := p.stdout.Read(b)
 	if errors.Is(err, io.EOF) {
@@ -139,7 +117,6 @@ func (p *ffmpegProcess) Close() error {
 	return p.cmd.Wait()
 }
 
-// tailBuffer is an io.Writer keeping only the last max bytes written.
 type tailBuffer struct {
 	mu  sync.Mutex
 	max int
@@ -156,8 +133,6 @@ func (t *tailBuffer) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// tailLines returns the last few non-empty stderr lines, prefixed with a
-// newline, or "" when nothing was captured.
 func (t *tailBuffer) tailLines() string {
 	t.mu.Lock()
 	defer t.mu.Unlock()

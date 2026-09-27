@@ -17,10 +17,6 @@ import (
 	"foilen-realm/model"
 )
 
-// generateSelfSignedTLSConfig creates a throwaway self-signed cert for the
-// web listener's HTTPS server (webTransport.Listen, web_transport.go) and
-// for the matching dial-side "realm-https" TLS config; real peer auth
-// happens afterwards, via libp2p's Noise handshake on top.
 func generateSelfSignedTLSConfig() (*tls.Config, error) {
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -49,18 +45,11 @@ func generateSelfSignedTLSConfig() (*tls.Config, error) {
 
 	return &tls.Config{
 		Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: priv}},
-		// Force HTTP/1.1: the WebSocket upgrade in web_transport.go relies on
-		// hijacking the connection, which HTTP/2 doesn't support. Without
-		// this, any client offering "h2" in its ALPN (e.g. curl, browsers)
-		// gets negotiated to HTTP/2 and the /p2p upgrade fails with 400.
+
 		NextProtos: []string{"http/1.1"},
 	}, nil
 }
 
-// exposeWebSettingsSnapshot is the subset of model.Config that requires a
-// full host Restart (not just a Reconcile) when changed: the web listener
-// (webTransport, web_transport.go) is only (de)registered and (un)listened
-// via Engine.Start's libp2p.New options.
 type exposeWebSettingsSnapshot struct {
 	enabled          bool
 	listenProtocol   string
@@ -70,8 +59,6 @@ type exposeWebSettingsSnapshot struct {
 	announceProtocol string
 }
 
-// exposeWebSettings extracts cfg's comparable snapshot of ExposeWeb settings,
-// for diffing in Reconcile.
 func exposeWebSettings(cfg model.Config) exposeWebSettingsSnapshot {
 	return exposeWebSettingsSnapshot{
 		enabled:          cfg.ExposeWebEnabled,
@@ -83,9 +70,6 @@ func exposeWebSettings(cfg model.Config) exposeWebSettingsSnapshot {
 	}
 }
 
-// exposeWebListenAddr builds the multiaddr webTransport.Listen should bind
-// to for cfg's web listener (see model.Config.ExposeWebEnabled), or nil if
-// it's not enabled.
 func exposeWebListenAddr(cfg model.Config) (multiaddr.Multiaddr, error) {
 	if !cfg.ExposeWebEnabled {
 		return nil, nil
@@ -102,12 +86,6 @@ func exposeWebListenAddr(cfg model.Config) (multiaddr.Multiaddr, error) {
 	return a, nil
 }
 
-// exposeWebAnnounceAddr builds the multiaddr this host should advertise to
-// other peers for its web listener (see model.Config.ExposeWebEnabled and
-// web_transport.go), or nil if it's not enabled. Uses the custom
-// realm-http/realm-https multiaddr protocols rather than libp2p's standard
-// ws/wss, since this isn't a libp2p websocket transport listener. Falls
-// back to this host's outbound IP when ExposeWebAnnounceHost isn't set.
 func exposeWebAnnounceAddr(cfg model.Config) (multiaddr.Multiaddr, error) {
 	if !cfg.ExposeWebEnabled {
 		return nil, nil
@@ -142,9 +120,6 @@ func exposeWebAnnounceAddr(cfg model.Config) (multiaddr.Multiaddr, error) {
 	return a, nil
 }
 
-// outboundIPv4 returns this host's preferred outbound IPv4 address, by
-// asking the OS how it would route to a public IP. No packets are actually
-// sent: UDP "connect" just resolves local routing.
 func outboundIPv4() (string, error) {
 	conn, err := net.Dial("udp4", "8.8.8.8:80")
 	if err != nil {

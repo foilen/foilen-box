@@ -1,7 +1,3 @@
-// Package realm owns the go-libp2p host lifecycle for Realm: UDP-broadcast/DHT
-// discovery, the connect/keep-alive loop for known group peers, and a
-// pluggable Feature model that lets an application opt into only the
-// capabilities it needs (see Feature).
 package realm
 
 import (
@@ -37,14 +33,9 @@ const (
 	keepAliveInterval   = 10 * time.Minute
 	dialTimeout         = 30 * time.Second
 
-	// reconnectDelay: how long onDisconnected waits before retrying a dropped ring-neighbor peer.
 	reconnectDelay = 10 * time.Second
 )
 
-// Engine owns a running Realm host, if any. The zero value (via New) is
-// idle; Start/Stop bring the underlying host up and down as configuration
-// changes. Features must be registered (via Register) before the engine is
-// first started.
 type Engine struct {
 	dataDir          string
 	peers            *peers.Store
@@ -61,7 +52,7 @@ type Engine struct {
 
 	mu               sync.Mutex
 	running          bool
-	cfg              model.Config // config last applied via Start/Reconcile; used to diff on Reconcile
+	cfg              model.Config
 	ctx              context.Context
 	cancel           context.CancelFunc
 	host             host.Host
@@ -70,49 +61,32 @@ type Engine struct {
 	dhtDatastore     *leveldb.Datastore
 	routingDiscovery *routingdisc.RoutingDiscovery
 	udpBroadcastConn *net.UDPConn
-	udpBroadcastSeen map[string]struct{}           // own group hashes observed since the last skipped beat
-	dhtLoopCancels   map[string]context.CancelFunc // by groupKey
+	udpBroadcastSeen map[string]struct{}
+	dhtLoopCancels   map[string]context.CancelFunc
 
-	// lastDHTPeers remembers the public DHT swarm peers last connected before
-	// disconnectDHTSwarmLocked dropped them, so DhtModeClient's next lookup
-	// can redial them directly (reconnectRememberedDHTPeers) instead of only
-	// starting from the public bootstrap list.
 	lastDHTPeers []peer.AddrInfo
 
-	// relayTransport is the application-level relay transport (relay_transport.go),
-	// set once per Start after the host is constructed.
 	relayTransport *relayTransport
 }
 
-// New creates an idle Engine. dataDir is where the persistent DHT datastore
-// is kept; peerStore is the shared known/connected-peers view. Register the
-// application's chosen Features on the result before the first Start/Reconcile.
+// Setup
+
 func New(dataDir string, peerStore *peers.Store) *Engine {
 	return &Engine{dataDir: dataDir, peers: peerStore}
 }
 
-// SetHostnameOverride sets the hostname reported to other peers during the
-// identify exchange (see selfIdentifyPayload), used in place of
-// os.Hostname() — needed on Android, where the OS-level hostname is always
-// "localhost".
 func (e *Engine) SetHostnameOverride(hostname string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.hostnameOverride = hostname
 }
 
-// SetAppVersion sets the application name/version reported to other peers
-// during the identify exchange (see selfIdentifyPayload), e.g.
-// "FoilenBox - abc1234".
 func (e *Engine) SetAppVersion(version string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.appVersion = version
 }
 
-// Register adds f as an active feature: its actions join AvailableActions,
-// its stream handlers install on (re)start, and any hook interfaces it
-// implements get wired in. Must be called before the engine first starts.
 func (e *Engine) Register(f Feature) {
 	e.features = append(e.features, f)
 	if h, ok := f.(PeerConnectedHook); ok {
@@ -135,9 +109,6 @@ func (e *Engine) Register(f Feature) {
 	}
 }
 
-// AvailableActions is the dynamic permission catalog: every action every
-// registered Feature declares, in registration order. Used both to validate
-// incoming Permission rules and to expose the catalog to a UI.
 func (e *Engine) AvailableActions() []model.PermissionAction {
 	var all []model.PermissionAction
 	for _, f := range e.features {
@@ -146,31 +117,26 @@ func (e *Engine) AvailableActions() []model.PermissionAction {
 	return all
 }
 
-// Running reports whether the host is currently up.
+// State
+
 func (e *Engine) Running() bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.running
 }
 
-// Host returns the running libp2p host, or nil if not running. Exposed for
-// applications that need to dial a peer directly (e.g. by known multiaddr,
-// bypassing group discovery) rather than through a Feature's own methods.
 func (e *Engine) Host() host.Host {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.host
 }
 
-// Context returns the engine's lifetime context, cancelled on Stop, or nil
-// if not running.
 func (e *Engine) Context() context.Context {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.ctx
 }
 
-// HostID returns the running host's peer id, or "" if not running.
 func (e *Engine) HostID() string {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -180,7 +146,6 @@ func (e *Engine) HostID() string {
 	return e.host.ID().String()
 }
 
-// Addrs returns the running host's listen multiaddresses, or nil if not running.
 func (e *Engine) Addrs() []string {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -190,18 +155,11 @@ func (e *Engine) Addrs() []string {
 	return addrsToStrings(e.host.Addrs())
 }
 
-// SwarmPeer describes a libp2p peer the host is currently connected to,
-// straight from the network layer, independent of whether it's a known
-// Realm group peer.
 type SwarmPeer struct {
 	ID        string
 	Addresses []string
 }
 
-// SwarmPeers returns every peer the host currently has an open connection
-// to, per go-libp2p's own network/peerstore state (e.g. DHT routing
-// connections to strangers), not just peers tracked in the Realm peer
-// store. Returns nil if not running.
 func (e *Engine) SwarmPeers() []SwarmPeer {
 	e.mu.Lock()
 	h := e.host
@@ -223,8 +181,6 @@ func (e *Engine) SwarmPeers() []SwarmPeer {
 	return result
 }
 
-// ConnectedAddresses returns the remote multiaddrs of every open connection
-// to the given peer ID, or nil if not running or not connected.
 func (e *Engine) ConnectedAddresses(id string) []string {
 	e.mu.Lock()
 	h := e.host
@@ -246,10 +202,6 @@ func (e *Engine) ConnectedAddresses(id string) []string {
 	return addrsToStrings(addrs)
 }
 
-// ConnectedHosts returns the bare IP hosts (no port, deduplicated) of every
-// open connection to the given peer ID. For a relayed connection, this is
-// the relay's IP, not the peer's — that's the address actually dialed over
-// the underlying network, which is what callers need to route around a VPN.
 func (e *Engine) ConnectedHosts(id string) []string {
 	e.mu.Lock()
 	h := e.host
@@ -279,8 +231,6 @@ func (e *Engine) ConnectedHosts(id string) []string {
 	return hosts
 }
 
-// firstIPHost returns the first /ip4 or /ip6 component's value in a
-// multiaddr, e.g. "/ip4/1.2.3.4/tcp/4001" -> "1.2.3.4".
 func firstIPHost(a multiaddr.Multiaddr) (string, error) {
 	var host string
 	multiaddr.ForEach(a, func(c multiaddr.Component) bool {
@@ -296,20 +246,13 @@ func firstIPHost(a multiaddr.Multiaddr) (string, error) {
 	return host, nil
 }
 
-// Restart stops the engine if running and starts it again with cfg. This
-// tears down and rebuilds the libp2p host (new connections, fresh DHT
-// routing table), so prefer Reconcile for ordinary config changes; Restart
-// is only needed when the peer identity itself changes.
+// Lifecycle
+
 func (e *Engine) Restart(cfg model.Config) error {
 	e.Stop()
 	return e.Start(cfg)
 }
 
-// Reconcile applies cfg with minimal disruption: starts/stops the engine as
-// needed, or if already running, adjusts UDP broadcast/DHT discovery and per-group
-// loops in place without touching the host or existing connections. Only a
-// peer identity, listen-port, relay-service, or web-listener change forces a
-// full Restart.
 func (e *Engine) Reconcile(cfg model.Config) error {
 	e.mu.Lock()
 	running := e.running
@@ -355,8 +298,6 @@ func (e *Engine) Reconcile(cfg model.Config) error {
 	return e.reconcileLocked(cfg)
 }
 
-// reconcileLocked adjusts discovery state from e.cfg to cfg in place. Must
-// be called with e.mu held and the engine running.
 func (e *Engine) reconcileLocked(cfg model.Config) error {
 	h := e.host
 	ctx := e.ctx
@@ -382,8 +323,7 @@ func (e *Engine) reconcileLocked(cfg model.Config) error {
 	case !cfg.EnableDht && e.kadDHT != nil:
 		log.Printf("realm engine: disabling DHT")
 		e.stopDHTLocked()
-		// stopDHTLocked only closes the DHT protocol/datastore; its bootstrap
-		// swarm connections stay open otherwise.
+
 		e.disconnectDHTSwarmLocked(h)
 	}
 
@@ -421,10 +361,6 @@ func (e *Engine) reconcileLocked(cfg model.Config) error {
 	return nil
 }
 
-// Start brings the host up: identity from cfg.PeerID, UDP-broadcast/DHT
-// discovery per cfg.EnableUdpBroadcast/EnableDht and cfg.DhtMode, and the
-// keep-alive loop for known peers. A no-op if cfg has no peer id yet,
-// cfg.Disabled is set, or the engine is already running.
 func (e *Engine) Start(cfg model.Config) error {
 	if cfg.PeerID.ID == "" || cfg.Disabled {
 		return nil
@@ -441,19 +377,16 @@ func (e *Engine) Start(cfg model.Config) error {
 		return fmt.Errorf("realm engine: invalid peer keypair: %w", err)
 	}
 
-	// Previous host's Connected flags don't apply to this not-yet-connected one.
 	e.peers.ResetAllConnected()
 
 	opts := []libp2p.Option{
 		libp2p.Identity(priv),
-		// UPnP/NAT-PMP: forward the listen port on the local router.
+
 		libp2p.NATPortMap(),
-		// DCUtR: upgrade a relayed connection to direct via hole punching.
+
 		libp2p.EnableHolePunching(),
 	}
-	// Customizing the websocket transport below opts the host out of
-	// go-libp2p's DefaultListenAddrs/DefaultTransports fallback, so both are
-	// re-added explicitly to keep prior behavior.
+
 	if cfg.RealmListenPort != 0 {
 		listenAddrs, err := listenAddrsForPort(cfg.RealmListenPort)
 		if err != nil {
@@ -473,10 +406,6 @@ func (e *Engine) Start(cfg model.Config) error {
 		libp2p.Transport(libp2pwebrtc.New),
 	)
 
-	// Web listener (see model.Config.ExposeWebEnabled): a Transport for the
-	// realm-http(s) multiaddr scheme (web_transport.go). Always registered
-	// so this host can dial any peer advertising one (see
-	// exposeWebAnnounceAddr below), but only told to Listen when enabled.
 	opts = append(opts, libp2p.Transport(newWebTransport))
 	webListenAddr, err := exposeWebListenAddr(cfg)
 	if err != nil {
@@ -490,13 +419,7 @@ func (e *Engine) Start(cfg model.Config) error {
 	if err != nil {
 		log.Printf("realm engine: %v", err)
 	}
-	// Append the web-announce addr unconditionally, and drop the bare
-	// relayListenAddr marker (below): it's only there to make libp2p invoke
-	// Listen and wire up the hop/stop stream handlers, never a real dialable
-	// address (see relay.go), so it must not be advertised to other peers —
-	// they'd try to dial it directly and get "no transport for protocol"
-	// since it doesn't have the /p2p/<relay>/realm-relay/p2p/<target> shape
-	// relayTransport.CanDial requires.
+
 	opts = append(opts, libp2p.AddrsFactory(func(addrs []multiaddr.Multiaddr) []multiaddr.Multiaddr {
 		filtered := addrs[:0]
 		for _, a := range addrs {
@@ -511,12 +434,6 @@ func (e *Engine) Start(cfg model.Config) error {
 		return addrs
 	}))
 
-	// Application-level relay transport (relay_transport.go): always
-	// registered so this host can both dial through a relay and accept being
-	// relayed to, regardless of cfg.EnableRelayService (that flag only gates
-	// whether this host advertises itself as willing to relay for others,
-	// see realm/features/announce). rt.host is filled in once the host
-	// exists, below.
 	rt := &relayTransport{incoming: make(chan relayAcceptedConn), closed: make(chan struct{})}
 	opts = append(opts,
 		libp2p.Transport(func(u transport.Upgrader, rcmgr network.ResourceManager) (*relayTransport, error) {
@@ -580,8 +497,6 @@ func (e *Engine) Start(cfg model.Config) error {
 	return nil
 }
 
-// Stop shuts the host (and any discovery services) down. A no-op if not
-// running.
 func (e *Engine) Stop() {
 	e.mu.Lock()
 	if !e.running {
@@ -599,10 +514,6 @@ func (e *Engine) Stop() {
 	e.running = false
 	e.mu.Unlock()
 
-	// h.Close() blocks until every Disconnected handler returns, and those
-	// handlers acquire e.mu themselves; closing after releasing e.mu (with
-	// running/host/ctx already cleared, so handlers skip reconnecting) avoids
-	// deadlocking against our own lock.
 	if h != nil {
 		if err := h.Close(); err != nil {
 			log.Printf("realm engine: failed to close host: %v", err)
@@ -614,10 +525,8 @@ func (e *Engine) Stop() {
 	log.Printf("realm engine: stopped")
 }
 
-// listenAddrsForPort mirrors go-libp2p's own DefaultListenAddrs (TCP and
-// QUIC, v4 and v6), but pins the port to the given value instead of letting
-// the OS assign a random one each time, so the host's advertised addresses
-// only change if its IP changes, not on every restart.
+// Helpers
+
 func listenAddrsForPort(port int) ([]multiaddr.Multiaddr, error) {
 	specs := []string{
 		fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", port),
@@ -636,10 +545,6 @@ func listenAddrsForPort(port int) ([]multiaddr.Multiaddr, error) {
 	return addrs, nil
 }
 
-// PickFreeListenPort asks the OS for a currently unused TCP port, suitable
-// as a new Config.ListenPort. Callers must persist the result (see
-// realm/config.Service.Save) so the same port is reused on every future
-// Start instead of being picked again.
 func PickFreeListenPort() (int, error) {
 	l, err := net.Listen("tcp", ":0")
 	if err != nil {
@@ -657,8 +562,6 @@ func addrsToStrings(addrs []multiaddr.Multiaddr) []string {
 	return result
 }
 
-// parseMultiaddrs parses each address string, silently skipping ones that
-// fail to parse.
 func parseMultiaddrs(addrs []string) []multiaddr.Multiaddr {
 	result := make([]multiaddr.Multiaddr, 0, len(addrs))
 	for _, a := range addrs {

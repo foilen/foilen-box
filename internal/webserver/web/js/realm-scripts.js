@@ -1,20 +1,12 @@
-import { report, formatKnownPeerLabel, syncList, syncCells } from "./util.js";
+import { report, formatKnownPeerLabel, syncList, syncCells, syncConnectedCell } from "./util.js";
 
 const RUNS_POLL_INTERVAL_MS = 3000;
-// How long to keep polling for a completion before giving up on a run and
-// leaving its row as "no confirmation" — matches the backend's own
-// best-effort, no-retry delivery of the completion push.
 const RUN_GIVE_UP_MS = 2 * 60 * 1000;
 
 const PEER_SCRIPTS_POLL_INTERVAL_MS = 5000;
 const SCRIPTS_STORE_NAME = "common";
 const SCRIPTS_KEY_PREFIX = "scripts/";
 
-// Wires the Scripts subtab: the "My Scripts" CRUD table (fed by the same
-// full-config response as Groups/Permissions), the "Peer Scripts"
-// list+execute table (aggregates scripts/{peerId}/{name} entries every peer
-// posts into the "common" store — see internal/webserver/realm_announce.go),
-// and polling realm.listScriptRuns while a triggered run is unconfirmed.
 export function initRealmScripts(api, output, renderConfig) {
 	const myScriptsBody = document.getElementById("realm-my-scripts-tbody");
 	const myScriptsCount = document.getElementById("realm-scripts-count");
@@ -27,14 +19,15 @@ export function initRealmScripts(api, output, renderConfig) {
 
 	const peerScriptsBody = document.getElementById("realm-peer-scripts-tbody");
 
-	// pendingRuns: runId -> the <td> status cell to update once
-	// realm.listScriptRuns reports an outcome (or we give up).
 	const pendingRuns = new Map();
 
-	// peerScripts: [{ peerId, name, description, command, args, workingDirectory }]
 	let peerScripts = [];
 	let knownPeers = [];
 	let groups = [];
+
+	function isPeerConnected(peerId) {
+		return knownPeers.find((p) => p.id === peerId)?.connected ?? false;
+	}
 
 	function scriptCells(script) {
 		return [
@@ -133,29 +126,6 @@ export function initRealmScripts(api, output, renderConfig) {
 		];
 	}
 
-	// Mirrors syncConnectedCell in realm-services.js: built on first call,
-	// patched in place afterward, since the connected state changes on its
-	// own poll cycle independent of the peer-scripts data refresh.
-	function syncConnectedCell(row, peerId) {
-		let cell = row.querySelector('td[data-label="Connected"]');
-		let dot;
-		if (!cell) {
-			cell = document.createElement("td");
-			cell.dataset.label = "Connected";
-			dot = document.createElement("span");
-			cell.appendChild(dot);
-			row.appendChild(cell);
-		} else {
-			dot = cell.querySelector("span");
-		}
-		const connected = knownPeers.find((p) => p.id === peerId)?.connected ?? false;
-		dot.className = `status-dot${connected ? " connected" : ""}`;
-		dot.title = connected ? "Connected" : "Not connected";
-	}
-
-	// The Status cell is left untouched on update — it's driven by
-	// execute-click + pollRuns (via pendingRuns), not the data refresh.
-	// Reusing the same row/cell across refreshes keeps pendingRuns' reference valid.
 	function renderPeerScriptsTable() {
 		syncList(
 			peerScriptsBody,
@@ -164,7 +134,7 @@ export function initRealmScripts(api, output, renderConfig) {
 			(script) => {
 				const row = document.createElement("tr");
 				syncCells(row, peerScriptCells(script));
-				syncConnectedCell(row, script.peerId);
+				syncConnectedCell(row, isPeerConnected(script.peerId));
 
 				const statusCell = document.createElement("td");
 				statusCell.dataset.label = "Status";
@@ -189,7 +159,7 @@ export function initRealmScripts(api, output, renderConfig) {
 			},
 			(row, script) => {
 				syncCells(row, peerScriptCells(script));
-				syncConnectedCell(row, script.peerId);
+				syncConnectedCell(row, isPeerConnected(script.peerId));
 			}
 		);
 	}

@@ -1,11 +1,7 @@
-// Package model holds the data types produced by DNS and WHOIS lookups.
 package model
 
 import "time"
 
-// RawDnsEntry is a single resource record discovered during the DNS crawl.
-// Priority/Weight/Port are nil when not applicable to the record type
-// (matching Java's nullable Integer fields).
 type RawDnsEntry struct {
 	Name     string
 	Type     string
@@ -16,8 +12,6 @@ type RawDnsEntry struct {
 	TTL      uint32
 }
 
-// Less orders entries the same way Java's RawDnsEntry.compareTo did: by
-// Name, Type, Details, then Priority/Weight/Port (nil treated as 0).
 func (e RawDnsEntry) Less(o RawDnsEntry) bool {
 	if e.Name != o.Name {
 		return e.Name < o.Name
@@ -37,8 +31,6 @@ func (e RawDnsEntry) Less(o RawDnsEntry) bool {
 	return intOrZero(e.Port) < intOrZero(o.Port)
 }
 
-// Equal reports whether two entries have the same field values, used for
-// de-duplication (matches Java's RawDnsEntry.equals).
 func (e RawDnsEntry) Equal(o RawDnsEntry) bool {
 	return e.Name == o.Name && e.Type == o.Type && e.Details == o.Details &&
 		intOrZero(e.Priority) == intOrZero(o.Priority) &&
@@ -53,19 +45,11 @@ func intOrZero(v *int) int {
 	return *v
 }
 
-func IntPtr(v int) *int {
-	return &v
-}
-
-// WhoisServerConfig identifies the WHOIS server and query-line prefix to use
-// for a given TLD.
 type WhoisServerConfig struct {
 	ServerName  string
 	QueryPrefix string
 }
 
-// WhoisResponse holds the parsed fields of a WHOIS text response. Contact
-// blocks (Registrant/Admin/Tech/Billing) mirror the WHOIS spec's field set.
 type WhoisResponse struct {
 	DomainName           string
 	RegistrarName        string

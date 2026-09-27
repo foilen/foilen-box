@@ -3,11 +3,6 @@ import { report, formatGroupLabel, formatKnownPeerLabel, syncList } from "./util
 
 const POLL_INTERVAL_MS = 5000;
 
-// Piggybacks on each group's existing "common" realmmap (every member
-// already subscribes to it — see realm/features/maps.Feature.onPeerAvailable
-// — so there's no dedicated map to create/delete) under a
-// "groupTroubleshooting/" key prefix, mirroring
-// internal/grouptroubleshooting's Go-side key layout.
 const STORE_NAME = "common";
 const EXPIRATION_KEY = "groupTroubleshooting/expiration";
 const START_KEY = "groupTroubleshooting/start";
@@ -19,7 +14,6 @@ mermaid.initialize({
 	theme: window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "default",
 });
 
-// Sanitizes a peer id into a syntactically-safe mermaid node id.
 function nodeId(peerId) {
 	return "p_" + peerId.replace(/[^a-zA-Z0-9]/g, "_");
 }
@@ -28,11 +22,6 @@ function escapeLabel(text) {
 	return String(text).replace(/"/g, "'");
 }
 
-// Parses the "common" map's groupTroubleshooting/* entries into {
-// expiresAtUnixMillis | null, startAtUnixMillis | null, connectionsByPeer:
-// Map<ownerPeerId, [{remotePeerId, address}]>, startedByPeer: Map<peerId,
-// {startAtUnixMillis, startedAtUnixMillis}> }, ignoring every other entry
-// (specs/*, scripts/*, services/*, peers/*, ...) also living in that store.
 function parseEntries(entries) {
 	let expiresAtUnixMillis = null;
 	let startAtUnixMillis = null;
@@ -43,7 +32,6 @@ function parseEntries(entries) {
 			try {
 				expiresAtUnixMillis = JSON.parse(entry.value).expiresAtUnixMillis || null;
 			} catch {
-				// ignore malformed entry
 			}
 			continue;
 		}
@@ -51,7 +39,6 @@ function parseEntries(entries) {
 			try {
 				startAtUnixMillis = JSON.parse(entry.value).startAtUnixMillis || null;
 			} catch {
-				// ignore malformed entry
 			}
 			continue;
 		}
@@ -60,7 +47,6 @@ function parseEntries(entries) {
 			try {
 				connectionsByPeer.set(connMatch[1], JSON.parse(entry.value) || []);
 			} catch {
-				// ignore malformed entry
 			}
 			continue;
 		}
@@ -69,17 +55,12 @@ function parseEntries(entries) {
 			try {
 				startedByPeer.set(startedMatch[1], JSON.parse(entry.value));
 			} catch {
-				// ignore malformed entry
 			}
 		}
 	}
 	return { expiresAtUnixMillis, startAtUnixMillis, connectionsByPeer, startedByPeer };
 }
 
-// Builds [{peerId, latencyMillis}] rows, one per peer that has already
-// reported a started entry for the session identified by startAtUnixMillis
-// (a started entry left over from an earlier session is ignored), sorted by
-// ascending propagation latency.
 function buildLatencyRows(startAtUnixMillis, startedByPeer) {
 	if (!startAtUnixMillis) return [];
 	const rows = [];
@@ -91,12 +72,6 @@ function buildLatencyRows(startAtUnixMillis, startedByPeer) {
 	return rows;
 }
 
-// Builds mermaid flowchart source: one node per group member, colored gray
-// when it has no connections and no realmmap entry of its own, blue when
-// something connects to it but it hasn't published its own entry yet, green
-// once we have its entry (i.e. connectionsByPeer.has(peerId)); a solid blue
-// edge for a direct connection, a dashed yellow edge for a relayed one
-// (address contains "/realm-relay").
 function buildDiagram(groupPeers, connectionsByPeer, knownPeers) {
 	const lines = ["graph LR"];
 	const nodeIds = new Set();
@@ -152,11 +127,6 @@ function buildDiagram(groupPeers, connectionsByPeer, knownPeers) {
 	return lines.join("\n");
 }
 
-// Wires the "Group Troubleshooting" subtab: a group selector, a "Check
-// Group" button that starts a fixed 10-minute session (internal/
-// grouptroubleshooting.Manager.StartSession), and a mermaid diagram that
-// keeps refreshing from the group's "common" realmmap while the session is
-// active. See docs/pattern-encrypted-realmmap-feature.md.
 export function initRealmGroupTroubleshooting(api, output) {
 	const groupSelect = document.getElementById("group-troubleshooting-group-select");
 	const startButton = document.getElementById("group-troubleshooting-start-button");
@@ -170,9 +140,7 @@ export function initRealmGroupTroubleshooting(api, output) {
 	let selectedGroupId = null;
 	let renderCounter = 0;
 
-	// One entry per group id ever viewed this session, so switching groups
-	// and back doesn't lose the last-rendered diagram of a finished run.
-	const sessionByGroup = new Map(); // groupId -> { running, finished, expiresAtUnixMillis, entries }
+	const sessionByGroup = new Map();
 
 	function syncOptions(select, entries) {
 		const previousValue = select.value;
@@ -262,10 +230,6 @@ export function initRealmGroupTroubleshooting(api, output) {
 		const entries = map.entries || {};
 		const { expiresAtUnixMillis } = parseEntries(entries);
 
-		// groupTroubleshooting/* entries are never deleted (see
-		// internal/grouptroubleshooting.Manager.StartSession) — the expiration
-		// timestamp alone says whether a session is running or just finished;
-		// with no expiration entry at all, this group has never run one.
 		if (expiresAtUnixMillis) {
 			sessionByGroup.set(selectedGroupId, {
 				running: Date.now() < expiresAtUnixMillis,

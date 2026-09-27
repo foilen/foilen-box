@@ -1,43 +1,21 @@
 #!/usr/bin/env node
-// Mirrors a set of esm.sh ES module graphs to local files, rewriting every
-// import/export specifier to a relative local path, so the browser never
-// hits esm.sh at runtime. Run at build time (see flake.nix's vendorJs FOD
-// and scripts/fetch-vendor-assets.sh for the non-Nix path).
-//
-// Usage: node fetch-vendor-js.mjs <output-dir>
 
 import { mkdir, writeFile, access } from "node:fs/promises";
 import { dirname, join, posix } from "node:path";
 
 const ESM_ORIGIN = "https://esm.sh";
 
-// name: subdirectory under <output-dir> and the fixed local entry filename
-// referenced by index.html / app JS.
-//
-// Pin every url to an exact version (no "@11"-style ranges): esm.sh
-// resolves a range to whatever the latest matching release is at fetch
-// time, so an unpinned range silently changes the fetched content (and
-// flake.nix's vendorJs outputHash) whenever a new release ships upstream.
 const ENTRIES = [
 	{ name: "material-web", url: "https://esm.sh/@material/web@2.5.0/all.js" },
 	{ name: "mermaid", url: "https://esm.sh/mermaid@11.17.2" },
 ];
 
-// Matches real import/export specifiers while avoiding false positives on
-// the words "import"/"export" appearing inside string literals or
-// identifiers in minified bundles (e.g. `ur="@import"` in stylis).
-// - group 1: bare `import "url";`
-// - group 2: `import ... from "url"` / `export ... from "url"` (the clause
-//   between the keyword and `from` is restricted to identifier-ish
-//   characters so it can't skip over unrelated code to a later `from`)
-// - group 3: dynamic `import("url")`
 const IMPORT_RE = /(?<![\w@"'])import\s*["']([^"']+)["']|(?<![\w@"'])(?:import|export)\b[^;"'()]*?\bfrom\s*["']([^"']+)["']|(?<![\w@"'])import\(\s*["']([^"']+)["']\s*\)/g;
 
 function sanitizeSegment(segment) {
 	return segment.replace(/[^a-zA-Z0-9._-]/g, (c) => "_" + c.charCodeAt(0).toString(16) + "_");
 }
 
-// Maps an esm.sh URL to a stable, unique, filesystem-safe relative path.
 function localPathFor(url) {
 	const u = new URL(url);
 	const segments = u.pathname.split("/").filter(Boolean).map(sanitizeSegment);
@@ -61,7 +39,6 @@ async function fetchText(url) {
 }
 
 async function crawl(entryUrl) {
-	// url (canonical, resolved) -> { localPath, body, specifiers: [{raw, resolvedUrl}] }
 	const visited = new Map();
 	const queue = [entryUrl];
 
@@ -90,11 +67,6 @@ async function crawl(entryUrl) {
 	return visited;
 }
 
-// Rewrites every import/export specifier in `body` to a path relative to
-// `fromLocalPath`, pointing at the target module's local path. Also strips
-// sourceMappingURL comments, which still point at esm.sh and would
-// otherwise be the only remaining external reference (harmless if unused,
-// but noisy in devtools and not needed since we don't ship .map files).
 function rewrite(body, fromLocalPath, specifiers, visited) {
 	let out = body;
 	for (const { raw, resolvedUrl } of specifiers) {
@@ -126,9 +98,6 @@ async function main() {
 		const visited = await crawl(entry.url);
 
 		const entryInfo = visited.get(entry.url);
-		// Force the entry module itself to a fixed, predictable path (relative
-		// to this entry's own directory) so the rest of the app can import it
-		// by a stable name: vendor-js/<entry.name>/entry.mjs.
 		entryInfo.localPath = "entry.mjs";
 
 		let fileCount = 0;

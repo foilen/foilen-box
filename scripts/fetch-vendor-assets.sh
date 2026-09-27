@@ -1,8 +1,4 @@
 #!/bin/bash
-# Fetches all vendor web assets (fonts, JS) at build time so the web UI
-# never hits an external CDN at runtime. Both sub-scripts skip work that's
-# already present, so this is a no-op on repeat builds unless the relevant
-# vendor-* directory is deleted.
 
 set -e
 

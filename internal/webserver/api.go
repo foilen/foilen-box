@@ -27,24 +27,20 @@ import (
 	realmpeers "foilen-realm/peers"
 )
 
-// request is a single WebSocket call from the UI.
 type request struct {
 	ID     string          `json:"id"`
 	Action string          `json:"action"`
 	Params json.RawMessage `json:"params"`
 }
 
-// response is the reply to a request, matched by ID on the client side.
 type response struct {
 	ID     string `json:"id"`
 	Result any    `json:"result,omitempty"`
 	Error  string `json:"error,omitempty"`
 }
 
-// api holds the backend services the dispatcher calls into.
 type api struct {
 	configDir                 string
-	logDir                    string
 	hostnameOverride          string
 	uiConfig                  *uiConfigService
 	currentPort               int
@@ -68,38 +64,19 @@ type api struct {
 }
 
 func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*api, error) {
-	var (
-		configService  *earlyconfig.Service
-		realmConfigSvc *realmconfig.Service
-		smsConfigSvc   *boxsms.Service
-		err            error
-	)
-	if configDir == "" {
-		configService, err = earlyconfig.New()
-		if err == nil {
-			realmConfigSvc, err = realmconfig.New(defaultDhtMode)
-		}
-		if err == nil {
-			smsConfigSvc, err = boxsms.New()
-		}
-	} else {
-		configService, err = earlyconfig.NewInDir(configDir)
-		if err == nil {
-			realmConfigSvc, err = realmconfig.NewInDir(configDir, defaultDhtMode)
-		}
-		if err == nil {
-			smsConfigSvc, err = boxsms.NewInDir(configDir)
-		}
-	}
+	configService, err := earlyconfig.New(configDir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to initialize Early config: %w", err)
 	}
-
-	uiDir, err := resolveConfigDir(configDir)
+	realmConfigSvc, err := realmconfig.New(configDir, defaultDhtMode)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to initialize realm config: %w", err)
 	}
-	uiConfigSvc, err := newUIConfigService(uiDir)
+	smsConfigSvc, err := boxsms.NewConfigService(configDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize SMS config: %w", err)
+	}
+	uiConfigSvc, err := newUIConfigService(configDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize web UI config: %w", err)
 	}
@@ -146,7 +123,7 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 		func() string { return realmConfigSvc.Load().PeerID.ID },
 		func() []realmmodel.Group { return realmConfigSvc.Load().Groups },
 	)
-	// Forward-declared: onReceive only fires after a is fully constructed.
+
 	var a *api
 	identityFeature := realmidentity.New(func(name string, kp realmmodel.KeyPair) error {
 		return a.importPushedIdentity(name, kp)
@@ -190,8 +167,6 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 		log.Printf("camera: failed to auto-start RTSP server: %v", err)
 	}
 
-	// Auto-start the realm engine if a peer id already exists; failure here
-	// shouldn't block the web UI from starting.
 	if cfg := realmConfigSvc.Load(); cfg.PeerID.ID != "" {
 		cfg = ensureRealmListenPort(realmConfigSvc, cfg)
 		if err := realmEng.Start(cfg); err != nil {
@@ -204,7 +179,6 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 	return a, nil
 }
 
-// shutdown stops the realm engine and flushes any pending peer-store writes.
 func (a *api) shutdown() {
 	a.realmEngine.Stop()
 	a.realmServices.StopAll()
@@ -217,8 +191,6 @@ func (a *api) shutdown() {
 	}
 }
 
-// updateRealmConfig loads the current Realm config, applies fn, persists it,
-// and reconciles the engine to reflect the change.
 func (a *api) updateRealmConfig(fn func(cfg *realmmodel.Config)) (realmmodel.Config, error) {
 	cfg := a.realmConfig.Load()
 	fn(&cfg)
@@ -234,8 +206,6 @@ func (a *api) updateRealmConfig(fn func(cfg *realmmodel.Config)) (realmmodel.Con
 	return cfg, nil
 }
 
-// importPushedIdentity is the identity feature's onReceive callback: auto-imports
-// a pushed identity (no user confirmation), renaming on a name collision.
 func (a *api) importPushedIdentity(name string, kp realmmodel.KeyPair) error {
 	unique := name
 	for i := 2; a.identityExists(unique); i++ {
@@ -255,10 +225,6 @@ func (a *api) importPushedIdentity(name string, kp realmmodel.KeyPair) error {
 	return nil
 }
 
-// importPushedGroup is the group feature's onReceive callback: auto-imports
-// a pushed group (no user confirmation), renaming on a name collision. It
-// arrives with no permissions granted — the receiving user assigns those
-// locally via the Permissions subtab, same as a manually imported group.
 func (a *api) importPushedGroup(name string, kp realmmodel.KeyPair) error {
 	unique := name
 	for i := 2; a.groupExists(unique); i++ {
@@ -278,7 +244,6 @@ func (a *api) importPushedGroup(name string, kp realmmodel.KeyPair) error {
 	return nil
 }
 
-// resolveHostname returns override if set, else the OS-reported hostname.
 func resolveHostname(override string) string {
 	if override != "" {
 		return override
@@ -290,11 +255,6 @@ func resolveHostname(override string) string {
 	return hostname
 }
 
-// ensureRealmListenPort backfills cfg.RealmListenPort with a free port, once,
-// so the peer's advertised addresses stay stable across restarts. No-op if
-// the user picked a specific port (RealmListenPortMode), already assigned,
-// or if a free port couldn't be picked (falls back to libp2p's random-port
-// default).
 func ensureRealmListenPort(svc *realmconfig.Service, cfg realmmodel.Config) realmmodel.Config {
 	if cfg.RealmListenPortMode == realmmodel.ListenPortModeSpecific {
 		return cfg
@@ -314,12 +274,8 @@ func ensureRealmListenPort(svc *realmconfig.Service, cfg realmmodel.Config) real
 	return cfg
 }
 
-// handlerFunc handles one action: unmarshal params (if any), validate, call
-// a service, and shape a response.
 type handlerFunc func(a *api, params json.RawMessage) (any, error)
 
-// handlers maps each action name to its handler, defined across api_realm.go,
-// api_early.go, and api_misc.go by domain.
 var handlers = map[string]handlerFunc{
 	"spec.report":         handleSpecReport,
 	"troubleshooting.run": handleTroubleshootingRun,
@@ -339,18 +295,6 @@ var handlers = map[string]handlerFunc{
 
 	"realm.loadConfig":            handleRealmLoadConfig,
 	"realm.generatePeerId":        handleRealmGeneratePeerID,
-	"realm.addGroup":              handleRealmAddGroup,
-	"realm.importGroup":           handleRealmImportGroup,
-	"realm.deleteGroup":           handleRealmDeleteGroup,
-	"realm.pushGroup":             handleRealmPushGroup,
-	"realm.addPermission":         handleRealmAddPermission,
-	"realm.deletePermission":      handleRealmDeletePermission,
-	"realm.exportGroup":           handleRealmExportGroup,
-	"realm.addIdentity":           handleRealmAddIdentity,
-	"realm.importIdentity":        handleRealmImportIdentity,
-	"realm.deleteIdentity":        handleRealmDeleteIdentity,
-	"realm.exportIdentity":        handleRealmExportIdentity,
-	"realm.pushIdentity":          handleRealmPushIdentity,
 	"realm.setDescription":        handleRealmSetDescription,
 	"realm.setEnabled":            handleRealmSetEnabled,
 	"realm.setDhtMode":            handleRealmSetDhtMode,
@@ -359,17 +303,34 @@ var handlers = map[string]handlerFunc{
 	"realm.setPeerRetentionDays":  handleRealmSetPeerRetentionDays,
 	"realm.setListenPort":         handleRealmSetListenPort,
 	"realm.setExposeWeb":          handleRealmSetExposeWeb,
+
+	"realm.addGroup":    handleRealmAddGroup,
+	"realm.importGroup": handleRealmImportGroup,
+	"realm.deleteGroup": handleRealmDeleteGroup,
+	"realm.exportGroup": handleRealmExportGroup,
+	"realm.pushGroup":   handleRealmPushGroup,
+
+	"realm.addIdentity":    handleRealmAddIdentity,
+	"realm.importIdentity": handleRealmImportIdentity,
+	"realm.deleteIdentity": handleRealmDeleteIdentity,
+	"realm.exportIdentity": handleRealmExportIdentity,
+	"realm.pushIdentity":   handleRealmPushIdentity,
+
+	"realm.addPermission":    handleRealmAddPermission,
+	"realm.deletePermission": handleRealmDeletePermission,
+
 	"realm.listPeers":             handleRealmListPeers,
 	"realm.listSwarmPeers":        handleRealmListSwarmPeers,
 	"realm.clearPeerAddresses":    handleRealmClearPeerAddresses,
 	"realm.clearAllPeerAddresses": handleRealmClearAllPeerAddresses,
 	"realm.forcePeriodicTick":     handleRealmForcePeriodicTick,
 	"realm.deletePeer":            handleRealmDeletePeer,
-	"realm.addScript":             handleRealmAddScript,
-	"realm.updateScript":          handleRealmUpdateScript,
-	"realm.deleteScript":          handleRealmDeleteScript,
-	"realm.runPeerScript":         handleRealmRunPeerScript,
-	"realm.listScriptRuns":        handleRealmListScriptRuns,
+
+	"realm.addScript":      handleRealmAddScript,
+	"realm.updateScript":   handleRealmUpdateScript,
+	"realm.deleteScript":   handleRealmDeleteScript,
+	"realm.runPeerScript":  handleRealmRunPeerScript,
+	"realm.listScriptRuns": handleRealmListScriptRuns,
 
 	"realm.addService":        handleRealmAddService,
 	"realm.updateService":     handleRealmUpdateService,

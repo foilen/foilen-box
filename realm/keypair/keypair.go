@@ -1,7 +1,3 @@
-// Package keypair generates and imports Realm identities (peer id and
-// group keys), all stored as a model.KeyPair per decision 4: only the
-// base64-encoded, protobuf-marshaled private key is persisted; the public
-// key and peer id are re-derived from it at load time.
 package keypair
 
 import (
@@ -14,7 +10,6 @@ import (
 	"foilen-realm/model"
 )
 
-// Generate creates a new Ed25519 identity and returns it as a model.KeyPair.
 func Generate() (model.KeyPair, error) {
 	priv, _, err := crypto.GenerateKeyPair(crypto.Ed25519, -1)
 	if err != nil {
@@ -23,10 +18,6 @@ func Generate() (model.KeyPair, error) {
 	return fromPrivateKey(priv)
 }
 
-// Import decodes and validates a base64-encoded, protobuf-marshaled private
-// key (as produced by Generate/exported via model.KeyPair.PrivateKeyBase64)
-// and returns the corresponding model.KeyPair, with its ID re-derived from
-// the key rather than trusted from input.
 func Import(privateKeyBase64 string) (model.KeyPair, error) {
 	raw, err := base64.StdEncoding.DecodeString(privateKeyBase64)
 	if err != nil {
@@ -39,8 +30,6 @@ func Import(privateKeyBase64 string) (model.KeyPair, error) {
 	return fromPrivateKey(priv)
 }
 
-// PrivateKey decodes and returns the go-libp2p PrivKey backing kp, for use
-// building a host identity or deriving a rendezvous topic.
 func PrivateKey(kp model.KeyPair) (crypto.PrivKey, error) {
 	raw, err := base64.StdEncoding.DecodeString(kp.PrivateKeyBase64)
 	if err != nil {

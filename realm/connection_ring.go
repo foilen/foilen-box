@@ -14,16 +14,8 @@ import (
 	"foilen-realm/model"
 )
 
-// ringNeighborCount is how many peers on each side (alphabetically previous
-// and next, by peer id, wrapping around the group's member list) this peer
-// tries to keep connected per group.
 const ringNeighborCount = 2
 
-// maintainGroupRings is the periodic connection-shaping pass (every
-// keepAliveInterval): for each group, connect to its ringNeighborCount
-// previous/next members (trying further-out ones if the nearest are
-// unreachable), then disconnect any other connected group peer not required
-// by a ring and not reported in use by a feature (PeerInUseHook).
 func (e *Engine) maintainGroupRings(ctx context.Context) {
 	e.mu.Lock()
 	h := e.host
@@ -64,9 +56,6 @@ func (e *Engine) maintainGroupRings(ctx context.Context) {
 	e.disconnectExtraPeers(h, required)
 }
 
-// ringMemberIDs returns the alphabetically-sorted peer ids of selfID plus
-// every known peer whose confirmed GroupNames includes groupName (discovery
-// alone doesn't count, see handleFoundPeer).
 func ringMemberIDs(known []model.PeerInfo, groupName, selfID string) []string {
 	ids := []string{selfID}
 	for _, info := range known {
@@ -81,9 +70,6 @@ func ringMemberIDs(known []model.PeerInfo, groupName, selfID string) []string {
 	return ids
 }
 
-// ringCandidateOrder returns every other member, closest first, walking in
-// direction dir (-1: previous, +1: next, wrapping) from members[selfIdx].
-// members must be sorted and contain selfID exactly once, at selfIdx.
 func ringCandidateOrder(members []string, selfIdx, dir int) []string {
 	n := len(members)
 	order := make([]string, 0, n-1)
@@ -95,7 +81,6 @@ func ringCandidateOrder(members []string, selfIdx, dir int) []string {
 	return order
 }
 
-// indexOfString returns the index of v in list, or -1 if absent.
 func indexOfString(list []string, v string) int {
 	for i, s := range list {
 		if s == v {
@@ -105,8 +90,6 @@ func indexOfString(list []string, v string) int {
 	return -1
 }
 
-// connectRingCandidates dials candidates in order until want succeed or the
-// list is exhausted, skipping unreachable ones. Returns the connected ids.
 func (e *Engine) connectRingCandidates(ctx context.Context, h host.Host, candidates []string, want int) []string {
 	found := make([]string, 0, want)
 	for _, candidate := range candidates {
@@ -142,9 +125,6 @@ func (e *Engine) connectRingCandidates(ctx context.Context, h host.Host, candida
 	return found
 }
 
-// disconnectExtraPeers closes every connected known group peer not in
-// required and not reported in use by a PeerInUseHook. Untracked peers
-// (e.g. DHT routing connections to strangers) are left untouched.
 func (e *Engine) disconnectExtraPeers(h host.Host, required map[string]bool) {
 	for _, pid := range h.Network().Peers() {
 		idStr := pid.String()
@@ -166,8 +146,6 @@ func (e *Engine) disconnectExtraPeers(h host.Host, required map[string]bool) {
 	}
 }
 
-// isPeerInUse reports whether any registered PeerInUseHook claims id is
-// actively in use.
 func (e *Engine) isPeerInUse(id peer.ID) bool {
 	for _, h := range e.peerInUseHooks {
 		if h.IsPeerInUse(id) {
@@ -177,15 +155,10 @@ func (e *Engine) isPeerInUse(id peer.ID) bool {
 	return false
 }
 
-// IsRingNeighbor reports whether id is one of this peer's ring neighbors
-// ("main" peers) for any configured group.
 func (e *Engine) IsRingNeighbor(id string) bool {
 	return e.isRingNeighbor(id)
 }
 
-// isRingNeighbor reports whether maintainGroupRings wants id connected as a
-// ring neighbor, regardless of current connection state. Used to decide
-// whether a disconnect merits a one-time reconnect (reconnectRingPeerOnce).
 func (e *Engine) isRingNeighbor(id string) bool {
 	e.mu.Lock()
 	cfg := e.cfg
@@ -219,18 +192,12 @@ func (e *Engine) isRingNeighbor(id string) bool {
 	return false
 }
 
-// getHost returns the currently running libp2p host, or nil if the engine
-// isn't started.
 func (e *Engine) getHost() host.Host {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.host
 }
 
-// reconnectRingPeerOnce waits reconnectDelay then, if still running and id
-// still disconnected, makes one dial attempt. Run in its own goroutine right
-// after a ring-neighbor disconnect, so a transient drop can recover sooner
-// than waiting for the next maintainGroupRings tick (up to keepAliveInterval away).
 func (e *Engine) reconnectRingPeerOnce(ctx context.Context, id string) {
 	timer := time.NewTimer(reconnectDelay)
 	defer timer.Stop()

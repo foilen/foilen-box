@@ -1,6 +1,3 @@
-// Package whois resolves domain registration data via a plain TCP
-// connection to the appropriate WHOIS server (port 43), matching the
-// original hand-rolled Java implementation (no third-party WHOIS library).
 package whois
 
 import (
@@ -15,8 +12,6 @@ import (
 
 const timeout = 10 * time.Second
 
-// whoisServers is intentionally limited to the same 5 TLDs the Java version
-// supported.
 var whoisServers = map[string]model.WhoisServerConfig{
 	".ca":  {ServerName: "whois.cira.ca", QueryPrefix: ""},
 	".com": {ServerName: "whois.internic.net", QueryPrefix: "="},
@@ -25,8 +20,6 @@ var whoisServers = map[string]model.WhoisServerConfig{
 	".net": {ServerName: "whois.internic.net", QueryPrefix: "="},
 }
 
-// Query looks up WHOIS data for domainName. Returns an error if the TLD
-// isn't one of the 5 configured, or if the network query fails.
 func Query(domainName string) (*model.WhoisResponse, error) {
 	lastDot := strings.LastIndex(domainName, ".")
 	if lastDot < 0 {
@@ -65,9 +58,6 @@ func Query(domainName string) (*model.WhoisResponse, error) {
 
 const whoisFieldDateLayout = "2006-01-02T15:04:05Z"
 
-// Parse parses a raw WHOIS text response into a WhoisResponse, mirroring the
-// Java whoisParser: split each line on the first ':', match ~50 known keys,
-// and bucket everything else into Others as "key: value".
 func Parse(whoisData string) *model.WhoisResponse {
 	resp := &model.WhoisResponse{}
 	for _, line := range strings.Split(whoisData, "\n") {

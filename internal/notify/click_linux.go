@@ -6,16 +6,13 @@ import (
 	"log"
 	"sync"
 
-	"github.com/gen2brain/beeep"
 	dbusnotify "github.com/esiqveland/notify"
+	"github.com/gen2brain/beeep"
 	"github.com/godbus/dbus/v5"
 
 	"foilen-box/internal/browseropen"
 )
 
-// clickState tracks the lazily-created dbus notifier and the
-// notification-ID -> target-URL mapping consulted on click. Entries are
-// removed on click or close, whichever comes first.
 var clickState struct {
 	sync.Mutex
 	notifier dbusnotify.Notifier
@@ -69,9 +66,6 @@ func onClickClosed(sig *dbusnotify.NotificationClosedSignal) {
 	clickState.Unlock()
 }
 
-// NotifyClick shows a notification that opens url when clicked, via a dbus
-// "default" action (most Linux notification daemons fire this on body
-// click). Falls back to a plain notification if dbus isn't reachable.
 func NotifyClick(title, body, url string) error {
 	n := ensureClickNotifier()
 	if n == nil {

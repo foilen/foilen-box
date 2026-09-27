@@ -15,7 +15,6 @@ import (
 func (e *Engine) onConnected(_ network.Network, conn network.Conn) {
 	remote := conn.RemotePeer()
 
-	// Skip unknown peers and extra simultaneous Conns to an already-connected peer.
 	if info, known := e.peers.Get(remote.String()); known && !info.Connected {
 		log.Printf("realm engine: connected to peer %s", info.Label())
 	}
@@ -32,9 +31,6 @@ func (e *Engine) onConnected(_ network.Network, conn network.Conn) {
 	}
 }
 
-// onDisconnected fires once per closed Conn, not once per peer actually
-// unreachable; only a disconnect dropping the peer's last Conn is
-// logged/recorded. Unknown peers (e.g. DHT routing strangers) are skipped.
 func (e *Engine) onDisconnected(net network.Network, conn network.Conn) {
 	remote := conn.RemotePeer()
 	if net.Connectedness(remote) == network.Connected {
@@ -66,10 +62,6 @@ func (e *Engine) onDisconnected(net network.Network, conn network.Conn) {
 	}
 }
 
-// handleFoundPeer records a peer surfaced by UDP broadcast/DHT discovery under
-// groupName's rendezvous channel. The channel only narrows the search and
-// doesn't prove membership, so groupName isn't trusted here — GroupNames is
-// only populated once the peer passes a signed group-challenge (peer_identify.go).
 func (e *Engine) handleFoundPeer(info peer.AddrInfo, groupName, source string) {
 	e.mu.Lock()
 	h := e.host
@@ -118,10 +110,6 @@ func (e *Engine) handleFoundPeer(info peer.AddrInfo, groupName, source string) {
 	}
 }
 
-// keepAliveLoop runs every feature's PeriodicHook, ring maintenance, and DHT
-// swarm trimming every keepAliveInterval. PeriodicHooks run before
-// maintainGroupRings since "common/announce" merges gossiped reachability
-// addresses into the peer store before the ring reconnect dials.
 func (e *Engine) keepAliveLoop(ctx context.Context) {
 	e.runPeriodicHooks()
 	e.maintainGroupRings(ctx)
@@ -143,10 +131,6 @@ func (e *Engine) keepAliveLoop(ctx context.Context) {
 	}
 }
 
-// RunPeriodicNow immediately runs one iteration of the keep-alive tick
-// (every feature's PeriodicHook, ring maintenance, DHT swarm trimming, and
-// stale-peer pruning) instead of waiting for the next keepAliveInterval
-// tick. No-op if the engine isn't running.
 func (e *Engine) RunPeriodicNow() {
 	ctx := e.Context()
 	if ctx == nil {
@@ -158,9 +142,6 @@ func (e *Engine) RunPeriodicNow() {
 	e.pruneStalePeers()
 }
 
-// pruneStalePeers removes known, disconnected peers not seen within the
-// configured retention window (model.DefaultPeerRetentionDays if unset;
-// pruning is skipped entirely if the configured value is negative).
 func (e *Engine) pruneStalePeers() {
 	e.mu.Lock()
 	days := e.cfg.PeerRetentionDays
@@ -182,9 +163,6 @@ func (e *Engine) pruneStalePeers() {
 	}
 }
 
-// RemovePeer deletes a known, disconnected peer and runs the same
-// peerRemovedHooks as PruneStale. Refuses (returns an error) if the peer is
-// unknown or currently connected.
 func (e *Engine) RemovePeer(id string) error {
 	if !e.peers.Remove(id) {
 		return fmt.Errorf("peer %q is unknown or still connected", id)
@@ -202,8 +180,6 @@ func (e *Engine) runPeriodicHooks() {
 	}
 }
 
-// hasCommonGroup reports whether groupNames contains the name of any group
-// in groups.
 func hasCommonGroup(groupNames []string, groups []model.Group) bool {
 	for _, g := range groups {
 		for _, gn := range groupNames {
@@ -223,16 +199,10 @@ func groupsByKey(groups []model.Group) map[string]model.Group {
 	return m
 }
 
-// groupKey identifies a group across Reconcile calls: the group's key pair
-// is what actually defines its broadcast group hash and DHT topic, so a
-// rename (same key pair, different Name) must not be treated as add+remove.
 func groupKey(group model.Group) string {
 	return group.KeyPair.PrivateKeyBase64
 }
 
-// pruneRemovedGroups strips any group name that's no longer in newGroups
-// from every known peer's GroupNames, so a deleted group doesn't linger in
-// the peer list. Safe to call regardless of whether the engine is running.
 func (e *Engine) pruneRemovedGroups(prevGroups, newGroups []model.Group) {
 	stillPresent := make(map[string]bool, len(newGroups))
 	for _, g := range newGroups {
@@ -245,8 +215,6 @@ func (e *Engine) pruneRemovedGroups(prevGroups, newGroups []model.Group) {
 	}
 }
 
-// addedGroupKeys returns every group in newGroups that isn't (by groupKey)
-// present in prevGroups.
 func addedGroupKeys(prevGroups, newGroups []model.Group) []model.Group {
 	prevKeys := make(map[string]bool, len(prevGroups))
 	for _, g := range prevGroups {
@@ -261,9 +229,6 @@ func addedGroupKeys(prevGroups, newGroups []model.Group) []model.Group {
 	return added
 }
 
-// notifyConnectedPeersOfGroups re-runs the identify exchange with every
-// connected known peer, so a newly added group is announced immediately
-// instead of only on the next reconnect.
 func (e *Engine) notifyConnectedPeersOfGroups() {
 	for _, info := range e.peers.List() {
 		if !info.Connected {
@@ -275,15 +240,4 @@ func (e *Engine) notifyConnectedPeersOfGroups() {
 		}
 		go e.fetchPeerIdentity(pid)
 	}
-}
-
-// findGroupByID returns the locally-configured group whose public group id
-// (KeyPair.ID) matches id.
-func findGroupByID(groups []model.Group, id string) (model.Group, bool) {
-	for _, g := range groups {
-		if g.KeyPair.ID == id {
-			return g, true
-		}
-	}
-	return model.Group{}, false
 }

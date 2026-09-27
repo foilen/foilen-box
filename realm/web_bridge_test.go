@@ -15,13 +15,6 @@ import (
 	manet "github.com/multiformats/go-multiaddr/net"
 )
 
-// TestWebListenerAccept exercises webListener end to end (the HTTP(S)
-// server started by webTransport.Listen): serving the index page,
-// upgrading a /p2p request to a WebSocket, opening a resource-management
-// scope, and handing the resulting byte stream to Accept. This stops short
-// of webTransport.Listen/Dial's libp2p security/muxer upgrade, which needs
-// a full libp2p Upgrader — exercised by go-libp2p's own transport test
-// suite, not reimplemented here.
 func TestWebListenerAccept(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

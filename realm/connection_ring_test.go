@@ -10,7 +10,7 @@ import (
 func TestRingMemberIDsIncludesSelfAndOnlyConfirmedGroupMembers(t *testing.T) {
 	known := []model.PeerInfo{
 		{ID: "c", GroupNames: []string{"family"}},
-		{ID: "a", GroupNames: []string{"work"}}, // different group, must be excluded
+		{ID: "a", GroupNames: []string{"work"}},
 		{ID: "b", GroupNames: []string{"family", "work"}},
 	}
 
@@ -22,7 +22,6 @@ func TestRingMemberIDsIncludesSelfAndOnlyConfirmedGroupMembers(t *testing.T) {
 }
 
 func TestRingCandidateOrderWrapsAroundBothDirections(t *testing.T) {
-	// Alphabetically: a, b, c(self), d, e
 	members := []string{"a", "b", "c", "d", "e"}
 	selfIdx := 2
 
@@ -38,7 +37,6 @@ func TestRingCandidateOrderWrapsAroundBothDirections(t *testing.T) {
 }
 
 func TestRingCandidateOrderSmallGroupCanRepeatAcrossDirections(t *testing.T) {
-	// Only one other member: both directions land on it.
 	members := []string{"other", "self"}
 	selfIdx := 1
 

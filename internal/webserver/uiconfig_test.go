@@ -66,8 +66,6 @@ func TestListenForUIRandomByDefault(t *testing.T) {
 }
 
 func TestListenForUIPinnedPort(t *testing.T) {
-	// Bind a random port first, then ask listenForUI to pin exactly that
-	// port to confirm the fixed-port path is actually taken.
 	probe, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("probe listen: %v", err)

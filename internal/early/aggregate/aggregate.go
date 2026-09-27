@@ -1,5 +1,3 @@
-// Package aggregate fetches Early time entries and aggregates their
-// durations by activity/day/tag, or deletes entries by activity name.
 package aggregate
 
 import (
@@ -10,21 +8,18 @@ import (
 	"foilen-box/internal/early/model"
 )
 
-// EarlyService is the subset of the Early API client this package needs.
 type EarlyService interface {
 	Connect(cfg model.ConfigEarly) error
 	TimeEntries(from, to time.Time) (*model.TimeEntriesResponse, error)
 	TimeEntryDelete(id string) (*model.Response, error)
 }
 
-// ConfigService is the subset of the config service this package needs.
 type ConfigService interface {
 	Load() model.ConfigEarly
 }
 
 const dayLayout = "2006-01-02"
 
-// Service orchestrates connect+fetch+aggregate/delete against Early.
 type Service struct {
 	earlyService  EarlyService
 	configService ConfigService
@@ -34,8 +29,6 @@ func New(earlyService EarlyService, configService ConfigService) *Service {
 	return &Service{earlyService: earlyService, configService: configService}
 }
 
-// Aggregate connects, fetches time entries for the past-to-next year window,
-// and aggregates their durations.
 func (s *Service) Aggregate() (*model.AggregateResult, error) {
 	response, err := s.connectAndFetch()
 	if err != nil {
@@ -91,9 +84,6 @@ func (s *Service) Aggregate() (*model.AggregateResult, error) {
 	return result, nil
 }
 
-// DeleteByActivity connects, fetches time entries for the past-to-next year
-// window, and deletes every entry matching activityName exactly. Returns the
-// count of deleted entries.
 func (s *Service) DeleteByActivity(activityName string) (int, error) {
 	response, err := s.connectAndFetch()
 	if err != nil {
@@ -134,7 +124,6 @@ func (s *Service) connectAndFetch() (*model.TimeEntriesResponse, error) {
 	return response, nil
 }
 
-// lastYearWindow mirrors fetchLastYear(): [now-1y, now+1y].
 func lastYearWindow() (from, to time.Time) {
 	from = time.Now().AddDate(-1, 0, 0)
 	to = from.AddDate(2, 0, 0)

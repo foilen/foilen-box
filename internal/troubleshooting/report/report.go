@@ -1,5 +1,3 @@
-// Package report renders WHOIS/DNS lookup results as the same plain-text
-// report the desktop UI used to build directly in internal/ui/troubleshooting.go.
 package report
 
 import (
@@ -10,8 +8,6 @@ import (
 	tmodel "foilen-box/internal/troubleshooting/model"
 )
 
-// Format combines the WHOIS response (nil if the lookup failed) and DNS
-// entries into the full report text.
 func Format(whoisResp *tmodel.WhoisResponse, dnsEntries []tmodel.RawDnsEntry) string {
 	var sb strings.Builder
 	if whoisResp == nil {

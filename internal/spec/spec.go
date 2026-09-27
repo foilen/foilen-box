@@ -1,5 +1,3 @@
-// Package spec gathers a human-readable system information report (OS, CPU,
-// RAM, GPU, disk, Go runtime) using gopsutil.
 package spec
 
 import (
@@ -12,8 +10,6 @@ import (
 	"github.com/shirou/gopsutil/v3/mem"
 )
 
-// Summary is a compact, one-line-per-field version of Report, for table
-// display (e.g. the Realm peers Specs subtab). Fields are empty if unknown.
 type Summary struct {
 	OS      string `json:"os"`
 	CPU     string `json:"cpu"`
@@ -23,8 +19,6 @@ type Summary struct {
 	Disk    string `json:"disk"`
 }
 
-// GetSummary returns the compact Summary. extraPath is the disk usage fallback
-// when no system partition can be statted (e.g. Android's sandboxed storage).
 func GetSummary(extraPath string) Summary {
 	var s Summary
 
@@ -73,9 +67,6 @@ func GetSummary(extraPath string) Summary {
 	return s
 }
 
-// Report returns the full multi-section system information text. extraPath,
-// if non-empty, is always included as "App storage" — needed on Android,
-// where sandboxed apps often can't stat the system's mount points.
 func Report(extraPath string) string {
 	var sb strings.Builder
 
@@ -176,8 +167,6 @@ func Report(extraPath string) string {
 	return sb.String()
 }
 
-// primaryDiskUsage returns the largest statable system partition's usage,
-// falling back to extraPath if none is reachable.
 func primaryDiskUsage(extraPath string) *disk.UsageStat {
 	var best *disk.UsageStat
 	if partitions, err := disk.Partitions(false); err == nil {

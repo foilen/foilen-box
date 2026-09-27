@@ -11,11 +11,10 @@ import (
 	"strings"
 )
 
-// batteryInfo is a best-effort description of one battery.
 type batteryInfo struct {
-	Percent int    // 0-100
-	Status  string // e.g. "Charging", "Discharging", "Full"; "" if unknown
-	Model   string // manufacturer/model, if known; "" otherwise
+	Percent int
+	Status  string
+	Model   string
 }
 
 func (b batteryInfo) String() string {
@@ -29,24 +28,18 @@ func (b batteryInfo) String() string {
 	return s
 }
 
-// BatteryProvider is implemented on Android (Kotlin's BatteryManager), set via
-// SetAndroidBatteryProvider — sysfs reads are usually SELinux-blocked there.
-// Two single-value methods because gomobile bind can't return multiple values.
 type BatteryProvider interface {
-	// BatteryPercent returns 0-100, or -1 if unknown.
 	BatteryPercent() int32
-	// BatteryStatus returns e.g. "Charging", "Discharging", "Full"; "" if unknown.
+
 	BatteryStatus() string
 }
 
 var androidBatteryProvider BatteryProvider
 
-// SetAndroidBatteryProvider sets the platform battery provider; nil reverts to sysfs detection.
 func SetAndroidBatteryProvider(p BatteryProvider) {
 	androidBatteryProvider = p
 }
 
-// batteryInfos returns detected batteries, best-effort (nil on any error, e.g. no battery present).
 func batteryInfos() []batteryInfo {
 	if androidBatteryProvider != nil {
 		percent := androidBatteryProvider.BatteryPercent()
@@ -58,8 +51,7 @@ func batteryInfos() []batteryInfo {
 
 	switch runtime.GOOS {
 	case "linux", "android":
-		// Fallback for Android before a BatteryProvider is registered (e.g. boot);
-		// usually finds nothing there due to SELinux.
+
 		return batteryInfosSysfs()
 	case "darwin":
 		return batteryInfosDarwin()
@@ -70,8 +62,6 @@ func batteryInfos() []batteryInfo {
 	}
 }
 
-// batteryInfosSysfs reads /sys/class/power_supply/*, skipping non-battery
-// or absent devices.
 func batteryInfosSysfs() []batteryInfo {
 	matches, err := filepath.Glob("/sys/class/power_supply/*")
 	if err != nil {

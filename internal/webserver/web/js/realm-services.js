@@ -1,14 +1,9 @@
-import { report, formatKnownPeerLabel, syncList, syncCells } from "./util.js";
+import { report, formatKnownPeerLabel, syncList, syncCells, syncConnectedCell } from "./util.js";
 
 const PEER_SERVICES_POLL_INTERVAL_MS = 5000;
 const SERVICES_STORE_NAME = "common";
 const SERVICES_KEY_PREFIX = "services/";
 
-// Wires the Services subtab: the "My Services" CRUD table, the local-port
-// scan modal, and the "Peer Services" section — aggregates the
-// services/{peerId}/{name} entries every peer posts into the "common" store
-// (see internal/webserver/realm_announce.go) and lets the user start/stop a
-// local proxy tunnel or connect with a native app.
 export function initRealmServices(api, output, renderConfig) {
 	const myServicesBody = document.getElementById("realm-my-services-tbody");
 	const myServicesCount = document.getElementById("realm-services-count");
@@ -27,13 +22,15 @@ export function initRealmServices(api, output, renderConfig) {
 
 	const peerServicesBody = document.getElementById("realm-peer-services-tbody");
 
-	// peerServices: [{ peerId, name, description, hostname, type, port }]
 	let peerServices = [];
-	// activeProxies: "peerId|name" -> localPort
 	let activeProxies = new Map();
 	let knownPeers = [];
 	let groups = [];
 	let ownPeerId = "";
+
+	function isPeerConnected(peerId) {
+		return knownPeers.find((p) => p.id === peerId)?.connected ?? false;
+	}
 
 	function myServiceCells(service) {
 		return [
@@ -162,9 +159,6 @@ export function initRealmServices(api, output, renderConfig) {
 		return `${peerId}|${name}`;
 	}
 
-	// These cells are found by dataset.label rather than position, and
-	// build-or-patch in place, since their content (proxy/connected state)
-	// changes on its own poll cycle independent of the service entry data.
 	function syncProxyCell(row, peerId, service) {
 		let cell = row.querySelector('td[data-label="Proxy"]');
 		if (!cell) {
@@ -174,23 +168,6 @@ export function initRealmServices(api, output, renderConfig) {
 		}
 		const localPort = activeProxies.get(proxyKey(peerId, service.name));
 		cell.textContent = localPort ? `Running on 127.0.0.1:${localPort}` : "Stopped";
-	}
-
-	function syncConnectedCell(row, peerId) {
-		let cell = row.querySelector('td[data-label="Connected"]');
-		let dot;
-		if (!cell) {
-			cell = document.createElement("td");
-			cell.dataset.label = "Connected";
-			dot = document.createElement("span");
-			cell.appendChild(dot);
-			row.appendChild(cell);
-		} else {
-			dot = cell.querySelector("span");
-		}
-		const connected = knownPeers.find((p) => p.id === peerId)?.connected ?? false;
-		dot.className = `status-dot${connected ? " connected" : ""}`;
-		dot.title = connected ? "Connected" : "Not connected";
 	}
 
 	function syncActionsCell(row, peerId, service) {
@@ -265,7 +242,7 @@ export function initRealmServices(api, output, renderConfig) {
 	function syncPeerServiceRow(row, service) {
 		syncCells(row, peerServiceCells(service));
 		syncProxyCell(row, service.peerId, service);
-		syncConnectedCell(row, service.peerId);
+		syncConnectedCell(row, isPeerConnected(service.peerId));
 		syncActionsCell(row, service.peerId, service);
 	}
 

@@ -19,7 +19,6 @@
 	--md-elevation-1: 0 1px 2px rgba(0, 0, 0, 0.15), 0 1px 3px 1px rgba(0, 0, 0, 0.08);
 	--md-elevation-2: 0 1px 2px rgba(0, 0, 0, 0.2), 0 2px 6px 2px rgba(0, 0, 0, 0.1);
 
-	/* Material Web Components read theme via these --md-sys-color-* tokens. */
 	--md-sys-color-primary: var(--md-primary);
 	--md-sys-color-on-primary: var(--md-on-primary);
 	--md-sys-color-primary-container: var(--md-primary-container);
@@ -215,11 +214,6 @@ h3, h4 {
 	color: var(--md-on-surface);
 }
 
-/* #realm-output shares its tab-panel with several tall subtab panels
- * (tables, forms), unlike the other .output boxes which are their tab's only
- * content. A plain flex:1;min-height:0 there lets it get squeezed down to a
- * sliver whenever the active subtab is tall, making it hard to scroll. Give
- * it its own guaranteed, capped height instead so it always stays usable. */
 #realm-output {
 	flex: 0 0 auto;
 	min-height: 6em;
@@ -304,12 +298,6 @@ textarea:focus {
 	outline-offset: -1px;
 	border-color: var(--md-primary);
 }
-
-/* .tab-button / .subtab-button are plain <a href="#..."> links (styled to
-   look like buttons, and clickable in a new tab via ctrl/cmd/middle-click)
-   with their own styling above; every other button in the app is a Material
-   Web Components <md-filled-tonal-button>/<md-text-button>, styled by the
-   component itself via the --md-sys-color-* tokens set on :root. */
 
 md-outlined-select {
 	min-width: 12em;

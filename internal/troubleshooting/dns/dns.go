@@ -1,6 +1,3 @@
-// Package dns performs a breadth-first subdomain-enumeration DNS crawl,
-// starting from a hardcoded list of common subdomain prefixes and following
-// CNAME/MX/SRV targets that stay within the root domain.
 package dns
 
 import (
@@ -21,7 +18,6 @@ const (
 
 var queryTypes = []uint16{dns.TypeA, dns.TypeAAAA, dns.TypeCNAME, dns.TypeMX, dns.TypeNS, dns.TypeTXT, dns.TypeSRV}
 
-// commonSubdomainPrefixes seeds the crawl, same list as the Java version.
 var commonSubdomainPrefixes = []string{
 	"ns1", "ns2", "ns3", "ns4",
 	"beta", "dev", "pre", "www", "w3",
@@ -41,13 +37,10 @@ var commonSubdomainPrefixes = []string{
 	"asuid",
 }
 
-// Query performs the DNS crawl against the default nameserver (8.8.8.8).
 func Query(domainName string) []model.RawDnsEntry {
 	return QueryUsingServer(domainName, "")
 }
 
-// QueryUsingServer performs the DNS crawl against usingDNSServer, or the
-// default nameserver if empty.
 func QueryUsingServer(domainName, usingDNSServer string) []model.RawDnsEntry {
 	nameServer := defaultNameServer
 	if usingDNSServer != "" {

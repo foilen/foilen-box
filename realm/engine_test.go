@@ -74,7 +74,6 @@ func TestStartStopLifecycle(t *testing.T) {
 		t.Errorf("HostID() = %q, want %q", e.HostID(), kp.ID)
 	}
 
-	// Starting again while already running must be a no-op, not an error.
 	if err := e.Start(cfg); err != nil {
 		t.Fatalf("second Start() error = %v", err)
 	}
@@ -84,7 +83,6 @@ func TestStartStopLifecycle(t *testing.T) {
 		t.Error("Running() = true after Stop()")
 	}
 
-	// Stopping twice must be safe.
 	e.Stop()
 }
 
@@ -161,9 +159,6 @@ func TestAddedGroupKeys(t *testing.T) {
 	}
 }
 
-// TestHandleFoundPeerDoesNotGrantGroupMembership guards against discovery
-// alone granting group membership — that must only come from a passed
-// group-challenge (group_challenge.go).
 func TestHandleFoundPeerDoesNotGrantGroupMembership(t *testing.T) {
 	dir := t.TempDir()
 	kp, err := keypair.Generate()
@@ -230,7 +225,6 @@ func TestReconcileAddingGroupKeepsHostRunning(t *testing.T) {
 		t.Error("expected UDP broadcast discovery to still be running after adding a group")
 	}
 
-	// Reconciling with the same config again must be a no-op, not an error.
 	if err := e.Reconcile(cfg); err != nil {
 		t.Fatalf("second Reconcile() error = %v", err)
 	}
@@ -238,8 +232,6 @@ func TestReconcileAddingGroupKeepsHostRunning(t *testing.T) {
 		t.Errorf("HostID() changed across no-op Reconcile(): %q != %q", e.HostID(), firstID)
 	}
 
-	// Removing the group must not tear down UDP broadcast discovery (it's
-	// scoped to the whole engine, not per-group) or restart the host.
 	cfg.Groups = nil
 	if err := e.Reconcile(cfg); err != nil {
 		t.Fatalf("Reconcile() removing group error = %v", err)
@@ -251,7 +243,6 @@ func TestReconcileAddingGroupKeepsHostRunning(t *testing.T) {
 		t.Error("expected UDP broadcast discovery to still be running after removing a group")
 	}
 
-	// Disabling UDP broadcast discovery entirely must close the socket.
 	cfg.EnableUdpBroadcast = false
 	if err := e.Reconcile(cfg); err != nil {
 		t.Fatalf("Reconcile() disabling UDP broadcast error = %v", err)

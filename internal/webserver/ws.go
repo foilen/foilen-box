@@ -8,13 +8,9 @@ import (
 )
 
 var upgrader = websocket.Upgrader{
-	// The server only ever listens on 127.0.0.1, and the token check below
-	// is the actual access control, so the origin check itself can be
-	// permissive.
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
-// authMessage is the first message a client must send on a new connection.
 type authMessage struct {
 	Token string `json:"token"`
 }

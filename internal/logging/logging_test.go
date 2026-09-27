@@ -36,8 +36,7 @@ func TestRotatesOnSize(t *testing.T) {
 	}
 
 	chunk := strings.Repeat("x", 1024)
-	// Pretend the file is already right at the size limit so the next
-	// write forces a rotation without actually writing 100MB in a test.
+
 	w.size = maxSize
 
 	if _, err := w.Write([]byte(chunk)); err != nil {

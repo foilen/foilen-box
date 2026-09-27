@@ -13,8 +13,6 @@ import { initRealmGroupTroubleshooting } from "./realm-group-troubleshooting.js"
 import { parseHash, updateHash } from "./hash.js";
 import { updateFaviconForSubtab } from "./favicon.js";
 
-// Wires subtab switching. onActivate (optional) is called with the
-// activated subtab on every switch — used by Services to refresh stale peers.
 function initRealmSubtabs(api, onActivate) {
 	const buttons = document.querySelectorAll("#realm-subtabs .subtab-button");
 	function activate(button, extra) {
@@ -66,10 +64,6 @@ export function initRealmTab(api, isAndroid) {
 	const exposeWebAnnounceProtocolSelect = document.getElementById("realm-expose-web-announce-protocol");
 	const output = document.getElementById("realm-output");
 
-	// renderConfig fans out the "full config" response every realm.* mutation
-	// returns, updating this module's fields and deferring to each subtab for
-	// its own tables. Forward-declared so it can be handed to
-	// initRealmGroups/initRealmPermissions before their render functions exist.
 	let renderGroups = () => {};
 	let onGroupsConfigUpdate = () => {};
 	let renderIdentities = () => {};
@@ -86,10 +80,6 @@ export function initRealmTab(api, isAndroid) {
 	let onSmsConfigUpdate = () => {};
 	let onGroupTroubleshootingConfigUpdate = () => {};
 
-	// A node never discovers itself via mDNS/DHT, but its id shows up in maps
-	// (specs/scripts/services it posts about itself). Synthesize a pseudo-peer
-	// entry from realm.loadConfig and merge it into the peers list handed to
-	// every subtab, so formatKnownPeerLabel can resolve it to a proper label.
 	let ownPeer = null;
 	let latestPeers = [];
 
@@ -288,11 +278,6 @@ export function initRealmTab(api, isAndroid) {
 	listenPortModeSelect.addEventListener("change", () => {
 		const specific = listenPortModeSelect.value === "specific";
 		listenPortSpecificRow.classList.toggle("hidden", !specific);
-		// Save right away so a background config poll doesn't revert this
-		// selection before the user picks a port; skipped when switching to
-		// "specific" with no port yet (e.g. still unassigned) since the
-		// backend rejects a 0 port — the value input's own "change" handler
-		// saves once they enter one.
 		if (!specific || parseInt(listenPortValueInput.value, 10) > 0) saveListenPort();
 	});
 	listenPortValueInput.addEventListener("change", saveListenPort);

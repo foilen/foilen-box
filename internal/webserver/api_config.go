@@ -5,10 +5,6 @@ import (
 	"fmt"
 )
 
-// configResult mirrors uiConfig for the WebSocket API, except Port always
-// reflects a usable default: the pinned port if one is saved, otherwise the
-// port this server instance actually bound this run (so the textbox starts
-// pre-filled with something sensible when the user unchecks "Random").
 type configResult struct {
 	RandomPort         bool `json:"randomPort"`
 	Port               int  `json:"port"`
@@ -46,8 +42,6 @@ func handleConfigSaveConfig(a *api, params json.RawMessage) (any, error) {
 	return nil, nil
 }
 
-// tabStatsResult reports how many times each tab/subtab has been activated,
-// so the UI can reorder them most-used-first on the next page load.
 type tabStatsResult struct {
 	TabCounts    map[string]int `json:"tabCounts"`
 	SubtabCounts map[string]int `json:"subtabCounts"`

@@ -8,8 +8,6 @@ import (
 	"strings"
 )
 
-// OpenHTTP launches the OS default browser at the local proxy port, over
-// plain http or https.
 func OpenHTTP(port int, secure bool) error {
 	scheme := "http"
 	if secure {
@@ -18,17 +16,12 @@ func OpenHTTP(port int, secure bool) error {
 	return Open(fmt.Sprintf("%s://127.0.0.1:%d", scheme, port))
 }
 
-// OpenRTSP launches the OS's registered RTSP handler (e.g. VLC) at the
-// local proxy port.
 func OpenRTSP(port int) error {
 	return Open(fmt.Sprintf("rtsp://127.0.0.1:%d/stream", port))
 }
 
-// linuxTerminals are tried in order on linux/bsd; the first found on $PATH is used.
 var linuxTerminals = []string{"x-terminal-emulator", "gnome-terminal", "konsole", "xterm"}
 
-// OpenSSH spawns a terminal running an ssh session against the local proxy
-// port. Returns a plain error if no terminal emulator is found.
 func OpenSSH(port int) error {
 	sshArgs := []string{"-p", fmt.Sprintf("%d", port), "127.0.0.1"}
 
@@ -60,29 +53,16 @@ func OpenSSH(port int) error {
 	return nil
 }
 
-// OpenVNC writes a temporary .vnc connection file pointing at the local
-// proxy port and opens it with the OS's registered VNC viewer, if any.
 func OpenVNC(port int) error {
 	content := fmt.Sprintf("[Connection]\nHost=127.0.0.1\nPort=%d\n", port)
 	return openTempFile("foilen-box-*.vnc", content)
 }
 
-// OpenRDP writes a temporary .rdp connection file pointing at the local
-// proxy port and opens it with the OS's registered RDP viewer, if any.
 func OpenRDP(port int) error {
 	content := fmt.Sprintf("full address:s:127.0.0.1:%d\n", port)
 	return openTempFile("foilen-box-*.rdp", content)
 }
 
-// OpenOpenVPN writes a temporary .ovpn client config pointing at the local
-// proxy port (the real VPN server is reached over the libp2p tunnel, over
-// TCP) and opens it with the OS's registered OpenVPN handler, if any.
-//
-// excludeHosts are the real network addresses the underlying libp2p
-// connection to the peer is using (see Engine.ConnectedHosts). Once
-// redirect-gateway takes over the default route, those addresses must keep
-// going through the original gateway, or the tunnel carrying the VPN
-// traffic itself gets cut.
 func OpenOpenVPN(port int, excludeHosts []string) error {
 	var b strings.Builder
 	b.WriteString("client\n")

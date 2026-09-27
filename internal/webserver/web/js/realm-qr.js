@@ -1,8 +1,3 @@
-// QR display and camera-scan modals used when exporting/importing a group's
-// key. Decoupled from the groups subtab: initQrModal returns a function to
-// show data as a QR code, and initScanModal takes a callback invoked with
-// the raw scanned string.
-
 export function initQrModal() {
 	const qrModal = document.getElementById("realm-qr-modal");
 	const qrTitle = document.getElementById("realm-qr-title");

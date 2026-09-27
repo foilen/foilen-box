@@ -26,27 +26,6 @@ import java.io.OutputStream
 import java.net.Socket
 import java.util.concurrent.Executors
 
-/**
- * Hosts the actual CameraX + MediaCodec capture pipeline for the Camera/RTSP
- * feature, as a foreground Service rather than tied to MainActivity — so the
- * stream keeps working with the screen off and the app backgrounded/not in
- * recents' foreground, same spirit as RealmForegroundService keeping the
- * realm engine alive. CameraX's bindToLifecycle needs a LifecycleOwner;
- * LifecycleService provides one without needing an Activity around
- * (the officially recommended way to run CameraX from a Service).
- *
- * Started only while internal/camera.Manager actually has an RTSP viewer
- * (see CameraCaptureBridge.startCapture/stopCapture) — promoted to
- * foreground for exactly that duration, then stops itself, so the
- * camera-in-use indicator/notification only ever shows while true.
- *
- * Transport to the Go side (internal/camera.bridgeCapturer): a loopback TCP
- * connection carrying the raw Annex-B H.264 elementary stream. When a
- * microphone is also selected a second connection carries a stream of
- * length-prefixed (4-byte big-endian) AAC-LC access units, and each
- * connection is prefixed with a single tag byte ('V' / 'A') so the Go side
- * can tell them apart regardless of connection order.
- */
 class CameraForegroundService : LifecycleService() {
 
 	private val uiExecutor by lazy { ContextCompat.getMainExecutor(this) }
@@ -74,9 +53,6 @@ class CameraForegroundService : LifecycleService() {
 				val height = intent.getIntExtra(EXTRA_HEIGHT, DEFAULT_CAPTURE_HEIGHT)
 				val withAudio = audioDeviceId.isNotEmpty()
 				showForegroundNotification(withAudio)
-				// Off the main thread: connecting the capture socket (below) is
-				// blocking I/O, which StrictMode forbids on the main thread even
-				// to loopback.
 				encoderExecutor.execute {
 					if (withAudio) audioExecutor.execute { startAudioCapture(port) }
 					startCapture(deviceId, port, width, height, withAudio)
@@ -126,8 +102,6 @@ class CameraForegroundService : LifecycleService() {
 		mediaCodec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
 		val inputSurface = mediaCodec.createInputSurface()
 
-		// Connecting before starting the encoder so the first output buffers
-		// (SPS/PPS/IDR) always have somewhere to go.
 		val sock = Socket("127.0.0.1", tcpPort)
 		if (tagged) {
 			sock.getOutputStream().write(TAG_VIDEO.code)
@@ -138,11 +112,6 @@ class CameraForegroundService : LifecycleService() {
 			override fun onInputBufferAvailable(codec: MediaCodec, index: Int) {}
 
 			override fun onOutputBufferAvailable(codec: MediaCodec, index: Int, info: MediaCodec.BufferInfo) {
-				// setCallback(cb, null) below runs callbacks on the calling thread only if
-				// it has a Looper; encoderExecutor's thread doesn't, so this actually runs
-				// on the main thread — copy the bytes out and release the buffer here, then
-				// do the blocking socket write on encoderExecutor (single-threaded, so
-				// writes still land in frame order).
 				try {
 					val buffer = codec.getOutputBuffer(index)
 					if (buffer != null && info.size > 0) {
@@ -160,7 +129,6 @@ class CameraForegroundService : LifecycleService() {
 					try {
 						codec.releaseOutputBuffer(index, false)
 					} catch (e: Exception) {
-						// Codec may already be stopped/released by a concurrent stopCapture.
 					}
 				}
 			}
@@ -178,13 +146,10 @@ class CameraForegroundService : LifecycleService() {
 
 		val providerFuture = ProcessCameraProvider.getInstance(this)
 		providerFuture.addListener({
-			if (!capturing) return@addListener // stopCapture already ran
+			if (!capturing) return@addListener
 			try {
 				val provider = providerFuture.get()
 				provider.unbindAll()
-				// Pin the preview to the encoder's fixed input-surface size (width x height);
-				// otherwise CameraX picks its own resolution and the camera frames end up
-				// scaled/pillarboxed within that surface instead of filling it.
 				val resolutionSelector = ResolutionSelector.Builder()
 					.setResolutionStrategy(
 						ResolutionStrategy(Size(width, height), ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER),
@@ -200,10 +165,6 @@ class CameraForegroundService : LifecycleService() {
 		}, uiExecutor)
 	}
 
-	// startAudioCapture connects the tagged audio stream and pumps
-	// AudioRecord PCM through an AAC-LC encoder to it. Failures here are
-	// logged and left alone: the socket stays open (idle) so the Go side's
-	// accept still succeeds and the video stream is unaffected.
 	private fun startAudioCapture(tcpPort: Int) {
 		val sock: Socket
 		try {
@@ -256,10 +217,6 @@ class CameraForegroundService : LifecycleService() {
 		pumpAudio(record, aac, sock.getOutputStream())
 	}
 
-	// pumpAudio runs on audioExecutor: a synchronous read → encode → write
-	// loop (independent of the Surface-driven video encoder, which must be
-	// async). A dropped input buffer under back-pressure just skips that PCM
-	// chunk, which is acceptable on a live stream.
 	private fun pumpAudio(record: AudioRecord, codec: MediaCodec, out: OutputStream) {
 		val pcm = ByteArray(AUDIO_READ_BYTES)
 		val info = MediaCodec.BufferInfo()
@@ -314,7 +271,6 @@ class CameraForegroundService : LifecycleService() {
 			try {
 				it.stop()
 			} catch (e: Exception) {
-				// Already stopped/errored.
 			}
 			it.release()
 		}
@@ -323,7 +279,6 @@ class CameraForegroundService : LifecycleService() {
 			try {
 				it.stop()
 			} catch (e: Exception) {
-				// Already stopped/errored.
 			}
 			it.release()
 		}
@@ -332,7 +287,6 @@ class CameraForegroundService : LifecycleService() {
 			try {
 				it.close()
 			} catch (e: Exception) {
-				// Ignore.
 			}
 		}
 		audioSocket = null
@@ -347,12 +301,10 @@ class CameraForegroundService : LifecycleService() {
 			try {
 				it.stop()
 			} catch (e: Exception) {
-				// Already stopped/errored; nothing to clean up further.
 			}
 			try {
 				it.release()
 			} catch (e: Exception) {
-				// Ignore.
 			}
 		}
 		codec = null
@@ -360,7 +312,6 @@ class CameraForegroundService : LifecycleService() {
 			try {
 				it.close()
 			} catch (e: Exception) {
-				// Ignore.
 			}
 		}
 		socket = null
@@ -382,7 +333,6 @@ class CameraForegroundService : LifecycleService() {
 		private const val BIT_RATE = 2_000_000
 		private const val FRAME_RATE = 15
 
-		// Must match internal/camera/mpegts.go's audioSampleRate / audioChannelCount.
 		private const val AUDIO_SAMPLE_RATE = 48000
 		private const val AUDIO_CHANNEL_COUNT = 2
 		private const val AUDIO_BIT_RATE = 128_000

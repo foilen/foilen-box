@@ -1,6 +1,3 @@
-// Shared between the groups and permissions subtabs: renders a
-// checkable list of realm permission actions.
-
 import { syncList } from "./util.js";
 
 const ACTION_LABELS = {

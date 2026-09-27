@@ -10,8 +10,6 @@ import (
 	realmmodel "foilen-realm/model"
 )
 
-// smsConfigResult is the wire shape of this device's local SMS management
-// config (internal/sms.Config).
 type smsConfigResult struct {
 	Enabled   bool   `json:"enabled"`
 	GroupID   string `json:"groupId"`
@@ -26,11 +24,6 @@ func handleSmsLoadConfig(a *api, _ json.RawMessage) (any, error) {
 	return smsConfigToResult(a.smsConfig.Load()), nil
 }
 
-// handleSmsSaveManagementConfig saves this device's SMS management config
-// (Android-only; unenforced here since the config UI is hidden on desktop).
-// If createNew, creates a new "SMS-<suffix>" realmmap; otherwise storeName
-// selects an existing one. Kicks off a background history import on
-// disabled->enabled transition.
 func handleSmsSaveManagementConfig(a *api, params json.RawMessage) (any, error) {
 	var p struct {
 		Enabled                bool   `json:"enabled"`
@@ -88,9 +81,6 @@ func handleSmsSaveManagementConfig(a *api, params json.RawMessage) (any, error) 
 	return smsConfigToResult(newCfg), nil
 }
 
-// smsStoreResult is mapSummaryResult plus the peers currently managing this
-// store (see boxsms.Manager.EnabledPeerIDs) — SMS-specific, so kept separate
-// from the generic Maps tab's own wire shape rather than added there.
 type smsStoreResult struct {
 	mapSummaryResult
 	EnabledPeerIds []string `json:"enabledPeerIds"`

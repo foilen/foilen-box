@@ -2,9 +2,6 @@ package realm
 
 import "net/http"
 
-// webBridgePath is where webTransport's Listen (see web_transport.go)
-// accepts incoming WebSocket connections, and where Dial connects to reach
-// a remote peer's listener.
 const webBridgePath = "/p2p"
 
 func handleWebBridgeIndex(w http.ResponseWriter, r *http.Request) {

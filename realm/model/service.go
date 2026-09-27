@@ -1,6 +1,5 @@
 package model
 
-// Service type values for Service.Type.
 const (
 	ServiceTypeTCP   = "tcp"
 	ServiceTypeUDP   = "udp"
@@ -13,8 +12,6 @@ const (
 	ServiceTypeRTSP  = "rtsp"
 )
 
-// Service is a named local service a peer offers to proxy to, on request
-// from other peers/groups it has granted ActionConnect to.
 type Service struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`

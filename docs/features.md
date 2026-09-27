@@ -11,6 +11,7 @@
 - `identity` (`common/identity`) — push a standalone Identity keypair to a peer, auto-imported on receipt
 - `group` (`common/group`) — push a Group keypair to a peer, auto-imported on receipt (arrives with no
   permissions granted; the receiving peer assigns those locally)
+  - `identity` and `group` are thin wrappers around the shared `keypairpush` implementation
 - `announce` (`common/announce`) — periodic hook that publishes this peer's services/scripts/spec/
   reachability info into the `maps` feature and consumes peers' own announce entries to populate the
   known-peers store; this is how peers discover each other well enough to reconnect (see "Connection

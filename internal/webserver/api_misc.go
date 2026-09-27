@@ -21,7 +21,7 @@ func handleLogsRead(a *api, params json.RawMessage) (any, error) {
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, err
 	}
-	text, err := logging.ReadTail(a.logDir, p.Search)
+	text, err := logging.ReadTail(a.configDir, p.Search)
 	if err != nil {
 		return nil, err
 	}

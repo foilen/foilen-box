@@ -1,6 +1,3 @@
-// Package peers persists the app-level view of known/connected Realm group
-// peers (decision 2) on top of internal/jsondb, independent of go-libp2p's
-// own in-memory peerstore.
 package peers
 
 import (
@@ -13,19 +10,14 @@ import (
 
 const dataFileName = "realm-peers.json"
 
-// Data is the on-disk shape: known peers keyed by peer id.
 type Data struct {
 	Peers map[string]model.PeerInfo `json:"peers"`
 }
 
-// Store persists Data to $FOILEN_BOX_CONFIG_DIR/realm-peers.json (or the
-// given Android files dir), shared by desktop/mobile.
 type Store struct {
 	db *jsondb.Store[Data]
 }
 
-// New creates the directory if needed and returns a Store backed by
-// realm-peers.json inside it.
 func New(dir string) (*Store, error) {
 	db, err := jsondb.NewStore[Data](dir, dataFileName)
 	if err != nil {
@@ -34,7 +26,6 @@ func New(dir string) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
-// List returns all known peers, sorted by ID for stable output.
 func (s *Store) List() []model.PeerInfo {
 	data := s.db.Get()
 	result := make([]model.PeerInfo, 0, len(data.Peers))
@@ -45,15 +36,12 @@ func (s *Store) List() []model.PeerInfo {
 	return result
 }
 
-// Get returns a known peer's usage info, if present.
 func (s *Store) Get(id string) (model.PeerInfo, bool) {
 	data := s.db.Get()
 	info, ok := data.Peers[id]
 	return info, ok
 }
 
-// Label returns the known peer's "hostname (description) [shortid]" label,
-// or just the bracketed short id if id isn't known.
 func (s *Store) Label(id string) string {
 	if info, ok := s.Get(id); ok {
 		return info.Label()
@@ -61,15 +49,8 @@ func (s *Store) Label(id string) string {
 	return model.ShortID(id)
 }
 
-// addressSourcePriority controls per-source address merge order: LAN
-// (broadcast) first, then self-reported (announce), then public-DHT (dht)
-// last since those are least likely reachable directly. Unlisted sources are
-// merged afterwards, sorted by name for determinism.
 var addressSourcePriority = []string{"broadcast", "announce", "dht"}
 
-// Upsert records/updates a peer's usage info. source identifies who's
-// reporting info.Addresses (e.g. "broadcast", "dht", "announce"); merged per
-// addressSourcePriority before storing. Pass source "" to leave addresses untouched.
 func (s *Store) Upsert(info model.PeerInfo, source string) {
 	s.db.Update(func(d *Data) {
 		if d.Peers == nil {
@@ -92,8 +73,6 @@ func (s *Store) Upsert(info model.PeerInfo, source string) {
 	})
 }
 
-// mergeAddresses unions every source's addresses into one deduplicated
-// list, ordered per addressSourcePriority.
 func mergeAddresses(bySource map[string][]string) []string {
 	seen := make(map[string]bool)
 	var merged []string
@@ -134,16 +113,10 @@ func containsString(list []string, s string) bool {
 	return false
 }
 
-// Flush writes the current known peers to disk immediately, bypassing the
-// debounce timer — used on shutdown.
 func (s *Store) Flush() error {
 	return s.db.Flush()
 }
 
-// SetConnected updates the connected flag for a known peer, if present.
-// Transitioning to connected also refreshes LastSeen, since a live
-// connection is itself proof the peer was just seen (discovery via UDP
-// broadcast/DHT otherwise only refreshes LastSeen on its own periodic cadence).
 func (s *Store) SetConnected(id string, connected bool) {
 	s.db.Update(func(d *Data) {
 		p, ok := d.Peers[id]
@@ -158,9 +131,6 @@ func (s *Store) SetConnected(id string, connected bool) {
 	})
 }
 
-// SetHostnameDescription updates a known peer's self-reported hostname,
-// description, relay-service availability, and application version, if
-// present.
 func (s *Store) SetHostnameDescription(id, hostname, description string, relayServiceEnabled bool, version string) {
 	s.db.Update(func(d *Data) {
 		p, ok := d.Peers[id]
@@ -175,8 +145,6 @@ func (s *Store) SetHostnameDescription(id, hostname, description string, relaySe
 	})
 }
 
-// SetAnnouncedAddresses records addrs as the "announce" source for peer id
-// and recomputes merged Addresses, if the peer is already known.
 func (s *Store) SetAnnouncedAddresses(id string, addrs []string) {
 	s.db.Update(func(d *Data) {
 		p, ok := d.Peers[id]
@@ -194,14 +162,8 @@ func (s *Store) SetAnnouncedAddresses(id string, addrs []string) {
 	})
 }
 
-// discoveredSources are the address sources populated by live discovery
-// (UDP broadcast/DHT) rather than the authoritative "common" RealmMap, and
-// thus the ones that can go stale once a peer stops being rediscovered.
 var discoveredSources = []string{"broadcast", "dht"}
 
-// ClearDiscoveredAddresses drops peer id's broadcast/dht address buckets,
-// keeping "announce" (sourced from the "common" RealmMap) intact, and
-// recomputes merged Addresses. Reports whether the peer was known.
 func (s *Store) ClearDiscoveredAddresses(id string) bool {
 	found := false
 	s.db.Update(func(d *Data) {
@@ -224,8 +186,6 @@ func (s *Store) ClearDiscoveredAddresses(id string) bool {
 	return found
 }
 
-// ClearAllDiscoveredAddresses drops the broadcast/dht address buckets for
-// every known peer, keeping each peer's "announce" bucket intact.
 func (s *Store) ClearAllDiscoveredAddresses() {
 	s.db.Update(func(d *Data) {
 		for id, p := range d.Peers {
@@ -243,8 +203,6 @@ func (s *Store) ClearAllDiscoveredAddresses() {
 	})
 }
 
-// AddGroupName records that a peer has passed the group-challenge for
-// groupName, if present. A no-op if the peer already has it.
 func (s *Store) AddGroupName(id, groupName string) {
 	s.db.Update(func(d *Data) {
 		p, ok := d.Peers[id]
@@ -261,9 +219,6 @@ func (s *Store) AddGroupName(id, groupName string) {
 	})
 }
 
-// RemoveGroupName strips groupName from every known peer's GroupNames,
-// e.g. after the group is deleted from config. Peers are kept even if this
-// empties their GroupNames, since they're still a known peer usage-wise.
 func (s *Store) RemoveGroupName(groupName string) {
 	s.db.Update(func(d *Data) {
 		for id, p := range d.Peers {
@@ -279,9 +234,6 @@ func (s *Store) RemoveGroupName(groupName string) {
 	})
 }
 
-// PruneStale removes every known, currently-disconnected peer last seen
-// before cutoff, returning the removed peers. Connected peers are never
-// pruned, regardless of their stored LastSeen.
 func (s *Store) PruneStale(cutoff time.Time) []model.PeerInfo {
 	var removed []model.PeerInfo
 	s.db.Update(func(d *Data) {
@@ -296,8 +248,6 @@ func (s *Store) PruneStale(cutoff time.Time) []model.PeerInfo {
 	return removed
 }
 
-// Remove deletes a known, disconnected peer. Reports whether it was removed;
-// refuses (returns false) if the peer is unknown or currently connected.
 func (s *Store) Remove(id string) bool {
 	removed := false
 	s.db.Update(func(d *Data) {
@@ -311,9 +261,6 @@ func (s *Store) Remove(id string) bool {
 	return removed
 }
 
-// ResetAllConnected clears the connected flag for every known peer. Used on
-// engine startup, since a persisted "connected" from a prior session doesn't
-// reflect the state of the new (not-yet-connected) host.
 func (s *Store) ResetAllConnected() {
 	s.db.Update(func(d *Data) {
 		for id, p := range d.Peers {

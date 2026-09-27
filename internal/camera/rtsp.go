@@ -10,9 +10,6 @@ import (
 	"github.com/bluenviron/gortsplib/v5/pkg/format"
 )
 
-// rtspHandler implements gortsplib's ServerHandler interfaces, delegating
-// every event that affects whether the camera should be capturing to the
-// owning Manager.
 type rtspHandler struct {
 	mgr *Manager
 }
@@ -22,10 +19,6 @@ func (h *rtspHandler) OnConnClose(*gortsplib.ServerHandlerOnConnCloseCtx)     {}
 func (h *rtspHandler) OnSessionOpen(*gortsplib.ServerHandlerOnSessionOpenCtx) {}
 
 func (h *rtspHandler) OnSessionClose(ctx *gortsplib.ServerHandlerOnSessionCloseCtx) {
-	// Runs on the session goroutine that Server.Close() waits for. Manager.mu
-	// is held across stopServerLocked's Server.Close() call (e.g. from
-	// SaveConfig), so notifying synchronously here would deadlock: Close()
-	// waits for this goroutine, this goroutine waits for mu. Dispatch async.
 	go h.mgr.sessionStoppedPlaying(ctx.Session)
 }
 
@@ -55,9 +48,6 @@ func (h *rtspHandler) OnPause(ctx *gortsplib.ServerHandlerOnPauseCtx) (*base.Res
 	return &base.Response{StatusCode: base.StatusOK}, nil
 }
 
-// startServerLocked (re)creates and starts the RTSP server + its stream
-// description bound to cfg's port/bind address. Callers must hold m.mu and
-// must have already stopped any previous server via stopServerLocked.
 func (m *Manager) startServerLocked(cfg Data) error {
 	bindAddr := "127.0.0.1"
 	if cfg.BindAllInterfaces {
@@ -108,8 +98,6 @@ func (m *Manager) startServerLocked(cfg Data) error {
 	return nil
 }
 
-// stopServerLocked tears down the running RTSP server/stream, if any.
-// Callers must hold m.mu.
 func (m *Manager) stopServerLocked() {
 	if m.stream != nil {
 		m.stream.Close()
@@ -125,8 +113,6 @@ func (m *Manager) stopServerLocked() {
 	m.audioFormat = nil
 }
 
-// currentStream returns the running ServerStream, or nil if the camera
-// isn't enabled.
 func (m *Manager) currentStream() *gortsplib.ServerStream {
 	m.mu.Lock()
 	defer m.mu.Unlock()

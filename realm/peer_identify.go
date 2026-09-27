@@ -11,22 +11,16 @@ import (
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+
+	"foilen-realm/model"
 )
 
 const (
-	// identifyProtocolID: engine-owned exchange of hostname/description/claimed
-	// groups, run automatically on connect (unlike the on-demand spec protocol).
 	identifyProtocolID = "/foilen-box/identify/1.0.0"
 	identifyIOTimeout  = 10 * time.Second
 	identifyMaxBytes   = 4 * 1024
 )
 
-// identifyPayload is exchanged both ways over identifyProtocolID. GroupIDs
-// are self-claimed — receiving one only tells the recipient which groups to
-// challenge (challengeGroup), it doesn't grant membership. RelayServiceEnabled
-// records whether the peer is willing to relay (realm/relay_transport.go).
-// Addresses is recorded as the peer store's "announce" fallback dial source
-// for reconnecting after discovery drops off.
 type identifyPayload struct {
 	Hostname            string   `json:"hostname"`
 	Description         string   `json:"description"`
@@ -36,10 +30,6 @@ type identifyPayload struct {
 	Addresses           []string `json:"addresses"`
 }
 
-// handleIdentifyStream answers a connected, known peer's identify request:
-// it reads the requester's own identifyPayload first, replies with ours,
-// then processes the requester's claimed groups. Only peers already tracked
-// as known (surfaced by our own discovery) are answered.
 func (e *Engine) handleIdentifyStream(s network.Stream) {
 	defer s.Close()
 	_ = s.SetDeadline(time.Now().Add(identifyIOTimeout))
@@ -71,9 +61,6 @@ func (e *Engine) handleIdentifyStream(s network.Stream) {
 	e.processClaimedGroups(remote, reqPayload.GroupIDs)
 }
 
-// fetchPeerIdentity dials id over identifyProtocolID, exchanges
-// identifyPayloads, records the response, and processes the peer's claimed
-// groups. Called on connect and whenever a group is added to our config.
 func (e *Engine) fetchPeerIdentity(id peer.ID) {
 	e.mu.Lock()
 	h := e.host
@@ -108,8 +95,6 @@ func (e *Engine) fetchPeerIdentity(id peer.ID) {
 	e.processClaimedGroups(id, payload.GroupIDs)
 }
 
-// selfIdentifyPayload builds our own identifyPayload from current config and
-// h's listen addrs.
 func (e *Engine) selfIdentifyPayload(h host.Host) identifyPayload {
 	e.mu.Lock()
 	hostname := e.hostnameOverride
@@ -141,9 +126,6 @@ func (e *Engine) selfIdentifyPayload(h host.Host) identifyPayload {
 	}
 }
 
-// processClaimedGroups issues a group-challenge (see challengeGroup) toward
-// remote for each of its claimed group ids that matches one of our own
-// configured groups and isn't already confirmed for that peer.
 func (e *Engine) processClaimedGroups(remote peer.ID, claimedGroupIDs []string) {
 	e.mu.Lock()
 	groups := e.cfg.Groups
@@ -152,7 +134,7 @@ func (e *Engine) processClaimedGroups(remote peer.ID, claimedGroupIDs []string) 
 	info, _ := e.peers.Get(remote.String())
 
 	for _, gid := range claimedGroupIDs {
-		group, ok := findGroupByID(groups, gid)
+		group, ok := model.FindGroupByID(groups, gid)
 		if !ok {
 			continue
 		}
@@ -163,7 +145,6 @@ func (e *Engine) processClaimedGroups(remote peer.ID, claimedGroupIDs []string) 
 	}
 }
 
-// alreadyConfirmed reports whether groupName is already in groupNames.
 func alreadyConfirmed(groupNames []string, groupName string) bool {
 	for _, gn := range groupNames {
 		if gn == groupName {

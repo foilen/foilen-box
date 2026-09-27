@@ -1,5 +1,3 @@
-// Package report renders an AggregateResult as the same plain-text report
-// the desktop UI used to build directly in internal/ui/early.go.
 package report
 
 import (
@@ -10,7 +8,6 @@ import (
 	"foilen-box/internal/early/model"
 )
 
-// Format renders the full aggregate report text.
 func Format(result *model.AggregateResult) string {
 	var sb strings.Builder
 

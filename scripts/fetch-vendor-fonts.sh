@@ -1,9 +1,4 @@
 #!/bin/bash
-# Downloads Google Fonts (CSS + TTF files) to a local directory, rewriting
-# the CSS to reference the local files, so the web UI never fetches fonts
-# from fonts.googleapis.com/fonts.gstatic.com at runtime.
-#
-# Usage: fetch-vendor-fonts.sh <output-dir>
 
 set -e
 
@@ -43,7 +38,7 @@ done <<< "$FONT_URLS"
 
 echo "Downloaded $FONT_COUNT font files"
 
-# Rewrite the CSS file to point to local font files (saved flat, by basename)
+# Rewrite the CSS to point to local font files
 sed -i -E 's|https://fonts\.gstatic\.com/[^)]*/([^/)]+)|\1|g' "$OUT_DIR/google-fonts.css"
 
 echo "✓ Fonts fetched"

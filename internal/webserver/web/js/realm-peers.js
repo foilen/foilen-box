@@ -1,9 +1,7 @@
-import { report, formatPeerLabel, syncList, syncCells } from "./util.js";
+import { report, formatPeerLabel, syncList, syncCells, syncConnectedCell } from "./util.js";
 
 const PEERS_POLL_INTERVAL_MS = 5000;
 
-// Wires the Peers/Swarm tables. onPeersUpdate (optional) gets the latest
-// peers list on every refresh — used by the permissions subtab.
 export function initRealmPeers(api, output, onPeersUpdate) {
 	const peersBody = document.getElementById("realm-peers-tbody");
 	const peersCount = document.getElementById("realm-peers-count");
@@ -15,8 +13,6 @@ export function initRealmPeers(api, output, onPeersUpdate) {
 	const addressesOpenState = new Map();
 	const swarmAddressesOpenState = new Map();
 
-	// Builds/patches the <details> "N address(es)" widget in place, preserving
-	// open/closed state and diffing rows so scroll position survives re-renders.
 	function syncAddressesCell(cell, rowId, addresses, openStateMap) {
 		if (addresses.length === 0) {
 			cell.replaceChildren();
@@ -58,24 +54,6 @@ export function initRealmPeers(api, output, onPeersUpdate) {
 		return cell;
 	}
 
-	// Inserted between the "Groups" and "Main" cells (indices 0-1), so it relies
-	// on those already being in place and appends itself at index 2 on create.
-	function syncConnectedCell(row, peer) {
-		let cell = row.children[2];
-		let dot;
-		if (!cell) {
-			cell = document.createElement("td");
-			cell.dataset.label = "Connected";
-			dot = document.createElement("span");
-			cell.appendChild(dot);
-			row.appendChild(cell);
-		} else {
-			dot = cell.querySelector("span");
-		}
-		dot.className = `status-dot${peer.connected ? " connected" : ""}`;
-		dot.title = peer.connected ? "Connected" : "Not connected";
-	}
-
 	function createClearAddressesCell(peerId) {
 		const cell = document.createElement("td");
 		const button = document.createElement("md-text-button");
@@ -105,8 +83,6 @@ export function initRealmPeers(api, output, onPeersUpdate) {
 		return cell;
 	}
 
-	// Delete is only meaningful for disconnected peers (a connected one would
-	// just get re-added on its next message), so hide it otherwise.
 	function syncDeleteCell(cell, peer) {
 		cell.style.display = peer.connected ? "none" : "";
 	}
@@ -120,7 +96,7 @@ export function initRealmPeers(api, output, onPeersUpdate) {
 			(peer) => {
 				const row = document.createElement("tr");
 				syncCells(row, peerLeadingCells(peer));
-				syncConnectedCell(row, peer);
+				syncConnectedCell(row, peer.connected);
 				syncCells(row, peerTrailingCells(peer), 3);
 				row.appendChild(createAddressesCell(peer.id, peer.addresses || [], addressesOpenState));
 				row.appendChild(createClearAddressesCell(peer.id));
@@ -131,7 +107,7 @@ export function initRealmPeers(api, output, onPeersUpdate) {
 			},
 			(row, peer) => {
 				syncCells(row, peerLeadingCells(peer));
-				syncConnectedCell(row, peer);
+				syncConnectedCell(row, peer.connected);
 				syncCells(row, peerTrailingCells(peer), 3);
 				syncAddressesCell(row.children[row.children.length - 3], peer.id, peer.addresses || [], addressesOpenState);
 				syncDeleteCell(row.lastElementChild, peer);

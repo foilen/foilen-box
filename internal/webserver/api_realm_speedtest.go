@@ -5,7 +5,6 @@ import (
 	"fmt"
 )
 
-// speedTestResult is the wire shape of one peer's speed test outcome.
 type speedTestResult struct {
 	PeerID       string  `json:"peerId"`
 	DownloadMbps float64 `json:"downloadMbps"`

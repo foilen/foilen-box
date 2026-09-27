@@ -42,11 +42,6 @@
 			android:exported="false"
 			android:foregroundServiceType="connectedDevice" />
 
-		<!-- Started only while an RTSP client is actually connected (see
-		     CameraCaptureBridge/internal/camera.Manager); promoted to
-		     foreground for exactly that duration, independent of whether
-		     MainActivity is open or the screen is on. The microphone type
-		     applies only while a mic is also selected. -->
 		<service
 			android:name=".CameraForegroundService"
 			android:exported="false"

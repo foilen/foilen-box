@@ -1,4 +1,3 @@
-// Package browseropen launches the OS default browser at a URL.
 package browseropen
 
 import (
@@ -8,7 +7,6 @@ import (
 	"runtime"
 )
 
-// Open launches the OS default browser at the given URL.
 func Open(url string) error {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
@@ -19,8 +17,7 @@ func Open(url string) error {
 	default:
 		cmd = exec.Command("xdg-open", url)
 	}
-	// Run (not Start): the launcher can exit non-zero after starting fine
-	// (e.g. no default browser configured).
+
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {

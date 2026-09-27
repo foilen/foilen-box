@@ -11,10 +11,9 @@ import (
 	"strings"
 )
 
-// gpuInfo is a best-effort description of one display adapter.
 type gpuInfo struct {
 	Name      string
-	VRAMBytes uint64 // 0 if unknown
+	VRAMBytes uint64
 }
 
 func (g gpuInfo) String() string {
@@ -24,8 +23,6 @@ func (g gpuInfo) String() string {
 	return g.Name
 }
 
-// gpuInfos returns detected display adapters, best-effort, by shelling out to
-// OS-specific tools (gopsutil has no cross-platform GPU support). Nil on error.
 func gpuInfos() []gpuInfo {
 	switch runtime.GOOS {
 	case "linux":
@@ -74,8 +71,6 @@ func gpuInfosLinux() []gpuInfo {
 	return infos
 }
 
-// lspciVGADevices runs `lspci -vmmnn` for its block-structured output and
-// numeric IDs, needed to look up marketing names in amdgpu.ids (amdgpuMarketingName).
 func lspciVGADevices() []pciDevice {
 	out, err := exec.Command("lspci", "-vmmnn").Output()
 	if err != nil {
@@ -118,8 +113,6 @@ func lspciVGADevices() []pciDevice {
 	return devices
 }
 
-// splitTrailingID splits an lspci "-nn" value like "Navi 33 [Radeon RX 7700S] [7480]"
-// into name and trailing numeric ID.
 func splitTrailingID(s string) (name, id string) {
 	s = strings.TrimSpace(s)
 	if !strings.HasSuffix(s, "]") {
@@ -132,7 +125,6 @@ func splitTrailingID(s string) (name, id string) {
 	return strings.TrimSpace(s[:start]), s[start+1 : len(s)-1]
 }
 
-// shortVendor turns an lspci vendor string into a short name, e.g. "NVIDIA".
 func shortVendor(vendor string) string {
 	switch {
 	case strings.Contains(vendor, "Advanced Micro Devices") || strings.Contains(vendor, "AMD"):
@@ -151,8 +143,6 @@ func shortVendor(vendor string) string {
 	return vendor
 }
 
-// shortDevice extracts the first marketing name in brackets from an lspci
-// device string, falling back to the raw string.
 func shortDevice(device string) string {
 	start := strings.Index(device, "[")
 	end := strings.LastIndex(device, "]")
@@ -163,15 +153,11 @@ func shortDevice(device string) string {
 	return strings.TrimSpace(device)
 }
 
-// amdgpuIDsPaths are common install locations of the amdgpu.ids database (libdrm/Mesa).
 var amdgpuIDsPaths = []string{
 	"/usr/share/libdrm/amdgpu.ids",
 	"/usr/local/share/libdrm/amdgpu.ids",
 }
 
-// amdgpuMarketingName looks up an AMD GPU's marketing name by PCI device ID and
-// revision, since lspci alone can't disambiguate SKUs sharing a device ID (e.g.
-// RX 7600 vs RX 7700S). Returns "" if no match.
 func amdgpuMarketingName(deviceID, revision string) string {
 	if deviceID == "" || revision == "" {
 		return ""
@@ -208,8 +194,6 @@ func parseAmdgpuIDs(data, deviceID, revision string) string {
 	return ""
 }
 
-// gpuVRAMBySlotLinux reads per-card VRAM totals from sysfs, keyed by PCI slot
-// to match against lspci's device list.
 func gpuVRAMBySlotLinux() map[string]uint64 {
 	result := map[string]uint64{}
 	matches, err := filepath.Glob("/sys/class/drm/card[0-9]*/device")
@@ -235,7 +219,6 @@ func gpuVRAMBySlotLinux() map[string]uint64 {
 	return result
 }
 
-// nvidiaSMIGPUs shells out to nvidia-smi, which reports name and VRAM directly.
 func nvidiaSMIGPUs() []gpuInfo {
 	out, err := exec.Command("nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits").Output()
 	if err != nil {
@@ -309,9 +292,6 @@ func parseVRAMString(s string) uint64 {
 }
 
 func gpuInfosWindows() []gpuInfo {
-	// AdapterRAM (32-bit) overflows for >4GB cards, so VRAM is looked up from the
-	// driver's HardwareInformation.qwMemorySize registry value instead and matched
-	// back by name; AdapterRAM is only a fallback when no registry match is found.
 	out, err := exec.Command("powershell", "-NoProfile", "-Command", `
 Get-CimInstance Win32_VideoController | ForEach-Object { "NAME|$($_.Name)|$($_.AdapterRAM)" }
 Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}' -ErrorAction SilentlyContinue | ForEach-Object {

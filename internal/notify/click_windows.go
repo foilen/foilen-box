@@ -7,10 +7,6 @@ import (
 	"github.com/gen2brain/beeep"
 )
 
-// NotifyClick shows a notification that opens url when clicked.
-// ActivationType Protocol makes Windows ShellExecute the url directly,
-// avoiding the default Foreground type's COM activator/AUMID registration.
-// Falls back to a plain notification if pushing the toast fails.
 func NotifyClick(title, body, url string) error {
 	n := toast.Notification{
 		AppID:               beeep.AppName,

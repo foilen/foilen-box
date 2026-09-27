@@ -11,24 +11,10 @@
       let
         pkgs = import nixpkgs { inherit system; };
         gitShortHash = self.shortRev or self.dirtyShortRev or "unknown";
-        # self.lastModifiedDate is "YYYYMMDDHHMMSS" in UTC.
         d = self.lastModifiedDate;
         gitCommitDate = "${builtins.substring 0 8 d}_${builtins.substring 8 4 d}";
 
-        # Mirrors browser-side vendor assets (fonts, Material Web, Mermaid)
-        # to local files at build time, so the web UI never fetches them
-        # from a CDN at runtime. Both are fixed-output derivations: Nix's
-        # sandbox blocks network access for regular build steps, but
-        # explicitly allows it here because the output is content-addressed
-        # and verified against outputHash, so reproducibility is preserved
-        # even though fetching requires network. Neither is committed to
-        # git; both are refetched by every Nix build (content-addressed and
-        # cached in the Nix store, so unchanged fetches are free after the
-        # first build).
-        #
-        # To update either (e.g. after bumping a version in the script), set
-        # its outputHash to an obviously-wrong value, run `nix build`, and
-        # copy the "got:" hash Nix reports back into outputHash below.
+        # Vendor assets (see docs/build.md)
         vendorFonts = pkgs.stdenvNoCC.mkDerivation {
           pname = "foilen-box-vendor-fonts";
           version = "0.0.0";
@@ -66,17 +52,12 @@
 
           src = ./.;
 
-          # This repo is a Go workspace (go.work) made of the root module and
-          # ./realm. `go mod vendor` does not know about the workspace, so
-          # vendor it explicitly with `go work vendor` instead.
           modBuildPhase = ''
             go work vendor
           '';
 
           vendorHash = "sha256-E/EJpXq/J5ynXj2H7aZvcUFcmsSU5bomXeKMhEsbEoQ=";
 
-          # Vendor assets (fonts, JS) are fetched by the vendorFonts/vendorJs
-          # FODs above and copied in here, rather than committed to git.
           postUnpack = ''
             mkdir -p $sourceRoot/internal/webserver/web/vendor-fonts
             cp -r ${vendorFonts}/. $sourceRoot/internal/webserver/web/vendor-fonts/
@@ -92,9 +73,6 @@
           ldflags = [
             "-X" "foilen-box/internal/webserver.Version=${gitShortHash}"
             "-X" "'foilen-box/internal/webserver.CommitDate=${gitCommitDate}'"
-            # Points the Camera feature's desktop capturer at a store-path
-            # ffmpeg instead of relying on $PATH, so the packaged app doesn't
-            # depend on ffmpeg being separately installed.
             "-X" "foilen-box/internal/camera.ffmpegPath=${pkgs.ffmpeg}/bin/ffmpeg"
           ];
 

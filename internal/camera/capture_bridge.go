@@ -9,18 +9,8 @@ import (
 	"time"
 )
 
-// bridgeAcceptTimeout bounds how long start waits for the platform bridge
-// to connect back after StartCapture, in case the native side never does
-// (e.g. permission denied, device busy).
 const bridgeAcceptTimeout = 10 * time.Second
 
-// bridgeCapturer captures via a PlatformBridge (Android's CameraX/MediaCodec
-// pipeline, wired through cmd/mobile.CameraBridge): it opens a loopback
-// listener, tells the bridge to stream Annex-B H.264 (plus AAC audio on a
-// second connection when a microphone is selected) to it, and returns the
-// resulting accepted connection(s) as the reader(s) — keeping the gomobile
-// boundary to lifecycle calls only, per docs/features.md's guidance to keep
-// high-frequency data off per-call gomobile invocations.
 type bridgeCapturer struct {
 	bridge PlatformBridge
 }
@@ -88,8 +78,6 @@ func (c bridgeCapturer) start(ctx context.Context, deviceID, resolution, audioDe
 	return &captureStream{Closer: closer, video: video, audio: audio}, nil
 }
 
-// acceptCaptureConns waits for the platform bridge to open n connections back
-// to listener, bounded by bridgeAcceptTimeout and ctx.
 func acceptCaptureConns(ctx context.Context, listener net.Listener, n int) ([]net.Conn, error) {
 	type result struct {
 		conn net.Conn
@@ -127,8 +115,6 @@ func acceptCaptureConns(ctx context.Context, listener net.Listener, n int) ([]ne
 	return conns, nil
 }
 
-// splitTaggedConns reads the leading tag byte ('V'/'A') from each connection
-// and returns the video and audio readers accordingly.
 func splitTaggedConns(conns []net.Conn) (video, audio io.Reader, err error) {
 	for _, conn := range conns {
 		_ = conn.SetReadDeadline(time.Now().Add(bridgeAcceptTimeout))
@@ -158,8 +144,6 @@ func closeConns(conns []net.Conn) {
 	}
 }
 
-// bridgeCloser closes the accepted loopback connection(s) and tells the
-// platform bridge to stop capturing.
 type bridgeCloser struct {
 	conns  []net.Conn
 	bridge PlatformBridge

@@ -37,18 +37,6 @@ import mobile.SmsBridge
 import org.json.JSONArray
 import org.json.JSONObject
 
-/**
- * Hosts the local web UI/API server (cmd/mobile.Mobile.startServer) in a
- * WebView. GPS uses the standard `navigator.geolocation` Web API (gps.js);
- * WebView supports it once onGeolocationPermissionsShowPrompt grants the
- * runtime permission, so no native location bridge is needed.
- *
- * Implements mobile.RealmStateSink (foreground notification on Realm
- * toggle), mobile.BatteryProvider (BatteryManager, since Go's sysfs
- * detection is SELinux-blocked on Android), and mobile.SmsBridge (SMS
- * send/import/notify; permissions requested on demand via
- * SmsPermissionBridge since most users never enable it).
- */
 class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBridge {
 
 	private lateinit var webView: WebView
@@ -73,10 +61,6 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 
 		webView.settings.javaScriptEnabled = true
 		webView.settings.setGeolocationEnabled(true)
-		// The UI is embedded in the app binary and changes with every app
-		// update, but WebView's HTTP cache lives in app data, which survives
-		// reinstalls — without this, an update can keep serving old cached
-		// JS/CSS from before the update.
 		webView.settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
 		webView.addJavascriptInterface(AndroidConfigBridge(this), "AndroidConfigBridge")
 		webView.addJavascriptInterface(SmsPermissionBridge(this), "SmsPermissionBridge")
@@ -132,7 +116,6 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 			ActivityCompat.requestPermissions(this, cameraPerms.toTypedArray(), CAMERA_PERMISSION_REQUEST)
 		}
 
-		// Required on Android 13+ for RealmForegroundService's foreground notification.
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasNotificationPermission()) {
 			ActivityCompat.requestPermissions(
 				this,
@@ -149,11 +132,9 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 
 	override fun onResume() {
 		super.onResume()
-		// WebView can go stale across a long backgrounding without a full onCreate
-		// (e.g. server restarted on a new port); re-check and reload if so.
 		Thread {
 			try {
-				val url = Mobile.startServer(filesDir.absolutePath, deviceName(), Build.VERSION.RELEASE, this, this, this, cameraCaptureBridge)
+				val url = startServer()
 				runOnUiThread {
 					val currentUrl = webView.url
 					if (currentUrl == null || !currentUrl.startsWith(url)) {
@@ -166,12 +147,6 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 		}.start()
 	}
 
-	// No onDestroy override: RealmForegroundService owns the engine and keeps it
-	// running until an explicit Realm-off toggle in the web UI.
-
-	// Without this exemption the OS SIGKILLs RealmForegroundService's process
-	// under Doze/memory pressure and doesn't reliably restart it, so the realm
-	// engine stops syncing until the app is reopened.
 	private fun requestIgnoreBatteryOptimizations() {
 		val powerManager = getSystemService(PowerManager::class.java) ?: return
 		if (powerManager.isIgnoringBatteryOptimizations(packageName)) return
@@ -193,12 +168,10 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 		ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 
 	private fun startServerAndLoad() {
-		// FLAG_ACTIVITY_CLEAR_TASK (see showNotification) forces a fresh onCreate,
-		// so handling the deep link here covers both cold- and warm-start cases.
 		val smsDeepLink = intent.getStringExtra(EXTRA_SMS_DEEP_LINK)
 		Thread {
 			try {
-				val url = Mobile.startServer(filesDir.absolutePath, deviceName(), Build.VERSION.RELEASE, this, this, this, cameraCaptureBridge)
+				val url = startServer()
 				val target = if (smsDeepLink != null) {
 					"$url?platform=android#realm/realm-sms-subtab/${Uri.encode(smsDeepLink)}"
 				} else {
@@ -211,22 +184,21 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 		}.start()
 	}
 
-	// Reported as the peer's "hostname" since Go's os.Hostname() always
-	// returns "localhost" on Android.
-	private fun deviceName(): String =
-		Settings.Global.getString(contentResolver, Settings.Global.DEVICE_NAME) ?: Build.MODEL
+	private fun startServer(): String =
+		Mobile.startServer(filesDir.absolutePath, deviceName(this), Build.VERSION.RELEASE, this, this, this, cameraCaptureBridge)
 
 	private fun hasNotificationPermission(): Boolean =
 		ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
 			PackageManager.PERMISSION_GRANTED
 
-	// Called from Go on realm.setEnabled; forwarded so the foreground
-	// notification can be dropped/restored accordingly.
+	// mobile.RealmStateSink
+
 	override fun setRealmEnabled(enabled: Boolean) {
 		RealmForegroundService.setRealmEnabled(this, enabled)
 	}
 
-	// mobile.BatteryProvider: called synchronously from Go when the specs report is generated.
+	// mobile.BatteryProvider
+
 	override fun batteryPercent(): Int {
 		val bm = getSystemService(BatteryManager::class.java) ?: return -1
 		val percent = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
@@ -245,7 +217,8 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 		}
 	}
 
-	// mobile.SmsBridge: called from internal/sms.Manager when a create-request targets this device.
+	// mobile.SmsBridge
+
 	override fun sendSms(phoneNumber: String, body: String) {
 		val smsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
 			getSystemService(SmsManager::class.java)
@@ -256,11 +229,6 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 		smsManager.sendTextMessage(phoneNumber, null, body, null, null)
 	}
 
-	// mobile.SmsBridge: bulk-imports full SMS+MMS history when SMS management is
-	// first enabled. Reading content://sms and content://mms only needs
-	// READ_SMS, not being the default SMS app. Includes a "raw" full-row dump
-	// (dumpRow) to hunt for an undocumented column reflecting the SMS app's
-	// "Trash" state.
 	override fun readAllSms(): String {
 		val result = JSONArray()
 		contentResolver.query(Telephony.Sms.CONTENT_URI, null, null, null, "${Telephony.Sms.DATE} ASC")
@@ -291,12 +259,6 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 		return result.toString()
 	}
 
-	// Appends every MMS (a thread with a media attachment, a group text, or an
-	// RCS/long-SMS fallback the OS stores separately from content://sms) into
-	// result, in the same SmsMessage JSON shape. Attachments themselves aren't
-	// embedded (realm maps cap a synced value at 256KB, see
-	// realm/features/maps/feature.go's maxBytes) — a message with a non-text
-	// part just gets "(media)" appended to its body as a placeholder.
 	private fun readAllMmsInto(result: JSONArray) {
 		contentResolver.query(Telephony.Mms.CONTENT_URI, null, null, null, "${Telephony.Mms.DATE} ASC")
 			?.use { cursor ->
@@ -307,7 +269,6 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 					val id = cursor.getLong(idIdx)
 					val outgoing = cursor.getInt(boxIdx) != Telephony.Mms.MESSAGE_BOX_INBOX
 					val address = mmsAddress(id, outgoing) ?: continue
-					// Telephony.Mms.DATE is in epoch seconds, unlike Sms.DATE (millis).
 					val timestampMillis = cursor.getLong(dateIdx) * 1000
 					result.put(
 						JSONObject().apply {
@@ -324,13 +285,9 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 			}
 	}
 
-	// content://mms/<id>/addr's "type" column: PduHeaders.FROM / PduHeaders.TO.
 	private val mmsAddrTypeFrom = 137
 	private val mmsAddrTypeTo = 151
 
-	// Returns the sender's address for an incoming MMS, or the first
-	// recipient's for an outgoing one (a group MMS may have several; only one
-	// fits this feature's per-phoneNumber conversation model).
 	private fun mmsAddress(mmsId: Long, outgoing: Boolean): String? {
 		val wantType = if (outgoing) mmsAddrTypeTo else mmsAddrTypeFrom
 		contentResolver.query(Uri.parse("content://mms/$mmsId/addr"), null, null, null, null)?.use { cursor ->
@@ -345,9 +302,6 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 		return null
 	}
 
-	// Concatenates every text/plain part's text, then appends "(media)" if any
-	// other part (image, audio, vcard, ...) is present. "application/smil" is
-	// the MMS layout descriptor, not real content, so it's ignored either way.
 	private fun mmsBody(mmsId: Long): String {
 		val textParts = mutableListOf<String>()
 		var hasMedia = false
@@ -375,8 +329,6 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 		}
 	}
 
-	// Some OEMs don't populate part's "text" column inline; falls back to
-	// reading the part's own content stream.
 	private fun readMmsPartText(partId: Long): String? =
 		try {
 			contentResolver.openInputStream(Uri.parse("content://mms/part/$partId"))?.use { it.readBytes().toString(Charsets.UTF_8) }
@@ -384,8 +336,6 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 			null
 		}
 
-	// Reads every column of cursor's current row into a JSONObject; BLOB
-	// columns are summarized by length instead of dumped as text.
 	private fun dumpRow(cursor: Cursor): JSONObject {
 		val raw = JSONObject()
 		for (i in 0 until cursor.columnCount) {
@@ -399,9 +349,6 @@ class MainActivity : ComponentActivity(), RealmStateSink, BatteryProvider, SmsBr
 		return raw
 	}
 
-	// mobile.SmsBridge: alerts on a new message in an SMS-* store this device
-	// doesn't own. Clicking reopens MainActivity with deepLink
-	// ("groupId|storeName|phoneNumber") into the SMS subtab (startServerAndLoad).
 	override fun showNotification(title: String, body: String, deepLink: String) {
 		val channel = NotificationChannel(
 			SMS_NOTIFICATION_CHANNEL_ID,

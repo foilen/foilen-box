@@ -57,8 +57,6 @@ func TestGroupChallengeRejectsWrongGroup(t *testing.T) {
 		t.Fatalf("Sign() error = %v", err)
 	}
 
-	// Signature was made with groupA's key but is presented as proof of
-	// membership in groupB: verification against groupB must fail.
 	if verifyGroupChallenge(model.Group{Name: "b", KeyPair: groupB}, req, base64.StdEncoding.EncodeToString(sig)) {
 		t.Error("verifyGroupChallenge() = true for a signature made with a different group's key")
 	}
@@ -95,10 +93,10 @@ func TestFindGroupByID(t *testing.T) {
 	}
 	groups := []model.Group{{Name: "family", KeyPair: groupKP}}
 
-	if _, ok := findGroupByID(groups, groupKP.ID); !ok {
-		t.Error("findGroupByID() = false, want true for a known group id")
+	if _, ok := model.FindGroupByID(groups, groupKP.ID); !ok {
+		t.Error("FindGroupByID() = false, want true for a known group id")
 	}
-	if _, ok := findGroupByID(groups, "not-a-real-id"); ok {
-		t.Error("findGroupByID() = true, want false for an unknown group id")
+	if _, ok := model.FindGroupByID(groups, "not-a-real-id"); ok {
+		t.Error("FindGroupByID() = true, want false for an unknown group id")
 	}
 }

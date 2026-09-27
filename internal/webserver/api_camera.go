@@ -10,8 +10,6 @@ import (
 	realmmodel "foilen-realm/model"
 )
 
-// cameraServiceName is the fixed Config.Services entry name the camera
-// creates/removes for itself when "expose as Realm Service" is toggled.
 const cameraServiceName = "camera"
 
 func handleCameraGetStatus(a *api, _ json.RawMessage) (any, error) {
@@ -87,10 +85,6 @@ func handleCameraSaveConfig(a *api, params json.RawMessage) (any, error) {
 	return status, nil
 }
 
-// syncCameraService adds/updates/removes the "camera" Config.Services entry
-// to match status — presence in Config.Services is what makes the RTSP port
-// reachable through the common/services realm tunnel, mirroring
-// handleRealmAddService/handleRealmDeleteService (api_realm.go).
 func (a *api) syncCameraService(status boxcamera.Status) error {
 	want := status.Enabled && status.ExposeAsService
 

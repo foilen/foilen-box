@@ -63,9 +63,6 @@ func TestVerifyEventRejectsWrongGroup(t *testing.T) {
 	}
 }
 
-// featurePair is two Feature instances, each on its own real libp2p host,
-// connected and pre-seeded as already-confirmed group members — the actual
-// challenge handshake is covered by group_challenge_test.go, not re-driven here.
 type featurePair struct {
 	f1, f2           *Feature
 	peerID1, peerID2 peer.ID
@@ -140,9 +137,6 @@ func newConnectedFeaturePairWithIdentities(t *testing.T, identities1, identities
 	reg1 := f1.registrar()
 	reg2 := f2.registrar()
 
-	// Seed both peer stores before connecting: the engine's connection-ring
-	// shaping runs immediately at Start() and disconnects any peer it doesn't
-	// recognize as a required ring member.
 	addrs1 := make([]string, 0, len(reg1.Host().Addrs()))
 	for _, a := range reg1.Host().Addrs() {
 		addrs1 = append(addrs1, a.String())
@@ -215,7 +209,6 @@ func TestNonSubscribedStoreGetsNoPush(t *testing.T) {
 		t.Fatalf("f1 received storeB entries it never subscribed to: %+v", rm.Entries)
 	}
 
-	// storeA, which it did subscribe to, must receive the push.
 	if err := p.f2.SetValue(p.groupID, "storeA", "k2", "v2"); err != nil {
 		t.Fatalf("SetValue: %v", err)
 	}
@@ -227,7 +220,6 @@ func TestNonSubscribedStoreGetsNoPush(t *testing.T) {
 func TestSubscribeFromNonConfirmedMemberGetsEmptyResponse(t *testing.T) {
 	p := newConnectedFeaturePair(t)
 
-	// Revoke peer1's confirmed membership as f2 sees it.
 	p.f2.registrar().Peers().Upsert(model.PeerInfo{ID: p.peerID1.String(), GroupNames: nil, Connected: true}, "test")
 
 	if _, err := p.f2.store.ApplyEvent(p.groupID, "storeA", "k1", model.MapEntry{Value: "v1", UpdatedAtUnixMillis: 100}); err != nil {
@@ -269,9 +261,6 @@ func TestRemovingRealmMapsKeyTriggersUnsubscribeAndLocalPurgeOnSubscriber(t *tes
 		t.Fatalf("SetValue: %v", err)
 	}
 
-	// Drive the real convergence path: f2 discovers peer1, subscribes to
-	// the system stores, and its reconcile then cascades into subscribing
-	// to "mystore" too since it's already a live _realmMaps key.
 	p.f2.onPeerAvailable(p.f2.registrar(), p.peerID1, p.group)
 
 	waitFor(t, 2*time.Second, func() bool {
@@ -309,40 +298,31 @@ func testIdentity(t *testing.T) model.Identity {
 
 func TestEncryptedMapRoundTrip(t *testing.T) {
 	identity := testIdentity(t)
-	// f1 does not hold the identity; f2 does.
+
 	p := newConnectedFeaturePairWithIdentities(t, nil, []model.Identity{identity})
 
 	if err := p.f1.CreateMap(p.groupID, "secrets", model.RealmMapConfig{}, identity.KeyPair.ID); err != nil {
 		t.Fatalf("CreateMap: %v", err)
 	}
 
-	// f1 (no identity) cannot write meaningful values to an encrypted map.
 	if err := p.f1.SetValue(p.groupID, "secrets", "apiKey", "s3cr3t"); err == nil {
 		t.Fatal("expected SetValue to fail without the target identity available locally")
 	}
 
-	// Drive f2's subscribe to f1 (see
-	// TestRemovingRealmMapsKeyTriggersUnsubscribeAndLocalPurgeOnSubscriber)
-	// so f2 learns the map's (unencrypted) _realmMaps config -- including
-	// that it's encrypted -- before writing to it.
 	p.f2.onPeerAvailable(p.f2.registrar(), p.peerID1, p.group)
 	waitFor(t, 2*time.Second, func() bool {
 		return p.f2.configForStore(p.groupID, "secrets").Encryption != nil
 	})
 
-	// f2 (holds identity) can write.
 	if err := p.f2.SetValue(p.groupID, "secrets", "apiKey", "s3cr3t"); err != nil {
 		t.Fatalf("SetValue: %v", err)
 	}
 
-	// Drive f1's subscribe to f2 so the (opaque, encrypted) entry actually
-	// replicates back to f1.
 	p.f1.onPeerAvailable(p.f1.registrar(), p.peerID2, p.group)
 	waitFor(t, 2*time.Second, func() bool {
 		return len(p.f1.store.GetMap(p.groupID, "secrets").Entries) > 0
 	})
 
-	// f1 sees the map exists (encrypted) but can't decrypt it.
 	rm1, encrypted1, available1 := p.f1.GetMap(p.groupID, "secrets")
 	if !encrypted1 {
 		t.Fatal("f1: expected map to be reported as encrypted")
@@ -354,8 +334,6 @@ func TestEncryptedMapRoundTrip(t *testing.T) {
 		t.Fatalf("f1: expected no readable entries, got %+v", rm1.Entries)
 	}
 
-	// f1's raw local copy must be opaque: neither the real key nor the real
-	// value appear anywhere in storage.
 	raw := p.f1.store.GetMap(p.groupID, "secrets")
 	if len(raw.Entries) == 0 {
 		t.Fatal("f1: expected the (opaque) entry to have replicated")
@@ -369,7 +347,6 @@ func TestEncryptedMapRoundTrip(t *testing.T) {
 		}
 	}
 
-	// f2 (holds identity) can decrypt.
 	rm2, encrypted2, available2 := p.f2.GetMap(p.groupID, "secrets")
 	if !encrypted2 || !available2 {
 		t.Fatalf("f2: expected encrypted=true available=true, got encrypted=%v available=%v", encrypted2, available2)
@@ -399,7 +376,7 @@ func TestEncryptedMapRejectsTamperedIdentitySignature(t *testing.T) {
 	if storageKey == "" {
 		t.Fatal("expected exactly one entry")
 	}
-	entry.IdentitySignature = "dGFtcGVyZWQ=" // "tampered", base64
+	entry.IdentitySignature = "dGFtcGVyZWQ="
 	if _, err := p.f2.store.ApplyEvent(p.groupID, "secrets", storageKey, entry); err != nil {
 		t.Fatal(err)
 	}

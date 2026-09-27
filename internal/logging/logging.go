@@ -1,5 +1,3 @@
-// Package logging redirects the standard "log" package's output to a rotating
-// file (desktop tray/Android WebView have no console). Rotated at 100MB or 1 day old.
 package logging
 
 import (
@@ -13,24 +11,17 @@ import (
 	"time"
 )
 
-// LogFileName is the current (not yet rotated) log file's name, inside the
-// directory passed to Setup.
 const LogFileName = "foilen-box.log"
 
 const metaFileName = "foilen-box.log.meta"
 
 const (
-	maxSize = 100 * 1024 * 1024 // 100MB
+	maxSize = 100 * 1024 * 1024
 	maxAge  = 24 * time.Hour
 )
 
-// current is the writer installed by Setup, kept around so Clear can reach it.
 var current *rotatingWriter
 
-// Setup points the standard logger at a rotating file inside dir (created if
-// needed). If clear is true, any existing log is truncated; otherwise
-// logging appends to it. Call once, as early as possible, from each entry
-// point (desktop, Android).
 func Setup(dir string, clear bool) error {
 	w, err := newRotatingWriter(dir, clear)
 	if err != nil {
@@ -42,8 +33,6 @@ func Setup(dir string, clear bool) error {
 	return nil
 }
 
-// Clear empties the current log file in place, without waiting for the
-// rotation threshold — used by the web UI's Logs tab "Clear" button.
 func Clear() error {
 	if current == nil {
 		return nil
@@ -53,8 +42,6 @@ func Clear() error {
 	return current.rotate()
 }
 
-// rotatingWriter appends to LogFileName inside dir, rotating (delete +
-// restart) once maxSize or maxAge is exceeded.
 type rotatingWriter struct {
 	mu       sync.Mutex
 	dir      string
@@ -97,9 +84,6 @@ func (w *rotatingWriter) open(clear bool) error {
 	return nil
 }
 
-// readOrInitOpenedAt returns when the log file was first created, persisted in
-// a sidecar file so age-based rotation survives restarts. Re-stamped with now
-// if the sidecar is missing or unreadable.
 func (w *rotatingWriter) readOrInitOpenedAt() time.Time {
 	if data, err := os.ReadFile(w.metaPath()); err == nil {
 		if t, err := time.Parse(time.RFC3339, strings.TrimSpace(string(data))); err == nil {
@@ -125,13 +109,8 @@ func (w *rotatingWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
-// maxTailBytes caps how much of the current log file ReadTail returns, so the
-// web UI never has to load/render the full (up to 100MB) file.
 const maxTailBytes = 512 * 1024
 
-// ReadTail returns up to the last maxTailBytes of the current log file, for
-// the web UI's Logs tab. If search is non-empty, only matching lines
-// (case-insensitive) are kept.
 func ReadTail(dir string, search string) (string, error) {
 	f, err := os.Open(filepath.Join(dir, LogFileName))
 	if err != nil {
@@ -172,8 +151,6 @@ func ReadTail(dir string, search string) (string, error) {
 	return text, nil
 }
 
-// grepLines returns only the lines of text that contain search, matched
-// case-insensitively.
 func grepLines(text string, search string) string {
 	search = strings.ToLower(search)
 	lines := strings.Split(text, "\n")

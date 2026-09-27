@@ -20,13 +20,11 @@ func TestApplyEventLastWriteWins(t *testing.T) {
 		t.Fatalf("first ApplyEvent: applied=%v err=%v", applied, err)
 	}
 
-	// Older event for the same key must be rejected.
 	applied, err = s.ApplyEvent("group1", "store1", "key1", model.MapEntry{Value: "stale", UpdatedAtUnixMillis: 5})
 	if err != nil || applied {
 		t.Fatalf("stale ApplyEvent should not apply: applied=%v err=%v", applied, err)
 	}
 
-	// Newer event for the same key must win.
 	applied, err = s.ApplyEvent("group1", "store1", "key1", model.MapEntry{Value: "b", UpdatedAtUnixMillis: 20})
 	if err != nil || !applied {
 		t.Fatalf("newer ApplyEvent: applied=%v err=%v", applied, err)
@@ -37,7 +35,6 @@ func TestApplyEventLastWriteWins(t *testing.T) {
 		t.Fatalf("GetMap key1 = %q, want %q", got, "b")
 	}
 
-	// The event log is compacted per key: still exactly one event for key1.
 	events := s.EventsSinceForStore("group1", "store1", 0)
 	if len(events) != 1 {
 		t.Fatalf("EventsSinceForStore returned %d events, want 1 (compacted)", len(events))
@@ -60,11 +57,11 @@ func TestEventsSinceForStoreFiltersByTimestampGroupAndStore(t *testing.T) {
 	if _, err := s.ApplyEvent("group1", "store1", "k2", model.MapEntry{Value: "v2", UpdatedAtUnixMillis: 20}); err != nil {
 		t.Fatal(err)
 	}
-	// Different store under the same group: must not leak into store1's events.
+
 	if _, err := s.ApplyEvent("group1", "store2", "k3", model.MapEntry{Value: "v3", UpdatedAtUnixMillis: 30}); err != nil {
 		t.Fatal(err)
 	}
-	// Different group, same store name: must not leak either.
+
 	if _, err := s.ApplyEvent("group2", "store1", "k4", model.MapEntry{Value: "v4", UpdatedAtUnixMillis: 40}); err != nil {
 		t.Fatal(err)
 	}
@@ -91,18 +88,14 @@ func TestPeerCursorIsPerPeerAndPerStore(t *testing.T) {
 		t.Fatalf("LastFromPeerForStore before any subscribe = %d, want 0", max)
 	}
 
-	// We last caught up with peerB a while ago.
 	if err := s.RecordFromPeerForStore("group1", "store1", "peerB", 10); err != nil {
 		t.Fatal(err)
 	}
-	// Since then we've received something much newer from peerC — a
-	// store-wide watermark would now sit above any old event peerB might
-	// still have that we never got (e.g. a missed push).
+
 	if err := s.RecordFromPeerForStore("group1", "store1", "peerC", 100); err != nil {
 		t.Fatal(err)
 	}
-	// A cursor for a different store under the same group/peer must be
-	// independent too.
+
 	if err := s.RecordFromPeerForStore("group1", "store2", "peerB", 999); err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +110,6 @@ func TestPeerCursorIsPerPeerAndPerStore(t *testing.T) {
 		t.Fatalf("LastFromPeerForStore(group1, store2, peerB) = %d, want 999 (unaffected by store1's cursor)", got)
 	}
 
-	// An older/equal timestamp must not move the cursor backwards.
 	if err := s.RecordFromPeerForStore("group1", "store1", "peerB", 5); err != nil {
 		t.Fatal(err)
 	}
@@ -140,9 +132,6 @@ func TestPeerCursorIsPerPeerAndPerStore(t *testing.T) {
 	}
 }
 
-// TestDeleteValueHidesEntryButKeepsTombstoneAndListSummariesRow: a per-entry
-// delete keeps the map itself (still in ListSummaries, EntryCount 0) — unlike
-// DeleteMap below, which removes it.
 func TestDeleteValueHidesEntryButKeepsTombstoneAndListSummariesRow(t *testing.T) {
 	dir := t.TempDir()
 	s, err := NewStore(dir)
@@ -168,8 +157,6 @@ func TestDeleteValueHidesEntryButKeepsTombstoneAndListSummariesRow(t *testing.T)
 	}
 }
 
-// TestDeleteMapRemovesMapFromListSummariesAndDisk: whole-map deletion purges
-// it from ListSummaries and removes both on-disk files.
 func TestDeleteMapRemovesMapFromListSummariesAndDisk(t *testing.T) {
 	dir := t.TempDir()
 	s, err := NewStore(dir)
@@ -195,7 +182,6 @@ func TestDeleteMapRemovesMapFromListSummariesAndDisk(t *testing.T) {
 		t.Fatalf("DeleteMap: %v", err)
 	}
 
-	// Deleting an already-deleted (or never-existing) map must not error.
 	if err := s.DeleteMap("group1", "store1"); err != nil {
 		t.Fatalf("DeleteMap on already-deleted map: %v", err)
 	}
@@ -257,8 +243,7 @@ func TestSubscribeFiresEntryAddedUpdatedDeleted(t *testing.T) {
 	if _, err := s.ApplyEvent("group1", "store1", "k1", model.MapEntry{Deleted: true, UpdatedAtUnixMillis: 30}); err != nil {
 		t.Fatal(err)
 	}
-	// A delete applied against an already-tombstoned key changes nothing
-	// visible, so no event should fire for it.
+
 	if _, err := s.ApplyEvent("group1", "store1", "k1", model.MapEntry{Deleted: true, UpdatedAtUnixMillis: 40}); err != nil {
 		t.Fatal(err)
 	}
@@ -304,8 +289,6 @@ func TestSubscribeRecreatingAfterDeleteIsAnAddNotAnUpdate(t *testing.T) {
 		got = append(got, ev)
 	})
 
-	// Recreating a key whose only prior state was a tombstone must look
-	// like a brand-new key to a listener, not an update.
 	if _, err := s.ApplyEvent("group1", "store1", "k1", model.MapEntry{Value: "v3", UpdatedAtUnixMillis: 30}); err != nil {
 		t.Fatal(err)
 	}

@@ -1,7 +1,3 @@
-// Package model holds the data types exchanged with the Early.app API and
-// the local Early configuration. encoding/json ignores unknown fields by
-// default, matching the Java @JsonIgnoreProperties(ignoreUnknown = true)
-// behavior these types used to have.
 package model
 
 import (
@@ -9,7 +5,6 @@ import (
 	"time"
 )
 
-// ConfigEarly is the locally persisted Early API configuration.
 type ConfigEarly struct {
 	APIKey    string `json:"apiKey"`
 	APISecret string `json:"apiSecret"`
@@ -27,13 +22,8 @@ type Duration struct {
 	StoppedAt FlexTime `json:"stoppedAt"`
 }
 
-// earlyTimestampLayout matches the offset-less, millisecond-precision UTC
-// timestamps Early sends (e.g. "2026-06-30T01:19:03.970").
 const earlyTimestampLayout = "2006-01-02T15:04:05.000"
 
-// FlexTime is a time.Time that accepts both RFC3339 timestamps and Early's
-// offset-less UTC timestamps, and treats an empty string as the zero time
-// (sent for the stoppedAt field of a time entry that is still running).
 type FlexTime time.Time
 
 func (t FlexTime) IsZero() bool {
@@ -66,7 +56,6 @@ func (t *FlexTime) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// Mention is currently unused by the Early API responses this app reads.
 type Mention struct{}
 
 type Tag struct {
@@ -87,12 +76,10 @@ type ResponseError struct {
 	Message string `json:"message"`
 }
 
-// Response is the common envelope for Early API responses.
 type Response struct {
 	Error *ResponseError `json:"error"`
 }
 
-// IsSuccess mirrors Java's Response.isSuccess(): no error means success.
 func (r Response) IsSuccess() bool {
 	return r.Error == nil
 }
@@ -119,8 +106,6 @@ type TimeEntriesResponse struct {
 	TimeEntries []TimeEntry `json:"timeEntries"`
 }
 
-// AggregateResult is computed locally, not part of the Early API wire format.
-// Maps are unordered; callers must sort keys themselves for stable output.
 type AggregateResult struct {
 	DurationInSecByActivityDayTag map[string]int64
 	DurationInSecByActivityTag    map[string]int64

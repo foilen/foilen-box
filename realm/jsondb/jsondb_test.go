@@ -86,14 +86,11 @@ func TestUpdateDebouncesAndCoalescesWrites(t *testing.T) {
 	time.Sleep(30 * time.Millisecond)
 	s.Update(func(v *testValue) { v.Count = 3 })
 
-	// 40ms after the last Update: still within the reset debounce window,
-	// so nothing should have been written yet.
 	time.Sleep(40 * time.Millisecond)
 	if _, err := os.Stat(filepath.Join(dir, "data.json")); err == nil {
 		t.Fatalf("expected no file yet, debounce window should still be open")
 	}
 
-	// Wait past the debounce window for the single coalesced write.
 	time.Sleep(80 * time.Millisecond)
 	data, err := os.ReadFile(filepath.Join(dir, "data.json"))
 	if err != nil {

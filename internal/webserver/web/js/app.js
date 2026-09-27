@@ -40,8 +40,6 @@ class Api {
 				}
 			});
 			socket.addEventListener("error", () => socket.close());
-			// Socket can die anytime (tab throttling, server restart); reject
-			// in-flight calls and reconnect rather than hang callers forever.
 			socket.addEventListener("close", () => {
 				if (this.socket !== socket) return;
 				for (const pending of this.pending.values()) {

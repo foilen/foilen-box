@@ -1,4 +1,3 @@
-// Runs fn; on failure writes "Error: <message>" to output.
 export async function report(output, fn) {
 	try {
 		await fn();
@@ -11,7 +10,6 @@ export function shortId(id) {
 	return `[${id.slice(-6)}]`;
 }
 
-// Renders "hostname (description) [last 6 chars of id]", omitting parts that are missing.
 export function formatPeerLabel(peer) {
 	const parts = [];
 	if (peer.hostname) parts.push(peer.hostname);
@@ -28,19 +26,11 @@ export function formatIdentityLabel(identity) {
 	return `${identity.name} ${shortId(identity.id)}`;
 }
 
-// Falls back to the shortened id when peerId isn't in knownPeers yet (e.g. a
-// peer that posted into a group's map but hasn't been approved/seen directly).
 export function formatKnownPeerLabel(knownPeers, peerId) {
 	const peer = knownPeers.find((p) => p.id === peerId);
 	return peer ? formatPeerLabel(peer) : shortId(peerId);
 }
 
-// Reconciles container's children to match items (keyed by keyOf) instead of
-// clearing and rebuilding on every render: existing keys are patched via
-// update(el, item), gone keys are removed, new keys via create(item). Nodes
-// are moved rather than recreated, which keeps <select> selections,
-// checkbox/details state, and scroll position stable across polling refreshes.
-// Each item's key must be stable and unique (e.g. an id, not an array index).
 export function syncList(container, items, keyOf, create, update) {
 	const remaining = new Map();
 	for (const child of container.children) {
@@ -70,10 +60,6 @@ export function syncList(container, items, keyOf, create, update) {
 	}
 }
 
-// Patches a <tr>'s leading <td>s in place from [label, value] pairs, creating
-// cells if missing and only touching textContent when it changed — works for
-// both syncList's create and update callbacks. Returns the cell count so
-// callers can append further custom cells after these.
 export function syncCells(row, cells, offset = 0) {
 	cells.forEach(([label, value], i) => {
 		const idx = offset + i;
@@ -87,4 +73,40 @@ export function syncCells(row, cells, offset = 0) {
 		if (cell.textContent !== text) cell.textContent = text;
 	});
 	return offset + cells.length;
+}
+
+export function syncSelectOptions(select, entries) {
+	const previousValue = select.value;
+	syncList(
+		select,
+		entries,
+		([value]) => value,
+		([value, label]) => {
+			const option = document.createElement("md-select-option");
+			option.value = value;
+			option.innerHTML = `<div slot="headline">${label}</div>`;
+			return option;
+		},
+		(option, [, label]) => {
+			const headline = option.querySelector('[slot="headline"]');
+			if (headline.textContent !== label) headline.textContent = label;
+		}
+	);
+	select.value = previousValue;
+}
+
+export function syncConnectedCell(row, connected) {
+	let cell = row.querySelector('td[data-label="Connected"]');
+	let dot;
+	if (!cell) {
+		cell = document.createElement("td");
+		cell.dataset.label = "Connected";
+		dot = document.createElement("span");
+		cell.appendChild(dot);
+		row.appendChild(cell);
+	} else {
+		dot = cell.querySelector("span");
+	}
+	dot.className = `status-dot${connected ? " connected" : ""}`;
+	dot.title = connected ? "Connected" : "Not connected";
 }

@@ -10,9 +10,9 @@ import (
 
 func TestSaveLoadRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	svc, err := NewInDir(dir)
+	svc, err := New(dir)
 	if err != nil {
-		t.Fatalf("NewInDir() error = %v", err)
+		t.Fatalf("New() error = %v", err)
 	}
 
 	want := model.ConfigEarly{APIKey: "key123", APISecret: "secret456"}
@@ -28,9 +28,9 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 
 func TestLoadMissingFileReturnsZeroValue(t *testing.T) {
 	dir := t.TempDir()
-	svc, err := NewInDir(dir)
+	svc, err := New(dir)
 	if err != nil {
-		t.Fatalf("NewInDir() error = %v", err)
+		t.Fatalf("New() error = %v", err)
 	}
 
 	got := svc.Load()
@@ -45,9 +45,9 @@ func TestLoadCorruptFileReturnsZeroValue(t *testing.T) {
 		t.Fatalf("setup WriteFile error = %v", err)
 	}
 
-	svc, err := NewInDir(dir)
+	svc, err := New(dir)
 	if err != nil {
-		t.Fatalf("NewInDir() error = %v", err)
+		t.Fatalf("New() error = %v", err)
 	}
 
 	got := svc.Load()

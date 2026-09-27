@@ -19,11 +19,6 @@ import (
 	manet "github.com/multiformats/go-multiaddr/net"
 )
 
-// Custom multiaddr protocols for the web listener (see
-// exposeWebListenAddr/exposeWebAnnounceAddr): distinct from the standard
-// multiaddr /http and /ws codes so nothing else in go-libp2p mistakes one of
-// these addresses for a semantic libp2phttp or websocket-transport endpoint.
-// Codes are picked from multicodec's private-use range.
 const (
 	protoCodeRealmHTTP  = 0x300701
 	protoCodeRealmHTTPS = 0x300702
@@ -40,14 +35,8 @@ func init() {
 	}
 }
 
-// webTransport is a libp2p Transport for the realm-http(s) multiaddr
-// scheme: Dial opens a WebSocket connection to the remote's /p2p endpoint;
-// Listen runs a standalone HTTP(S) server (self-signed cert when secure)
-// that serves an informational index page plus a /p2p WebSocket endpoint,
-// accepting each upgraded connection directly into libp2p the same way the
-// tcp transport would accept a raw TCP connection. Either side hands its
-// raw byte stream straight to libp2p's usual security/muxer upgrade — there
-// is no separate local TCP redial or bridging step.
+// Transport
+
 type webTransport struct {
 	upgrader      transport.Upgrader
 	rcmgr         network.ResourceManager
@@ -63,11 +52,8 @@ func newWebTransport(u transport.Upgrader, rcmgr network.ResourceManager) (*webT
 	return &webTransport{
 		upgrader: u,
 		rcmgr:    rcmgr,
-		// Any peer with ExposeWebEnabled uses a self-signed cert
-		// (generateSelfSignedTLSConfig); there's no shared CA to validate
-		// against. Safe to skip: libp2p's Noise handshake on top actually
-		// authenticates the peer.
-		tlsClientConf: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // see doc comment
+
+		tlsClientConf: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
 	}, nil
 }
 
@@ -80,8 +66,6 @@ func (t *webTransport) CanDial(addr ma.Multiaddr) bool {
 	return err == nil
 }
 
-// Dial opens a WebSocket connection to raddr's /p2p endpoint and upgrades
-// it into a full libp2p connection.
 func (t *webTransport) Dial(ctx context.Context, raddr ma.Multiaddr, p peer.ID) (transport.CapableConn, error) {
 	connScope, err := t.rcmgr.OpenConnection(network.DirOutbound, true, raddr)
 	if err != nil {
@@ -127,10 +111,6 @@ func (t *webTransport) dialWithScope(ctx context.Context, raddr ma.Multiaddr, p 
 	return t.upgrader.Upgrade(ctx, t, macon, network.DirOutbound, p, connScope)
 }
 
-// Listen starts a standalone HTTP(S) server on laddr's port (self-signed
-// cert when the realm-https protocol is used) and returns a Listener whose
-// Accept() yields fully upgraded libp2p connections, one per /p2p
-// WebSocket connection made to it.
 func (t *webTransport) Listen(laddr ma.Multiaddr) (transport.Listener, error) {
 	host, port, secure, err := parseRealmWebMultiaddr(laddr)
 	if err != nil {
@@ -153,7 +133,7 @@ func (t *webTransport) Listen(laddr ma.Multiaddr) (transport.Listener, error) {
 	if !secure {
 		maProto = "realm-http"
 	}
-	// ln.Addr() has the actually-bound port, in case laddr's port was 0.
+
 	actualPort := ln.Addr().(*net.TCPAddr).Port
 	wl.laddr, err = ma.NewMultiaddr(fmt.Sprintf("/ip4/%s/%s/%d", host, maProto, actualPort))
 	if err != nil {
@@ -189,9 +169,6 @@ func (t *webTransport) Listen(laddr ma.Multiaddr) (transport.Listener, error) {
 	return t.upgrader.UpgradeGatedMaListener(t, wl), nil
 }
 
-// parseRealmWebMultiaddr extracts the dial/listen target from a
-// realm-http(s) multiaddr, e.g. "/dns4/example.com/realm-https/8443" or
-// "/ip4/0.0.0.0/realm-http/8080".
 func parseRealmWebMultiaddr(addr ma.Multiaddr) (host, port string, secure bool, err error) {
 	for _, code := range []int{ma.P_IP4, ma.P_IP6, ma.P_DNS, ma.P_DNS4, ma.P_DNS6} {
 		if v, verr := addr.ValueForProtocol(code); verr == nil {
@@ -211,17 +188,13 @@ func parseRealmWebMultiaddr(addr ma.Multiaddr) (host, port string, secure bool, 
 	return "", "", false, fmt.Errorf("realm web transport: no realm-http(s) component in %s", addr)
 }
 
-// webAcceptedConn pairs an accepted connection with the resource-management
-// scope opened for it, matching transport.GatedMaListener.Accept's contract.
+// Listener
+
 type webAcceptedConn struct {
 	conn  *webConn
 	scope network.ConnManagementScope
 }
 
-// webListener implements transport.GatedMaListener: an HTTP(S) server
-// (started by webTransport.Listen) hands each successfully upgraded /p2p
-// WebSocket connection to Accept via incoming, instead of returning from a
-// blocking net.Listener.Accept call directly.
 type webListener struct {
 	rcmgr  network.ResourceManager
 	ln     net.Listener
@@ -265,8 +238,7 @@ func (l *webListener) handleP2P(w http.ResponseWriter, r *http.Request) {
 
 	select {
 	case l.incoming <- webAcceptedConn{conn: macon, scope: scope}:
-		// Connection has been handed to Accept(); safe to return, the
-		// hijacked WebSocket stays open until macon.Close().
+
 	case <-l.closed:
 		scope.Done()
 		wsConn.Close()
@@ -298,15 +270,11 @@ func (l *webListener) Multiaddr() ma.Multiaddr { return l.laddr }
 func (l *webListener) Addr() net.Addr          { return l.ln.Addr() }
 
 var webListenUpgrader = websocket.Upgrader{
-	// Any client may connect; that's the same trust model as the rest of
-	// this exposed listener — real peer auth happens afterwards, once the
-	// bytes reach libp2p's own Noise handshake.
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
-// webConn adapts a gorilla/websocket connection to manet.Conn, splitting its
-// message framing back into a plain byte stream so it can carry libp2p's
-// usual multistream-select/Noise/yamux negotiation.
+// Connection
+
 type webConn struct {
 	*websocket.Conn
 	laddr ma.Multiaddr
@@ -320,7 +288,6 @@ type webConn struct {
 
 var _ manet.Conn = (*webConn)(nil)
 
-// newWebConn wraps raw, reporting raddr via RemoteMultiaddr.
 func newWebConn(raw *websocket.Conn, raddr ma.Multiaddr) (*webConn, error) {
 	laddr, err := manet.FromNetAddr(raw.LocalAddr())
 	if err != nil {

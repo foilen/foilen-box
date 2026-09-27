@@ -7,11 +7,6 @@ import (
 	grouptroubleshooting "foilen-box/internal/grouptroubleshooting"
 )
 
-// handleGroupTroubleshootingStart starts a fixed-length "Group Troubleshooting"
-// session for a group (see internal/grouptroubleshooting), erroring if one is
-// already running. The resulting "common" map (with its fresh
-// groupTroubleshooting/expiration entry) is returned the same shape as
-// realm.getMap so the UI can render it immediately.
 func handleGroupTroubleshootingStart(a *api, params json.RawMessage) (any, error) {
 	var p struct {
 		GroupID string `json:"groupId"`

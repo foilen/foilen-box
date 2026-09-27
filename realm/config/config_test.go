@@ -10,9 +10,9 @@ import (
 
 func TestSaveLoadRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	svc, err := NewInDir(dir, model.DhtModeServer)
+	svc, err := New(dir, model.DhtModeServer)
 	if err != nil {
-		t.Fatalf("NewInDir() error = %v", err)
+		t.Fatalf("New() error = %v", err)
 	}
 
 	want := model.Config{
@@ -37,9 +37,9 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 
 func TestLoadMissingFileReturnsPlatformDefault(t *testing.T) {
 	dir := t.TempDir()
-	svc, err := NewInDir(dir, model.DhtModeClient)
+	svc, err := New(dir, model.DhtModeClient)
 	if err != nil {
-		t.Fatalf("NewInDir() error = %v", err)
+		t.Fatalf("New() error = %v", err)
 	}
 
 	got := svc.Load()
@@ -54,9 +54,9 @@ func TestLoadCorruptFileReturnsPlatformDefault(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, configFileName), []byte("not json"), 0o644); err != nil {
 		t.Fatalf("setup WriteFile error = %v", err)
 	}
-	svc, err := NewInDir(dir, model.DhtModeServer)
+	svc, err := New(dir, model.DhtModeServer)
 	if err != nil {
-		t.Fatalf("NewInDir() error = %v", err)
+		t.Fatalf("New() error = %v", err)
 	}
 
 	got := svc.Load()
@@ -68,19 +68,17 @@ func TestLoadCorruptFileReturnsPlatformDefault(t *testing.T) {
 
 func TestPersistedDhtModeOverridesDefaultOnceSaved(t *testing.T) {
 	dir := t.TempDir()
-	svc, err := NewInDir(dir, model.DhtModeServer)
+	svc, err := New(dir, model.DhtModeServer)
 	if err != nil {
-		t.Fatalf("NewInDir() error = %v", err)
+		t.Fatalf("New() error = %v", err)
 	}
 	if err := svc.Save(model.Config{DhtMode: model.DhtModeClient, EnableUdpBroadcast: true, EnableDht: true}); err != nil {
 		t.Fatalf("Save() error = %v", err)
 	}
 
-	// A new Service constructed with a different platform default must
-	// still see the persisted value, not re-apply its own default.
-	svc2, err := NewInDir(dir, model.DhtModeServer)
+	svc2, err := New(dir, model.DhtModeServer)
 	if err != nil {
-		t.Fatalf("NewInDir() error = %v", err)
+		t.Fatalf("New() error = %v", err)
 	}
 	if got := svc2.Load().DhtMode; got != model.DhtModeClient {
 		t.Errorf("Load().DhtMode = %q, want %q (persisted value)", got, model.DhtModeClient)

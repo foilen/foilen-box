@@ -37,8 +37,6 @@ func TestExposeWebAnnounceAddr(t *testing.T) {
 		t.Fatalf("explicit http protocol: got %q, want %q", got, want)
 	}
 
-	// Reverse-proxy setup: listen on plain http on an internal port, but
-	// announce https on the proxy's public host/port.
 	a, err = exposeWebAnnounceAddr(model.Config{
 		ExposeWebEnabled:          true,
 		ExposeWebListenProtocol:   "http",
@@ -54,7 +52,6 @@ func TestExposeWebAnnounceAddr(t *testing.T) {
 		t.Fatalf("reverse-proxy announce: got %q, want %q", got, want)
 	}
 
-	// No AnnounceHost: falls back to this host's outbound IP.
 	a, err = exposeWebAnnounceAddr(model.Config{ExposeWebEnabled: true, ExposeWebListenPort: 443})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

@@ -1,12 +1,8 @@
-import { report, formatPeerLabel, formatIdentityLabel, syncList, syncCells } from "./util.js";
+import { report, formatPeerLabel, formatIdentityLabel, syncList, syncCells, syncSelectOptions } from "./util.js";
 import { initQrModal, initScanModal } from "./realm-qr.js";
 
 const IDENTITIES_POLL_INTERVAL_MS = 5000;
 
-// Wires the Identities subtab: list/generate/import/export/delete/push.
-// renderConfig is the top-level fan-out (see realm.js). Also polled here so
-// an identity pushed by another peer shows up without a manual reload, since
-// there's no server->client push channel in this app.
 export function initRealmIdentities(api, output, renderConfig) {
 	const identitiesBody = document.getElementById("realm-identities-tbody");
 	const identitiesCount = document.getElementById("realm-identities-count");
@@ -34,33 +30,12 @@ export function initRealmIdentities(api, output, renderConfig) {
 	let knownPeers = [];
 	let ownPeerId = "";
 
-	// Patches an <md-outlined-select>'s options in place (keyed by value)
-	// instead of rebuilding them, so re-rendering on every refresh doesn't tear
-	// down the selected option and desync the select's shown value.
-	function syncOptions(select, entries) {
-		syncList(
-			select,
-			entries,
-			([value]) => value,
-			([value, label]) => {
-				const option = document.createElement("md-select-option");
-				option.value = value;
-				option.innerHTML = `<div slot="headline">${label}</div>`;
-				return option;
-			},
-			(option, [, label]) => {
-				const headline = option.querySelector('[slot="headline"]');
-				if (headline.textContent !== label) headline.textContent = label;
-			}
-		);
-	}
-
 	function renderPushIdentityOptions() {
-		syncOptions(pushIdentitySelect, identities.map((identity) => [identity.name, formatIdentityLabel(identity)]));
+		syncSelectOptions(pushIdentitySelect, identities.map((identity) => [identity.name, formatIdentityLabel(identity)]));
 	}
 
 	function renderPushPeerOptions() {
-		syncOptions(
+		syncSelectOptions(
 			pushPeerSelect,
 			knownPeers.filter((peer) => peer.id !== ownPeerId).map((peer) => [peer.id, formatPeerLabel(peer)])
 		);

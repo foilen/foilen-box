@@ -14,17 +14,10 @@ import (
 	realmpeers "foilen-realm/peers"
 )
 
-// SessionDuration is the fixed length of a "Check Group" session.
 const SessionDuration = 10 * time.Minute
 
-// updateInterval is how often an active session's own connections entry is
-// refreshed — much faster than the engine's 10-minute keep-alive tick, since
-// a whole session only lasts SessionDuration.
 const updateInterval = 15 * time.Second
 
-// Manager keeps this device's own connections entry fresh in every group's
-// "common" map for as long as that group has an active (non-expired)
-// session.
 type Manager struct {
 	mapsFeature *realmmaps.Feature
 	engine      *realm.Engine
@@ -33,12 +26,9 @@ type Manager struct {
 	localGroups func() []realmmodel.Group
 
 	mu          sync.Mutex
-	lastWritten map[string]string // groupID -> last connections JSON written, to skip redundant SetValue
+	lastWritten map[string]string
 }
 
-// NewManager builds a Manager. localPeerID and localGroups are called on
-// demand (not cached), mirroring internal/sms.Manager's pattern, since the
-// engine's config can change independently of this package.
 func NewManager(mapsFeature *realmmaps.Feature, engine *realm.Engine, peers *realmpeers.Store, localPeerID func() string, localGroups func() []realmmodel.Group) *Manager {
 	return &Manager{
 		mapsFeature: mapsFeature,
@@ -50,8 +40,6 @@ func NewManager(mapsFeature *realmmaps.Feature, engine *realm.Engine, peers *rea
 	}
 }
 
-// Start begins the background update loop. Safe to call once at construction
-// time regardless of whether any session is active yet.
 func (m *Manager) Start() {
 	go func() {
 		m.pollOnce()
@@ -69,10 +57,6 @@ func (m *Manager) pollOnce() {
 	}
 }
 
-// processGroup republishes this device's current connections to groupID's
-// other members, if that group currently has an active (non-expired)
-// session; otherwise it's a no-op — an expired session's entries are simply
-// left in place as a record of the last run (see StartSession).
 func (m *Manager) processGroup(groupID, groupName string) {
 	rm, encrypted, available := m.mapsFeature.GetMap(groupID, CommonStoreName)
 	if encrypted && !available {
@@ -126,9 +110,6 @@ func (m *Manager) processGroup(groupID, groupName string) {
 	}
 }
 
-// reportStarted writes localID's started entry in response to groupID's
-// current start entry, unless it has already responded to this (or a later)
-// start.
 func (m *Manager) reportStarted(groupID, groupName, localID string, rm realmmodel.RealmMap) {
 	startEntry, ok := rm.Entries[startKey]
 	if !ok {
@@ -165,9 +146,6 @@ func hasGroupName(names []string, name string) bool {
 	return false
 }
 
-// StartSession clears groupID's previous groupTroubleshooting/* entries (if
-// any) and writes a fresh SessionDuration expiration, erroring if a session
-// is already running for that group.
 func (m *Manager) StartSession(groupID string) error {
 	if groupID == "" {
 		return fmt.Errorf("please select a group")

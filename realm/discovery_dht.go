@@ -20,9 +20,6 @@ import (
 	"foilen-realm/model"
 )
 
-// maxRememberedDHTPeers caps how many previously-connected DHT swarm peers
-// are remembered (see disconnectDHTSwarmLocked) for a fast reconnect the
-// next time DhtModeClient needs to do a lookup.
 const maxRememberedDHTPeers = 20
 
 func (e *Engine) startDHT(ctx context.Context, h host.Host, cfg model.Config) error {
@@ -56,9 +53,6 @@ func (e *Engine) startDHT(ctx context.Context, h host.Host, cfg model.Config) er
 	return nil
 }
 
-// startGroupDHTLoopLocked starts the advertise/find loop for a single group
-// under a context derived from e.ctx, so it can be cancelled individually
-// without tearing down the DHT or the host. Must be called with e.mu held.
 func (e *Engine) startGroupDHTLoopLocked(ctx context.Context, group model.Group) {
 	groupCtx, cancel := context.WithCancel(ctx)
 	e.dhtLoopCancels[groupKey(group)] = cancel
@@ -66,8 +60,6 @@ func (e *Engine) startGroupDHTLoopLocked(ctx context.Context, group model.Group)
 	go e.runGroupDHTLoop(groupCtx, e.routingDiscovery, group)
 }
 
-// stopDHTLocked cancels every per-group DHT loop and closes the DHT and its
-// datastore. Must be called with e.mu held.
 func (e *Engine) stopDHTLocked() {
 	for key, cancel := range e.dhtLoopCancels {
 		cancel()
@@ -81,9 +73,6 @@ func (e *Engine) stopDHTLocked() {
 		e.kadDHT = nil
 	}
 	if e.dhtDatastore != nil {
-		// The DHT doesn't own the datastore we handed it via
-		// dht.Datastore(ds); it must be closed separately or the
-		// leveldb lock file keeps the next Start from reopening it.
 		if err := e.dhtDatastore.Close(); err != nil {
 			log.Printf("realm engine: failed to close DHT datastore: %v", err)
 		}
@@ -91,8 +80,6 @@ func (e *Engine) stopDHTLocked() {
 	}
 }
 
-// dhtSwarmPeerIDs returns connected peers that aren't known Realm group
-// peers — strangers the DHT dialed while bootstrapping/refreshing routing.
 func (e *Engine) dhtSwarmPeerIDs(h host.Host) []peer.ID {
 	var result []peer.ID
 	for _, pid := range h.Network().Peers() {
@@ -104,10 +91,6 @@ func (e *Engine) dhtSwarmPeerIDs(h host.Host) []peer.ID {
 	return result
 }
 
-// disconnectDHTSwarmLocked closes every DHT swarm connection (dhtSwarmPeerIDs),
-// remembering addresses in e.lastDHTPeers for reconnectRememberedDHTPeers.
-// Peers a PeerInUseHook reports in use are left connected. Must be called
-// with e.mu held; h must be non-nil.
 func (e *Engine) disconnectDHTSwarmLocked(h host.Host) {
 	ids := e.dhtSwarmPeerIDs(h)
 	if len(ids) == 0 {
@@ -140,9 +123,6 @@ func (e *Engine) disconnectDHTSwarmLocked(h host.Host) {
 	}
 }
 
-// reconnectRememberedDHTPeers best-effort redials peers remembered by the
-// last disconnectDHTSwarmLocked call, so a lookup resumes with warm
-// connections instead of relying solely on public bootstrap peers.
 func (e *Engine) reconnectRememberedDHTPeers(ctx context.Context, h host.Host) {
 	e.mu.Lock()
 	remembered := e.lastDHTPeers
@@ -162,17 +142,12 @@ func (e *Engine) reconnectRememberedDHTPeers(ctx context.Context, h host.Host) {
 	}
 }
 
-// isDHTClientMode reports whether the engine is currently configured for
-// DhtModeClient.
 func (e *Engine) isDHTClientMode() bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.cfg.DhtMode == model.DhtModeClient
 }
 
-// maintainDHTSwarm disconnects the DHT swarm in DhtModeClient so this peer
-// isn't left connected to public DHT infra between lookups. Run periodically
-// from keepAliveLoop; a no-op in DhtModeServer, which must stay reachable.
 func (e *Engine) maintainDHTSwarm() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -182,8 +157,6 @@ func (e *Engine) maintainDHTSwarm() {
 	e.disconnectDHTSwarmLocked(e.host)
 }
 
-// runGroupDHTLoop advertises/finds peers under the group's daily-rotating
-// rendezvous topic (decision 1), recomputing it on each UTC day rollover.
 func (e *Engine) runGroupDHTLoop(ctx context.Context, routingDiscovery *routingdisc.RoutingDiscovery, group model.Group) {
 	ticker := time.NewTicker(keepAliveInterval)
 	defer ticker.Stop()
@@ -242,9 +215,6 @@ func (e *Engine) findGroupPeers(ctx context.Context, routingDiscovery *routingdi
 	}
 }
 
-// groupTopic derives the daily-rotating DHT rendezvous string for a group
-// (decision 1): hash(yyyy-mm-dd + GroupPrivateKey), so the group's presence
-// on the public DHT can't be linked long-term.
 func groupTopic(group model.Group, utcDate string) string {
 	sum := sha256.Sum256([]byte(utcDate + group.KeyPair.PrivateKeyBase64))
 	return hex.EncodeToString(sum[:])

@@ -19,8 +19,6 @@ var systrayIcon []byte
 
 func run(server *webserver.Server) {
 	if !hasDisplay() {
-		// systray.Run() initializes GTK, which calls exit() itself (unrecoverable
-		// via panic/recover) when no display is available on Linux.
 		log.Printf("no display detected, running headless without a systray icon")
 		runHeadless(server)
 		return
@@ -35,8 +33,6 @@ func run(server *webserver.Server) {
 	})
 }
 
-// hasDisplay reports whether a graphical display is available. Only Linux
-// needs this check: macOS/Windows systray backends don't hard-exit without one.
 func hasDisplay() bool {
 	if runtime.GOOS != "linux" {
 		return true

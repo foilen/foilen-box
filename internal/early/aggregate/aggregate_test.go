@@ -70,14 +70,13 @@ func TestAggregate(t *testing.T) {
 		t.Errorf("DurationInSecByActivityDay[%q] = %d, want 5400", dayKey, got)
 	}
 
-	// entry 2 has no tags -> NO_TAG bucket
 	if got := result.DurationInSecByActivityTag["Coding / NO_TAG"]; got != 1800 {
 		t.Errorf("DurationInSecByActivityTag[Coding / NO_TAG] = %d, want 1800", got)
 	}
 	if got := result.DurationInSecByActivityTag["Coding / backend"]; got != 3600 {
 		t.Errorf("DurationInSecByActivityTag[Coding / backend] = %d, want 3600", got)
 	}
-	// entry 3 has 2 tags -> contributes to both tag buckets
+
 	if got := result.DurationInSecByActivityTag["Meetings / standup"]; got != 900 {
 		t.Errorf("DurationInSecByActivityTag[Meetings / standup] = %d, want 900", got)
 	}
@@ -98,7 +97,7 @@ func TestAggregate(t *testing.T) {
 
 func TestAggregateSkipsIncompleteEntries(t *testing.T) {
 	svc := &fakeEarlyService{entries: []model.TimeEntry{
-		{ID: "1", Activity: model.Activity{Name: "Coding"}}, // zero-value Duration
+		{ID: "1", Activity: model.Activity{Name: "Coding"}},
 	}}
 	agg := New(svc, fakeConfigService{})
 	result, err := agg.Aggregate()

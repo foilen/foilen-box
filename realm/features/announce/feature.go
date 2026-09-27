@@ -1,8 +1,3 @@
-// Package announce is the "common/announce" Realm feature: each tick it
-// posts this peer's services, scripts, spec, and reachability info to every
-// configured group's "common" RealmMap, and consumes peers/{peerId} entries
-// from those maps into the local known-peers store — how peers discover
-// each other well enough to reconnect (see realm/connection_ring.go).
 package announce
 
 import (
@@ -21,31 +16,19 @@ import (
 )
 
 const (
-	// FeatureName is this feature's namespace.
 	FeatureName = "common/announce"
 
-	// storeName is the RealmMap store every peer posts its info into, per group.
 	storeName = "common"
 
-	// peersKeyPrefix namespaces each peer's self-reported reachability entries.
 	peersKeyPrefix = "peers/"
 
-	// specRefreshInterval caps how often the (expensive) system report is
-	// gathered and posted.
 	specRefreshInterval = 6 * time.Hour
 
-	// peerInfoRefreshInterval caps re-posting reachability info when nothing
-	// changed; an actual change is posted immediately instead.
 	peerInfoRefreshInterval = 24 * time.Hour
 
-	// commonMapDefaultAutoDeleteHours seeds storeName's entry TTL the first
-	// time a peer notices it's missing (see seedCommonConfig) — 7 days.
 	commonMapDefaultAutoDeleteHours = 168
 )
 
-// SpecSummary is the compact system report posted alongside the full spec
-// text, mirroring model.PeerSpec's fields. Callers adapt their own
-// system-report type into this to avoid an app-specific dependency here.
 type SpecSummary struct {
 	OS      string
 	CPU     string
@@ -55,8 +38,6 @@ type SpecSummary struct {
 	Disk    string
 }
 
-// peerAnnounceInfo is posted under peers/{peerId}: a peer's self-reported
-// reachability info (vs. model.PeerSpec's system report).
 type peerAnnounceInfo struct {
 	Hostname            string   `json:"hostname"`
 	Description         string   `json:"description"`
@@ -65,7 +46,6 @@ type peerAnnounceInfo struct {
 	Version             string   `json:"version"`
 }
 
-// Feature implements realm.Feature and realm.PeriodicHook.
 type Feature struct {
 	mapsFeature *realmmaps.Feature
 	specText    func() string
@@ -79,8 +59,6 @@ type Feature struct {
 	postedInfo    peerAnnounceInfo
 }
 
-// New builds the announce Feature. Dependencies are injected so this package
-// has no dependency on app-specific system-report or versioning code.
 func New(mapsFeature *realmmaps.Feature, specText func() string, specSummary func() SpecSummary, hostname func() string, appVersion func() string) *Feature {
 	return &Feature{mapsFeature: mapsFeature, specText: specText, specSummary: specSummary, hostname: hostname, appVersion: appVersion}
 }
@@ -89,14 +67,8 @@ func (f *Feature) Name() string { return FeatureName }
 
 func (f *Feature) Actions() []model.PermissionAction { return nil }
 
-// RegisterHandlers is a no-op: this feature has no per-host state to wire up
-// beyond what New already injected. Per realm.Feature.
 func (f *Feature) RegisterHandlers(reg *realm.Registrar) {}
 
-// RunPeriodic posts this peer's services, scripts, reachability info (on
-// change or peerInfoRefreshInterval), and spec (at most daily) to every
-// group's "common" map, then pulls peers/* entries into the known-peers
-// store. Per realm.PeriodicHook.
 func (f *Feature) RunPeriodic(reg *realm.Registrar) {
 	cfg := reg.Config()
 	if cfg.PeerID.ID == "" || len(cfg.Groups) == 0 {
@@ -194,9 +166,6 @@ func (f *Feature) RunPeriodic(reg *realm.Registrar) {
 	f.consumePeerInfo(reg, cfg)
 }
 
-// seedCommonConfig ensures group's _realmMaps has a default TTL entry for
-// storeName, since SetValue creates stores implicitly without one. Leaves an
-// existing entry alone.
 func (f *Feature) seedCommonConfig(group model.Group) {
 	cfgMap, _, _ := f.mapsFeature.GetMap(group.KeyPair.ID, realmmaps.SystemConfigStoreName)
 	if _, ok := cfgMap.Entries[storeName]; ok {
@@ -212,14 +181,10 @@ func (f *Feature) seedCommonConfig(group model.Group) {
 	}
 }
 
-// serviceMapKey is the RealmMap key a service is posted under, shared by
-// AnnounceServiceNow/RetractServiceNow and the periodic re-post.
 func serviceMapKey(peerID, name string) string {
 	return "services/" + peerID + "/" + name
 }
 
-// AnnounceServiceNow immediately posts svc to every group's "common" map,
-// instead of waiting for the next RunPeriodic tick.
 func AnnounceServiceNow(mapsFeature *realmmaps.Feature, cfg model.Config, svc model.Service) {
 	b, err := json.Marshal(svc)
 	if err != nil {
@@ -234,8 +199,6 @@ func AnnounceServiceNow(mapsFeature *realmmaps.Feature, cfg model.Config, svc mo
 	}
 }
 
-// RetractServiceNow immediately removes a deleted service's entry from
-// every one of cfg's groups' "common" RealmMap.
 func RetractServiceNow(mapsFeature *realmmaps.Feature, cfg model.Config, name string) {
 	key := serviceMapKey(cfg.PeerID.ID, name)
 	for _, group := range cfg.Groups {
@@ -245,12 +208,6 @@ func RetractServiceNow(mapsFeature *realmmaps.Feature, cfg model.Config, name st
 	}
 }
 
-// consumePeerInfo upserts peers/{peerId} entries from every group's "common"
-// map into the known-peers store. A valid entry proves the group key was
-// held, not that the peerId key names the true author — so, like
-// realm/peers_helper.go's handleFoundPeer, this only records reachability
-// info. GroupNames is left untouched: membership only comes from a signed
-// group-challenge (realm/peer_identify.go/challengeGroup).
 func (f *Feature) consumePeerInfo(reg *realm.Registrar, cfg model.Config) {
 	peersStore := reg.Peers()
 	if peersStore == nil {
@@ -328,8 +285,6 @@ func (f *Feature) dueForSpecPost() bool {
 	return time.Since(f.lastSpecPost) >= specRefreshInterval
 }
 
-// dueForPeerInfoPost reports whether peer info changed since last posted,
-// or peerInfoRefreshInterval has elapsed.
 func (f *Feature) dueForPeerInfoPost(info peerAnnounceInfo) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -339,8 +294,6 @@ func (f *Feature) dueForPeerInfoPost(info peerAnnounceInfo) bool {
 	return time.Since(f.lastPeersPost) >= peerInfoRefreshInterval
 }
 
-// ownAddresses returns the running host's own listen multiaddrs as strings,
-// or nil if the engine isn't running.
 func ownAddresses(reg *realm.Registrar) []string {
 	h := reg.Host()
 	if h == nil {

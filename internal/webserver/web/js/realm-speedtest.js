@@ -1,8 +1,5 @@
 import { report, formatPeerLabel, syncList } from "./util.js";
 
-// Wires the Speed Test subtab: a checkable peer list plus a "Run Speed Test"
-// button that runs a download/upload test (see internal/speedtest) against
-// each checked peer in turn, filling in a result row as each completes.
 export function initRealmSpeedtest(api, output) {
 	const peersBody = document.getElementById("realm-speedtest-peers-tbody");
 	const selectAllCheckbox = document.getElementById("realm-speedtest-select-all");

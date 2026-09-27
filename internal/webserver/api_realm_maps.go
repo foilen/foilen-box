@@ -7,8 +7,6 @@ import (
 	realmmodel "foilen-realm/model"
 )
 
-// mapEntryResult is the wire shape of one key-value entry, keyed by its map
-// key in mapResult.Entries.
 type mapEntryResult struct {
 	Value               string `json:"value"`
 	UpdatedAtUnixMillis int64  `json:"updatedAtUnixMillis"`

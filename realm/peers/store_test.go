@@ -97,10 +97,8 @@ func TestUpsertMergesAddressesPerSourcePreferringLANFirst(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	// dht sees only the public address.
 	s.Upsert(model.PeerInfo{ID: "peerA", Addresses: []string{"/ip4/1.2.3.4/tcp/1"}}, "dht")
-	// broadcast then reports the LAN address; it must not be lost when dht
-	// ticks again with only the public address.
+
 	s.Upsert(model.PeerInfo{ID: "peerA", Addresses: []string{"/ip4/192.168.1.5/tcp/1"}}, "broadcast")
 	s.Upsert(model.PeerInfo{ID: "peerA", Addresses: []string{"/ip4/1.2.3.4/tcp/1"}}, "dht")
 
@@ -113,8 +111,6 @@ func TestUpsertMergesAddressesPerSourcePreferringLANFirst(t *testing.T) {
 		t.Errorf("Addresses = %v, want %v (LAN/broadcast first)", got.Addresses, want)
 	}
 
-	// A source-less update (e.g. hostname/description only) must leave
-	// the merged addresses untouched.
 	s.Upsert(model.PeerInfo{ID: "peerA", Hostname: "host"}, "")
 	got, _ = s.Get("peerA")
 	if len(got.Addresses) != len(want) {

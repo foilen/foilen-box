@@ -1,11 +1,7 @@
-import { report, formatGroupLabel, formatIdentityLabel, syncList, syncCells } from "./util.js";
+import { report, formatGroupLabel, formatIdentityLabel, syncList, syncCells, syncSelectOptions } from "./util.js";
 
 const MAPS_POLL_INTERVAL_MS = 5000;
 
-// Wires the Maps subtab: the map list (create/select/delete) and the detail
-// view for the selected map's key-value pairs. Map data isn't part of the
-// full-config response, so it's fetched via realm.listMaps; renderConfig is
-// only used here to read cfg.groups for the "create map" group picker.
 export function initRealmMaps(api, output, renderConfig) {
 	const mapsBody = document.getElementById("realm-maps-tbody");
 	const mapsCount = document.getElementById("realm-maps-count");
@@ -27,41 +23,19 @@ export function initRealmMaps(api, output, renderConfig) {
 
 	let groups = [];
 	let identities = [];
-	let selected = null; // { groupId, storeName } | null
+	let selected = null;
 
 	function identityLabel(identityId) {
 		const identity = identities.find((i) => i.id === identityId);
 		return identity ? formatIdentityLabel(identity) : identityId;
 	}
 
-	// Patches an <md-outlined-select>'s options in place (keyed by value) so
-	// the selected option's node survives a refresh instead of desyncing.
-	function syncOptions(select, entries) {
-		const previousValue = select.value;
-		syncList(
-			select,
-			entries,
-			([value]) => value,
-			([value, label]) => {
-				const option = document.createElement("md-select-option");
-				option.value = value;
-				option.innerHTML = `<div slot="headline">${label}</div>`;
-				return option;
-			},
-			(option, [, label]) => {
-				const headline = option.querySelector('[slot="headline"]');
-				if (headline.textContent !== label) headline.textContent = label;
-			}
-		);
-		select.value = previousValue;
-	}
-
 	function renderGroupOptions() {
-		syncOptions(groupSelect, groups.map((group) => [group.id, formatGroupLabel(group)]));
+		syncSelectOptions(groupSelect, groups.map((group) => [group.id, formatGroupLabel(group)]));
 	}
 
 	function renderIdentityOptions() {
-		syncOptions(identitySelect, [
+		syncSelectOptions(identitySelect, [
 			["", "None (unencrypted)"],
 			...identities.map((identity) => [identity.id, formatIdentityLabel(identity)]),
 		]);

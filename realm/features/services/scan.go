@@ -10,15 +10,12 @@ import (
 
 const scanDialTimeout = 300 * time.Millisecond
 
-// knownPort is one entry of the fixed table ScanLocalPorts checks.
 type knownPort struct {
 	port int
 	name string
 	typ  string
 }
 
-// knownPorts is checked on 127.0.0.1 by ScanLocalPorts. UDP entries can't be
-// confirmed by a TCP dial, so they're always reported unverified.
 var knownPorts = []knownPort{
 	{80, "http", model.ServiceTypeHTTP},
 	{443, "https", model.ServiceTypeHTTPS},
@@ -31,9 +28,6 @@ var knownPorts = []knownPort{
 	{139, "netbios/samba", model.ServiceTypeTCP},
 }
 
-// ScanLocalPorts probes 127.0.0.1 for each of knownPorts, so the owner can
-// quickly register the services this machine offers. Never touches
-// libp2p/permissions.
 func (f *Feature) ScanLocalPorts() []ScanResult {
 	results := make([]ScanResult, 0, len(knownPorts))
 	for _, kp := range knownPorts {
