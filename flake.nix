@@ -27,7 +27,7 @@
           dontInstall = true;
           outputHashMode = "recursive";
           outputHashAlgo = "sha256";
-          outputHash = "sha256-1VzLpbqut8msTaNZVQFk0Gri1n0GbD3xq5OX1KvZUjk=";
+          outputHash = "sha256-0hewcyV1hACtslPCmQRznFzoftWUiNNevI01NOvDCKI=";
         };
 
         vendorJs = pkgs.stdenvNoCC.mkDerivation {
@@ -42,7 +42,7 @@
           dontInstall = true;
           outputHashMode = "recursive";
           outputHashAlgo = "sha256";
-          outputHash = "sha256-krraIVTRSY7laS4xFGaqVhfKK3RpzmBZV5NPTvbX0ag=";
+          outputHash = "sha256-e/Ip2ZXn5V9tXNYI9R3xgO0Nwen/LWCEujM3ZeGZCcc=";
         };
       in
       {
@@ -56,7 +56,7 @@
             go work vendor
           '';
 
-          vendorHash = "sha256-E/EJpXq/J5ynXj2H7aZvcUFcmsSU5bomXeKMhEsbEoQ=";
+          vendorHash = "sha256-wixN81OIKQ8zfbaFVBCJgZoD+wbwUv/pqWnheyyLP8M=";
 
           postUnpack = ''
             mkdir -p $sourceRoot/internal/webserver/web/vendor-fonts

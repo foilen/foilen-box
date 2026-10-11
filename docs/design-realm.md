@@ -248,14 +248,26 @@ load and on import (never trusted from input).
 
 ### `common/services`
 
-- One forwarded TCP connection per tunnel stream: JSON header, ack, then raw bytes. The handshake deadline is
-  cleared for the data phase so idle connections aren't killed.
+- One forwarded TCP connection is one tunnel session (random id), not one stream. The stream carries frames
+  (data, cumulative ack of received bytes, fin) after a JSON header/ack handshake whose deadline is cleared for
+  the data phase so idle connections aren't killed.
+- Losing the libp2p connection doesn't cut the redirection: both ends keep their TCP connection open and the
+  session detached. The client re-dials with a `resume` header carrying its received byte count, the service
+  answers with its own, and each side replays what the other is missing from its unacked buffer (capped at
+  1 MiB, so a sender stalls rather than drops when the peer stops acking).
+- A session is only killed when the peer stays unreachable for `resumeGrace` (1 minute), the service refuses
+  the resume (unknown session, e.g. its process restarted), or a local TCP end closes. A local close sends a
+  fin that the other end echoes, so data still in flight is delivered before both close.
+- Frames of a replaced stream are fenced out (`applyMu` + generation) before the received count is read for a
+  resume, otherwise a late frame could be applied twice.
+- A peer is "in use" while it has a live proxy connection or serves a session; detached sessions still count.
+- The JSON header and ack are written with `json.Encoder`, which appends a `\n`. `framedReader` consumes that byte
+  before the frame loop starts; otherwise the first frame type read is `\n` and every session detaches at once.
 - The local proxy port is deterministic: `hash(peerId + serviceName)` picks a start in the dynamic range and
   collisions probe forward.
 - Explicitly started proxies are persisted and restored after a restart. `StopAll` (shutdown) keeps that
   record, `StopProxy` (user action) removes it. `Engine.Stop` doesn't touch feature-owned local state, hence
   `StopAll`.
-- A peer is "in use" only while a proxy has a live connection; an idle proxy reconnects on demand.
 - The local scan reports UDP entries as unverified since a TCP dial can't confirm them.
 
 ### `common/identity` and `common/group`
