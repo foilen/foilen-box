@@ -38,12 +38,26 @@ func (s *Store[T]) Get() T {
 
 func (s *Store[T]) Update(fn func(value *T)) {
 	s.mu.Lock()
-	fn(&s.value)
+	next := cloneValue(s.value)
+	fn(&next)
+	s.value = next
 	if s.timer != nil {
 		s.timer.Stop()
 	}
 	s.timer = time.AfterFunc(s.SaveDelay, s.saveAsync)
 	s.mu.Unlock()
+}
+
+func cloneValue[T any](value T) T {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return value
+	}
+	var clone T
+	if err := json.Unmarshal(data, &clone); err != nil {
+		return value
+	}
+	return clone
 }
 
 func (s *Store[T]) saveAsync() {

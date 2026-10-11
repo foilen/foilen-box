@@ -161,6 +161,10 @@ An application-level replacement for circuit-relay-v2:
 
 - `jsondb.Store` keeps the value in memory and debounces writes: a change schedules a save after
   `SaveDelay`, further changes reset the timer. `Flush` is used on shutdown.
+- `Update` is copy-on-write (JSON round-trip of the value, mutate the copy, swap it in), so the value returned by
+  `Get` is an immutable snapshot that callers can iterate without a lock. Mutating the shared maps in place made
+  `peers.Store.List` crash the whole process with `fatal error: concurrent map iteration and map write` (not
+  recoverable), which dropped every tunnel. Fields must therefore round-trip through JSON (no `json:"-"` state).
 - Missing or corrupt files load as defaults instead of failing (same behavior as the other config services).
 - `config.New` applies the platform default DHT mode only when `realm.json` doesn't exist yet; a persisted
   value always wins.
