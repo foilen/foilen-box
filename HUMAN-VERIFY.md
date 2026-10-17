@@ -206,6 +206,7 @@ realm/features/maps/store_test.go
 realm/features/scripts/feature.go
 realm/features/services/feature.go
 realm/features/services/scan.go
+realm/features/services/session.go
 realm/features/services/store.go
 realm/go.mod
 realm/go.sum
