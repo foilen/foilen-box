@@ -4,6 +4,21 @@
 
 A single tool that bundles many features instead of having multiple separate tools — a box of useful utilities.
 
+Many of the features are peer-to-peer. Your devices (desktop and Android) form a **Realm**: a group of peers
+built on [libp2p](https://libp2p.io/) that find each other on the local network (UDP broadcast) or over the
+internet (DHT) and talk directly, with no central server. Each peer has its own cryptographic identity and
+grants fine-grained permissions to the others. On top of that, peers can:
+
+- share live information (specs, locations and other group maps) and replicate encrypted shared maps
+- run scripts on each other
+- proxy and expose services (including web UIs) across peers
+- run peer-to-peer speed tests and group troubleshooting
+- sync SMS from an Android phone to the other peers
+- push identities and groups to one another
+
+Other features are purely local: camera capture, system specs, DNS/WHOIS troubleshooting, Early.co time
+tracking and (on Android) GPS.
+
 All business logic is plain Go. The UI is a small vanilla HTML/CSS/JS app (no npm, no build step) served by
 an embedded HTTP+WebSocket server bound to `127.0.0.1` only:
 
@@ -18,7 +33,8 @@ an embedded HTTP+WebSocket server bound to `127.0.0.1` only:
 
 ## Requirements
 
-- Go 1.23+
+- Go 1.26+ (see `go.mod`)
+- `ffmpeg` on the `PATH` for the camera feature (the Nix build bundles it)
 - For the desktop tray icon (`github.com/getlantern/systray`), on Linux:
   `sudo apt-get install pkg-config libgtk-3-dev libayatana-appindicator3-dev` (or `libappindicator3-dev` on
   older distros)
@@ -92,7 +108,8 @@ Install it on a connected device or emulator:
 adb install dist/android/Foilen_Box.apk
 ```
 
-The app requests the `ACCESS_FINE_LOCATION`/`ACCESS_COARSE_LOCATION` permissions on first launch; the GPS
+The app requests the location, camera, microphone, notification and SMS permissions it needs (it also runs a
+foreground service to stay connected to the Realm); the GPS
 tab uses the browser `navigator.geolocation.watchPosition` API for continuous, real-time updates (device
 location services must be enabled).
 
@@ -126,15 +143,22 @@ runs), aligns and signs the APK, then installs it on the connected device.
 
 # Project structure
 
-| Path                        | Description                                                                          |
-|------------------------------|--------------------------------------------------------------------------------------|
-| `cmd/foilenbox`              | Desktop entry point: starts `internal/webserver` and the systray                     |
-| `cmd/mobile`                 | `gomobile bind` entry point wrapping `internal/webserver` for the Android AAR        |
-| `internal/webserver`         | Embedded HTTP+WebSocket server serving `web/` and dispatching UI API calls           |
-| `internal/early`             | Early.co time-tracking API client, config persistence, and aggregation               |
-| `internal/troubleshooting`   | DNS subdomain crawl and WHOIS client/parser                                          |
-| `internal/spec`              | System information report (OS/CPU/RAM/disk)                                          |
-| `internal/browseropen`       | Opens the OS default browser (desktop only)                                          |
-| `internal/webserver/web`     | Vanilla HTML/CSS/JS UI shared by desktop (browser tab) and Android (WebView)          |
-| `android`                    | Android Studio/Gradle project (`MainActivity` hosts the WebView + Go AAR server)     |
-| `assets`                     | App icon and tray icon                                                               |
+| Path                            | Description                                                                                |
+|---------------------------------|--------------------------------------------------------------------------------------------|
+| `cmd/foilenbox`                 | Desktop entry point: starts `internal/webserver` and the systray                           |
+| `cmd/mobile`                    | `gomobile bind` entry point wrapping `internal/webserver` for the Android AAR              |
+| `android`                       | Android Studio/Gradle project (`MainActivity` hosts the WebView + Go AAR server)           |
+| `assets`                        | App icon and tray icon                                                                     |
+| `realm`                         | Standalone libp2p library (own Go module): peer identity, discovery, permissions, features |
+| `internal/early`                | Early.co time-tracking API client, config persistence, and aggregation                     |
+| `internal/troubleshooting`      | DNS subdomain crawl and WHOIS client/parser                                                |
+| `internal/camera`               | Camera capture and streaming (ffmpeg / Android bridge)                                     |
+| `internal/sms`                  | SMS sync between peers (built on the Realm maps feature)                                   |
+| `internal/speedtest`            | Peer-to-peer throughput test feature                                                       |
+| `internal/grouptroubleshooting` | Group-wide troubleshooting across peers                                                    |
+| `internal/notify`               | Desktop notifications                                                                      |
+| `internal/logging`              | Log capture for the Logs tab                                                               |
+| `internal/spec`                 | System information report (OS/CPU/RAM/disk)                                                |
+| `internal/browseropen`          | Opens the OS default browser (desktop only)                                                |
+| `internal/webserver`            | Embedded HTTP+WebSocket server serving `web/` and dispatching UI API calls                 |
+| `internal/webserver/web`        | Vanilla HTML/CSS/JS UI shared by desktop (browser tab) and Android (WebView)               |

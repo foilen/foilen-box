@@ -1,30 +1,35 @@
 # Documentation
 
 Depending on the needs for the requested task, read the following documentation:
+
 - Writing a Realm feature (`realm/`, `internal/`): check `docs/features.md`
 - Why things are done the way they are (design notes, pitfalls):
-  - `realm/`: `docs/design-realm.md`
-  - `cmd/`, `internal/`: `docs/design-foilen-box.md`
-  - `android/`: `docs/design-android.md`
-  - `internal/webserver/web/`: `docs/design-web-ui.md`
-  - Build scripts, Nix, packaging: `docs/build.md`
+    - `realm/`: `docs/design-realm.md`
+    - `cmd/`, `internal/`: `docs/design-foilen-box.md`
+    - `android/`: `docs/design-android.md`
+    - `internal/webserver/web/`: `docs/design-web-ui.md`
+    - Build scripts, Nix, packaging: `docs/build.md`
 - Code review:
-  - Check the respective documentations based on the nature of changes and ensure the respect of the docs.
-  - Check more info in `docs/Code Review.md`
+    - Check the respective documentations based on the nature of changes and ensure the respect of the docs.
+    - Check more info in `docs/Code Review.md`
 
 # Instructions
 
 - If you are unsure about what path to take when there are multiple choices:
-  - Check if you can find a similar feature in this project
-  - Ask the requester
-- Creating a new encrypted-realmmap feature (web UI + storage): see `docs/pattern-encrypted-realmmap-feature.md` for design guidelines extracted from SMS.
-
-- You can create/update tests and compile them, but do not run them unless explicitly asked to
+    - Check if you can find a similar feature in this project
+    - Ask the requester
+- Creating a new encrypted-realmmap feature (web UI + storage): see `docs/pattern-encrypted-realmmap-feature.md` for
+  design guidelines.
 - Comments in the code are only short section separators (e.g. `// Lifecycle`). Anything explaining why something is
   done (design decisions, workarounds, platform quirks) goes in the matching `docs/design-*.md` file instead.
-- When updating `go.mod` (e.g. Go version, dependencies), also update `flake.nix` (module version, `vendorHash`, etc.) to match
-- To add a new third-party JS library to the web UI, add an entry to `ENTRIES` in `scripts/fetch-vendor-js.mjs` (an esm.sh URL) and import it from `vendor-js/<name>/entry.mjs`; it's mirrored locally at build time (not committed, not runtime-fetched from a CDN) — see `flake.nix`'s `vendorJs` derivation for the Nix side
-- To add/change a Google Font, edit the `family=` query params in `scripts/fetch-vendor-fonts.sh` and reference it from `vendor-fonts/google-fonts.css`; it's mirrored locally at build time the same way (not committed, not runtime-fetched from `fonts.googleapis.com`/`fonts.gstatic.com`) — see `flake.nix`'s `vendorFonts` derivation for the Nix side
+- When updating `go.mod` (e.g. Go version, dependencies), also update `flake.nix` (module version, `vendorHash`, etc.)
+  to match
+- To add a new third-party JS library to the web UI, add an entry to `ENTRIES` in `scripts/fetch-vendor-js.mjs` (an
+  esm.sh URL) and import it from `vendor-js/<name>/entry.mjs`; it's mirrored locally at build time (not committed, not
+  runtime-fetched from a CDN) — see `flake.nix`'s `vendorJs` derivation for the Nix side
+- To add/change a Google Font, edit the `family=` query params in `scripts/fetch-vendor-fonts.sh` and reference it from
+  `vendor-fonts/google-fonts.css`; it's mirrored locally at build time the same way (not committed, not runtime-fetched
+  from `fonts.googleapis.com`/`fonts.gstatic.com`) — see `flake.nix`'s `vendorFonts` derivation for the Nix side
 
 # Techno pointers
 

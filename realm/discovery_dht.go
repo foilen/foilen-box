@@ -35,7 +35,7 @@ func (e *Engine) startDHT(ctx context.Context, h host.Host, cfg model.Config) er
 		return fmt.Errorf("failed to open DHT datastore: %w", err)
 	}
 
-	kadDHT, err := dht.New(ctx, h,
+	kadDHT, err := dht.New(h,
 		dht.Mode(mode),
 		dht.Datastore(ds),
 		dht.BootstrapPeers(dht.GetDefaultBootstrapPeerAddrInfos()...),

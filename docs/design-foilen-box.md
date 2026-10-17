@@ -4,7 +4,7 @@ Design rationale for `cmd/` and `internal/`. For the Realm library, see `design-
 
 ## Entry points (`cmd/`)
 
-- `time.Local` is forced to UTC, matching the original Java app.
+- `time.Local` is forced to UTC.
 - Desktop: on Linux without a display, the systray is skipped since GTK calls `exit()` itself (not
   recoverable) when no display is available. macOS/Windows don't need this check.
 - Mobile (`cmd/mobile`): the gomobile entry point used by Android.
@@ -95,7 +95,7 @@ See `pattern-encrypted-realmmap-feature.md` for the general pattern.
   placeholder is used.
 - Deep links use the web UI hash format (`groupId|storeName|phoneNumber`). `encodeURIComponent` is
   reimplemented since `url.QueryEscape` encodes spaces as `+`.
-
+**********
 ## Group troubleshooting (`internal/grouptroubleshooting`)
 
 - A 10-minute session visualizing which peers of a group are connected to each other (direct or relay).
@@ -142,10 +142,8 @@ beeep has no portable click callback, so `NotifyClick` is per OS:
 
 ## Early (`internal/early`) and troubleshooting (`internal/troubleshooting`)
 
-Ported from the original Java app and kept behavior-compatible: config read errors are swallowed, the Early
-client is single-session (not safe for concurrent use), the DNS crawl uses the same subdomain seed list, the
-WHOIS client is hand-rolled over TCP port 43 and supports the same 5 TLDs, and DNS entries sort like the Java
-`compareTo`.
+Config read errors are swallowed, the Early client is single-session (not safe for concurrent use), the WHOIS
+client is hand-rolled over TCP port 43 and supports 5 TLDs.
 
 ## Browser/connect helpers (`internal/browseropen`)
 
