@@ -272,6 +272,8 @@ load and on import (never trusted from input).
 - Explicitly started proxies are persisted and restored after a restart. `StopAll` (shutdown) keeps that
   record, `StopProxy` (user action) removes it. `Engine.Stop` doesn't touch feature-owned local state, hence
   `StopAll`.
+- Proxying a service of this very peer is allowed: `forward` dials the local service directly instead of opening a
+  libp2p stream, so the same proxy port (derived from peerId + name) works on every node, including the owner.
 - The local scan reports UDP entries as unverified since a TCP dial can't confirm them.
 
 ### `common/identity` and `common/group`

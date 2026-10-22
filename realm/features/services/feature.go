@@ -341,6 +341,11 @@ func (f *Feature) forward(reg *realm.Registrar, pid peer.ID, serviceName string,
 		return
 	}
 
+	if pid == reg.Host().ID() {
+		f.forwardSelf(reg, serviceName, conn)
+		return
+	}
+
 	sessionID, err := newSessionID()
 	if err != nil {
 		conn.Close()
@@ -368,6 +373,32 @@ func (f *Feature) forward(reg *realm.Registrar, pid peer.ID, serviceName string,
 	}
 	go sess.pumpLocal()
 	<-sess.done
+}
+
+func (f *Feature) forwardSelf(reg *realm.Registrar, serviceName string, conn net.Conn) {
+	defer conn.Close()
+	var svc *model.Service
+	cfg := reg.Config()
+	for i := range cfg.Services {
+		if cfg.Services[i].Name == serviceName {
+			svc = &cfg.Services[i]
+			break
+		}
+	}
+	if svc == nil || svc.Type == model.ServiceTypeUDP {
+		log.Printf("realm services: local proxy to %q: no such TCP service", serviceName)
+		return
+	}
+	target, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", svc.Hostname, svc.Port), ioTimeout)
+	if err != nil {
+		log.Printf("realm services: local proxy to %q failed: %v", serviceName, err)
+		return
+	}
+	defer target.Close()
+	done := make(chan struct{}, 2)
+	go func() { _, _ = io.Copy(target, conn); done <- struct{}{} }()
+	go func() { _, _ = io.Copy(conn, target); done <- struct{}{} }()
+	<-done
 }
 
 func (f *Feature) openTunnel(reg *realm.Registrar, pid peer.ID, header tunnelHeader) (network.Stream, io.Reader, tunnelAck, error) {

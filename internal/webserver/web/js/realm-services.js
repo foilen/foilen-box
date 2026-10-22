@@ -21,14 +21,17 @@ export function initRealmServices(api, output, renderConfig) {
 	const scanCloseButton = document.getElementById("realm-scan-services-close-button");
 
 	const peerServicesBody = document.getElementById("realm-peer-services-tbody");
+	const peerServicesFilter = document.getElementById("realm-peer-services-filter");
 
 	let peerServices = [];
 	let activeProxies = new Map();
 	let knownPeers = [];
 	let groups = [];
 	let ownPeerId = "";
+	let ownServices = [];
 
 	function isPeerConnected(peerId) {
+		if (peerId === ownPeerId) return true;
 		return knownPeers.find((p) => p.id === peerId)?.connected ?? false;
 	}
 
@@ -246,10 +249,39 @@ export function initRealmServices(api, output, renderConfig) {
 		syncActionsCell(row, service.peerId, service);
 	}
 
+	function allPeerServices() {
+		const result = ownServices.map((s) => ({ peerId: ownPeerId, ...s }));
+		for (const s of peerServices) {
+			if (!result.some((r) => r.peerId === s.peerId && r.name === s.name)) result.push(s);
+		}
+		return result;
+	}
+
+	function matchesFilter(service) {
+		const terms = peerServicesFilter.value.toLowerCase().split(/\s+/).filter(Boolean);
+		if (!terms.length) return true;
+		const proxyPort = activeProxies.get(proxyKey(service.peerId, service.name));
+		const haystack = [
+			service.peerId,
+			formatKnownPeerLabel(knownPeers, service.peerId),
+			service.name,
+			service.description,
+			service.type,
+			service.hostname,
+			service.port,
+			proxyPort ? `127.0.0.1:${proxyPort} running` : "stopped",
+		]
+			.join(" ")
+			.toLowerCase();
+		return terms.every((t) => haystack.includes(t));
+	}
+
+	peerServicesFilter.addEventListener("input", () => renderPeerServicesTable());
+
 	function renderPeerServicesTable() {
 		syncList(
 			peerServicesBody,
-			peerServices.filter((service) => service.peerId !== ownPeerId),
+			allPeerServices().filter(matchesFilter),
 			(service) => `${service.peerId}|${service.name}`,
 			(service) => {
 				const row = document.createElement("tr");
@@ -303,6 +335,8 @@ export function initRealmServices(api, output, renderConfig) {
 		onConfigUpdate: (cfg) => {
 			groups = cfg.groups || [];
 			ownPeerId = cfg.peerId || "";
+			ownServices = cfg.services || [];
+			renderPeerServicesTable();
 			refreshPeerServices();
 		},
 	};
