@@ -1,3 +1,4 @@
+<!-- TODO - Human verify -->
 # Encrypted Realm Map Feature Pattern
 
 This document describes a generic pattern for building features that use an encrypted realm map as their backend. It's extracted from the SMS feature (`internal/sms`) and can be reused for future similar features.

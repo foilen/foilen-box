@@ -1,3 +1,4 @@
+// TODO - Human verify
 export function initSpecTab(api) {
 	const output = document.getElementById("spec-output");
 	console.log("[action] load spec report");

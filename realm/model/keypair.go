@@ -1,3 +1,4 @@
+// TODO - Human verify
 package model
 
 type KeyPair struct {

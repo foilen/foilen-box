@@ -1,3 +1,4 @@
+// TODO - Human verify
 export function initQrModal() {
 	const qrModal = document.getElementById("realm-qr-modal");
 	const qrTitle = document.getElementById("realm-qr-title");

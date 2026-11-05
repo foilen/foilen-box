@@ -1,3 +1,4 @@
+// TODO - Human verify
 import mermaid from "../vendor-js/mermaid/entry.mjs";
 import { report, formatGroupLabel, formatKnownPeerLabel, syncList } from "./util.js";
 

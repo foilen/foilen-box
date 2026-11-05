@@ -1,3 +1,4 @@
+<!-- TODO - Human verify -->
 # Web UI design notes
 
 Design rationale for `internal/webserver/web/`.

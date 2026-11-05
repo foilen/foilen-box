@@ -1,3 +1,4 @@
+// TODO - Human verify
 import { report, formatPeerLabel, syncList } from "./util.js";
 
 export function initRealmSpeedtest(api, output) {

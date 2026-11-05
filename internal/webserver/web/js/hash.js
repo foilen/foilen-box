@@ -1,3 +1,4 @@
+// TODO - Human verify
 export function parseHash() {
 	const [tab, subtab, extra] = location.hash.replace(/^#/, "").split("/").map((part) => decodeURIComponent(part));
 	return { tab: tab || null, subtab: subtab || null, extra: extra || null };

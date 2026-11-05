@@ -1,3 +1,4 @@
+// TODO - Human verify
 import { report, formatGroupLabel, formatIdentityLabel, formatPeerLabel, syncList, syncCells, syncSelectOptions } from "./util.js";
 import { updateHash } from "./hash.js";
 

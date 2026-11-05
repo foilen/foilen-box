@@ -56,7 +56,7 @@
             go work vendor
           '';
 
-          vendorHash = "sha256-N9pmSyLDcvW3nbcueBwRe/5Gzg81L2wS+xhykP4sb5s=";
+          vendorHash = "sha256-VIusuJWREI880vdQzClNxF1Ah98sw6EnxNYW+pKDkrU=";
 
           postUnpack = ''
             mkdir -p $sourceRoot/internal/webserver/web/vendor-fonts

@@ -1,3 +1,4 @@
+// TODO - Human verify
 const DEFAULT_FAVICON = "images/favicon.png";
 const SUBTAB_FAVICONS = {
 	"realm-sms-subtab": "images/favicon-sms.png",

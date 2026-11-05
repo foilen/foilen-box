@@ -1,3 +1,4 @@
+// TODO - Human verify
 const LOGS_POLL_INTERVAL_MS = 5000;
 
 export function initLogsTab(api) {

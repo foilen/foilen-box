@@ -1,3 +1,4 @@
+// TODO - Human verify
 import { report, formatPeerLabel, formatIdentityLabel, syncList, syncCells, syncSelectOptions } from "./util.js";
 import { initQrModal, initScanModal } from "./realm-qr.js";
 

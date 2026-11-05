@@ -95,7 +95,7 @@ See `pattern-encrypted-realmmap-feature.md` for the general pattern.
   placeholder is used.
 - Deep links use the web UI hash format (`groupId|storeName|phoneNumber`). `encodeURIComponent` is
   reimplemented since `url.QueryEscape` encodes spaces as `+`.
-**********
+
 ## Group troubleshooting (`internal/grouptroubleshooting`)
 
 - A 10-minute session visualizing which peers of a group are connected to each other (direct or relay).

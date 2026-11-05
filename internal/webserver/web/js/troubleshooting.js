@@ -1,3 +1,4 @@
+// TODO - Human verify
 export function initTroubleshootingTab(api) {
 	const domainInput = document.getElementById("domain-input");
 	const button = document.getElementById("troubleshoot-button");

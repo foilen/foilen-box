@@ -1,3 +1,4 @@
+<!-- TODO - Human verify -->
 # Realm library design notes
 
 Design rationale for `realm/`. For how to write a feature, see `features.md`.

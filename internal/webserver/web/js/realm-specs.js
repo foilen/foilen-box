@@ -1,3 +1,4 @@
+// TODO - Human verify
 import { formatKnownPeerLabel, syncList, syncCells } from "./util.js";
 
 const SPECS_POLL_INTERVAL_MS = 5000;

@@ -1,3 +1,4 @@
+// TODO - Human verify
 import { initCameraTab } from "./camera.js";
 import { initSpecTab } from "./spec.js";
 import { initTroubleshootingTab } from "./troubleshooting.js";

@@ -1,3 +1,4 @@
+// TODO - Human verify
 import { report } from "./util.js";
 
 const CAMERA_STATUS_POLL_INTERVAL_MS = 5000;

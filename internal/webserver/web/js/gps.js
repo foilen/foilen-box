@@ -1,3 +1,4 @@
+// TODO - Human verify
 export function initGpsTab(isAndroid) {
 	const unavailable = document.getElementById("gps-unavailable");
 	const available = document.getElementById("gps-available");

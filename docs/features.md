@@ -11,11 +11,11 @@
 - `identity` (`common/identity`) — push a standalone Identity keypair to a peer, auto-imported on receipt
 - `group` (`common/group`) — push a Group keypair to a peer, auto-imported on receipt (arrives with no
   permissions granted; the receiving peer assigns those locally)
-  - `identity` and `group` are thin wrappers around the shared `keypairpush` implementation
+    - `identity` and `group` are thin wrappers around the shared `keypairpush` implementation
 - `announce` (`common/announce`) — periodic hook that publishes this peer's services/scripts/spec/
   reachability info into the `maps` feature and consumes peers' own announce entries to populate the
   known-peers store; this is how peers discover each other well enough to reconnect (see "Connection
-  shaping" below), replacing the old direct peer-to-peer gossip protocol
+  shaping" below)
 
 **Foilen Box–specific** — implement the `Feature` interface but live under `internal/`, not
 `realm/features/`, since they're specific to this app rather than something every Realm-based application
@@ -27,10 +27,10 @@ would want:
 
 Realm (module `foilen-realm`, at `realm/`) is a standalone libp2p library:
 peer identity, group membership, discovery (UDP broadcast/DHT), and a permission
-system, with everything a peer can actually *do* implemented as a pluggable
-**Feature**. Foilen Box (the `foilen-box` module) is just one consumer of
-this library — it happens to register every built-in feature
-(`common/maps`, `common/scripts`, `common/services`, `common/identity`, `common/group`, `common/announce`), but any application
+system, with everything a peer can actually *do* implemented as a pluggable **Feature**. Foilen Box (the `foilen-box`
+module) is just one consumer of
+this library — it happens to register every built-in feature (`common/maps`, `common/scripts`, `common/services`,
+`common/identity`, `common/group`, `common/announce`), but any application
 can register only the ones it needs.
 
 This doc explains how to add a new feature.
@@ -41,20 +41,20 @@ Defined in `realm/feature.go`:
 
 ```go
 type Feature interface {
-	// Name namespaces this feature's actions, e.g. "common/scripts".
-	Name() string
+// Name namespaces this feature's actions, e.g. "common/scripts".
+Name() string
 
-	// Actions lists the fully-qualified permission actions this feature's
-	// incoming handlers check, of the form Name()+"/"+verb (e.g.
-	// "common/scripts/run"). Engine.AvailableActions aggregates
-	// these across every registered feature to build the dynamic
-	// permission catalog.
-	Actions() []model.PermissionAction
+// Actions lists the fully-qualified permission actions this feature's
+// incoming handlers check, of the form Name()+"/"+verb (e.g.
+// "common/scripts/run"). Engine.AvailableActions aggregates
+// these across every registered feature to build the dynamic
+// permission catalog.
+Actions() []model.PermissionAction
 
-	// RegisterHandlers is called once whenever the engine's host is
-	// (re)created, so the feature can register its own libp2p stream
-	// handler(s) via reg.SetStreamHandler.
-	RegisterHandlers(reg *Registrar)
+// RegisterHandlers is called once whenever the engine's host is
+// (re)created, so the feature can register its own libp2p stream
+// handler(s) via reg.SetStreamHandler.
+RegisterHandlers(reg *Registrar)
 }
 ```
 
@@ -64,7 +64,7 @@ A feature is an ordinary Go type (usually `*Feature` by convention) that:
    stores).
 2. Implements one or more libp2p protocols for talking to the same feature
    on another peer.
-3. Declares the permission action(s) that gate its incoming handlers.
+3. Declares the permission action (s) that gate its incoming handlers.
 4. Exposes its own public methods for the application to call (there is no
    generic "call a feature" API on `Engine` — you hold a reference to the
    concrete feature and call its methods directly).
@@ -74,25 +74,25 @@ Optionally, a feature can also implement one or more of:
 ```go
 // Called (in its own goroutine) whenever a peer connects.
 type PeerConnectedHook interface {
-	OnPeerConnected(reg *Registrar, id peer.ID)
+OnPeerConnected(reg *Registrar, id peer.ID)
 }
 
 // Called on the engine's keep-alive tick (currently every 10 minutes).
 type PeriodicHook interface {
-	RunPeriodic(reg *Registrar)
+RunPeriodic(reg *Registrar)
 }
 
 // Called whenever a known peer is dropped from the peer store (currently:
 // pruned for being unseen past the configured retention window).
 type PeerRemovedHook interface {
-	OnPeerRemoved(id string)
+OnPeerRemoved(id string)
 }
 
 // Called before Engine disconnects a peer that's outside every group's
 // current connection ring (see "Connection shaping" below); returning true
 // keeps the connection open.
 type PeerInUseHook interface {
-	IsPeerInUse(id peer.ID) bool
+IsPeerInUse(id peer.ID) bool
 }
 ```
 
@@ -101,6 +101,8 @@ a schedule, clean up per-peer state, or protect an actively-used connection
 from being closed (see `maps.Feature` for `PeerConnectedHook`/
 `GroupConfirmedHook`, `services.Feature` for `PeerRemovedHook`/
 `PeerInUseHook`).
+
+<!-- TODO - Human verify -->
 
 ## Connection shaping
 
@@ -111,8 +113,8 @@ tries to stay connected to the `ringNeighborCount` (currently 2) peers
 immediately before and after itself in that list, wrapping around; an
 unreachable neighbor is skipped in favor of the next one further out. Once
 every group's ring has been checked, any other known group peer that's
-still connected — one outside every ring it belongs to — is disconnected,
-*unless* some registered `PeerInUseHook` reports it's still in use (e.g.
+still connected — one outside every ring it belongs to — is disconnected, *unless* some registered `PeerInUseHook`
+reports it's still in use (e.g.
 `services.Feature` keeps a peer connected while it has a proxy actively
 forwarding data to it).
 
@@ -122,15 +124,15 @@ forwarding data to it).
 `*realm.Registrar` — a narrow facade onto the engine, since features must
 not reach into `Engine`'s internals directly:
 
-| Method | Purpose |
-|---|---|
-| `SetStreamHandler(id protocol.ID, h network.StreamHandler)` | Register a libp2p stream handler. Only valid to call from inside `RegisterHandlers`. |
-| `Host() host.Host` | The running libp2p host, or `nil` if not running. Use this to dial peers (`host.NewStream(ctx, pid, protocolID)`). |
-| `PrivKey() crypto.PrivKey` | This peer's private key, e.g. for signing wire payloads. |
-| `Context() context.Context` | The engine's lifetime context — cancelled on `Stop()`; derive per-call timeouts from it. |
-| `Config() model.Config` | The currently-applied config (as of the last `Start`/`Reconcile`). Read whatever fields your feature needs (e.g. `scripts.Feature` reads `Config().Scripts`). |
-| `IsAllowed(id peer.ID, action model.PermissionAction) bool` | Permission check against `Config().Permissions`, deny-by-default. Call this at the top of every incoming stream handler. |
-| `Peers() *peers.Store` | The shared known/connected-peers store. |
+| Method                                                      | Purpose                                                                                                                                                       |
+|-------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `SetStreamHandler(id protocol.ID, h network.StreamHandler)` | Register a libp2p stream handler. Only valid to call from inside `RegisterHandlers`.                                                                          |
+| `Host() host.Host`                                          | The running libp2p host, or `nil` if not running. Use this to dial peers (`host.NewStream(ctx, pid, protocolID)`).                                            |
+| `PrivKey() crypto.PrivKey`                                  | This peer's private key, e.g. for signing wire payloads.                                                                                                      |
+| `Context() context.Context`                                 | The engine's lifetime context — cancelled on `Stop()`; derive per-call timeouts from it.                                                                      |
+| `Config() model.Config`                                     | The currently-applied config (as of the last `Start`/`Reconcile`). Read whatever fields your feature needs (e.g. `scripts.Feature` reads `Config().Scripts`). |
+| `IsAllowed(id peer.ID, action model.PermissionAction) bool` | Permission check against `Config().Permissions`, deny-by-default. Call this at the top of every incoming stream handler.                                      |
+| `Peers() *peers.Store`                                      | The shared known/connected-peers store.                                                                                                                       |
 
 A feature typically stores the `*Registrar` it's given (from
 `RegisterHandlers`) so its own public methods (called later, from
@@ -144,7 +146,7 @@ Using a hypothetical `common/ping` feature (a synchronous request/response
 
 1. **Create the package**: `realm/features/ping/feature.go`.
 
-2. **Define the protocol ID, feature name, and action(s)**:
+2. **Define the protocol ID, feature name, and action (s)**:
 
    ```go
    package ping
@@ -266,8 +268,8 @@ examples to crib from — in particular:
   protocol: a peer only receives pushes for the stores it has explicitly
   subscribed to (tracked via a reserved `_realmMaps` config store), rather
   than syncing everything under a shared group indiscriminately.
-- `announce` shows `PeriodicHook` plus constructor-injected callbacks
-  (`specText func() string`, `specSummary func() SpecSummary`, `hostname
+- `announce` shows `PeriodicHook` plus constructor-injected callbacks (`specText func() string`,
+  `specSummary func() SpecSummary`, `hostname
   func() string`, `appVersion func() string`) used to keep an
   application-specific concern (foilen-box's own `internal/spec` machine-info
   dump) out of the library — a feature that needs a piece of app-specific

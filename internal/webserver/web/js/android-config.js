@@ -1,3 +1,4 @@
+// TODO - Human verify
 export function initAndroidConfigTab(isAndroid) {
 	if (!isAndroid) return;
 

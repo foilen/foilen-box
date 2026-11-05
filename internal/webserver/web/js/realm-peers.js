@@ -1,3 +1,4 @@
+// TODO - Human verify
 import { report, formatPeerLabel, syncList, syncCells, syncConnectedCell } from "./util.js";
 
 const PEERS_POLL_INTERVAL_MS = 5000;

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BUILD_TOOLS="$ANDROID_HOME/build-tools/36.0.0"
+BUILD_TOOLS="$ANDROID_HOME/build-tools/37.0.0"
 
 KEYS_DIR="_local_keys"
 KEYSTORE="$KEYS_DIR/release-key.jks"

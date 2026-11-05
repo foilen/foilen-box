@@ -1,3 +1,4 @@
+// TODO - Human verify
 package peers
 
 import (
