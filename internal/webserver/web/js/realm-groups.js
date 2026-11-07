@@ -1,6 +1,5 @@
 // TODO - Human verify
 import { report, formatGroupLabel, formatPeerLabel, syncList, syncCells, syncSelectOptions } from "./util.js";
-import { renderActionCheckboxes, checkedActions } from "./realm-actions.js";
 import { initQrModal, initScanModal } from "./realm-qr.js";
 
 const GROUPS_POLL_INTERVAL_MS = 5000;
@@ -17,8 +16,6 @@ export function initRealmGroups(api, output, renderConfig) {
 	const importConfirmButton = document.getElementById("realm-import-confirm-button");
 	const importScanButton = document.getElementById("realm-import-scan-button");
 	const importCancelButton = document.getElementById("realm-import-cancel-button");
-	const newGroupActions = document.getElementById("realm-new-group-actions");
-	const importActions = document.getElementById("realm-import-actions");
 
 	const pushGroupSelect = document.getElementById("realm-push-group-select");
 	const pushPeerSelect = document.getElementById("realm-push-group-peer-select");
@@ -46,10 +43,6 @@ export function initRealmGroups(api, output, renderConfig) {
 	}
 
 	function renderGroups(cfg) {
-		const availableActions = cfg.availableActions || [];
-		renderActionCheckboxes(newGroupActions, availableActions);
-		renderActionCheckboxes(importActions, availableActions);
-
 		groups = cfg.groups || [];
 		groupsCount.textContent = cfg.groups.length;
 		syncList(
@@ -136,7 +129,7 @@ export function initRealmGroups(api, output, renderConfig) {
 				output.textContent = "Please enter a group name.";
 				return;
 			}
-			renderConfig(await api.call("realm.addGroup", { name, actions: checkedActions(newGroupActions) }));
+			renderConfig(await api.call("realm.addGroup", { name }));
 			newGroupNameInput.value = "";
 			output.textContent = `Group "${name}" created.`;
 		})
@@ -183,9 +176,7 @@ export function initRealmGroups(api, output, renderConfig) {
 				output.textContent = "The JSON must contain a group name and a private key.";
 				return;
 			}
-			renderConfig(
-				await api.call("realm.importGroup", { name, privateKeyBase64, actions: checkedActions(importActions) })
-			);
+			renderConfig(await api.call("realm.importGroup", { name, privateKeyBase64 }));
 			importForm.classList.add("hidden");
 			importFileInput.value = "";
 			importJsonInput.value = "";

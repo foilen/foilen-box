@@ -38,7 +38,6 @@
 	<div id="realm-subtabs" class="subtab-nav">
 		<a class="subtab-button" data-subtab="realm-main" href="#realm/realm-main">Main</a>
 		<a class="subtab-button" data-subtab="realm-identities-subtab" href="#realm/realm-identities-subtab">Identities</a>
-		<a class="subtab-button" data-subtab="realm-permissions-subtab" href="#realm/realm-permissions-subtab">Permissions</a>
 		<a class="subtab-button" data-subtab="realm-specs-subtab" href="#realm/realm-specs-subtab">Specs</a>
 		<a class="subtab-button" data-subtab="realm-scripts-subtab" href="#realm/realm-scripts-subtab">Scripts</a>
 		<a class="subtab-button" data-subtab="realm-services-subtab" href="#realm/realm-services-subtab">Services</a>
@@ -196,20 +195,12 @@
 			<md-filled-tonal-button id="realm-add-group-button">Generate New Group</md-filled-tonal-button>
 			<md-filled-tonal-button id="realm-import-group-button">Import Group</md-filled-tonal-button>
 		</div>
-		<div class="row">
-			<span class="hint">Allow this group to:</span>
-			<div id="realm-new-group-actions" class="checkbox-list"></div>
-		</div>
 		<div id="realm-import-form" class="hidden">
 			<div class="row">
 				<input type="file" id="realm-import-file" accept="application/json">
 			</div>
 			<div class="row">
 				<textarea id="realm-import-json" rows="6" placeholder="Paste exported group JSON here"></textarea>
-			</div>
-			<div class="row">
-				<span class="hint">Allow this group to:</span>
-				<div id="realm-import-actions" class="checkbox-list"></div>
 			</div>
 			<div class="row">
 				<md-filled-tonal-button id="realm-import-confirm-button">Import</md-filled-tonal-button>
@@ -220,9 +211,7 @@
 
 		<h3>Push Group to a Peer</h3>
 		<p class="hint">Sends the full group, including its private key, directly to another peer over Realm.
-			The peer imports it automatically if it has granted this peer (or one of its groups) the "Accept
-			pushed groups" permission (see the Permissions subtab). The group arrives with no permissions
-			granted; the receiving peer assigns those locally.</p>
+			The peer imports it automatically if it shares a group with this peer.</p>
 		<div class="row">
 			<md-outlined-select id="realm-push-group-select" label="Group"></md-outlined-select>
 			<md-outlined-select id="realm-push-group-peer-select" label="Peer"></md-outlined-select>
@@ -281,25 +270,12 @@
 
 		<h3>Push Identity to a Peer</h3>
 		<p class="hint">Sends the full identity, including its private key, directly to another peer over Realm.
-			The peer imports it automatically if it has granted this peer (or one of its groups) the "Accept
-			pushed identities" permission (see the Permissions subtab).</p>
+			The peer imports it automatically if it shares a group with this peer.</p>
 		<div class="row">
 			<md-outlined-select id="realm-push-identity-select" label="Identity"></md-outlined-select>
 			<md-outlined-select id="realm-push-identity-peer-select" label="Peer"></md-outlined-select>
 			<md-filled-tonal-button id="realm-push-identity-button">Push</md-filled-tonal-button>
 		</div>
-	</div>
-
-	<div id="realm-permissions-subtab" class="subtab-panel">
-		<h3>Permissions (<span id="realm-permissions-count">0</span>)</h3>
-		<p class="hint">By default, no peer or group can invoke any action against this machine. Check the boxes
-			below to grant a group or peer the right to perform an action.</p>
-
-		<h4>Groups</h4>
-		<div id="realm-permissions-groups" class="permission-entity-list"></div>
-
-		<h4>Peers</h4>
-		<div id="realm-permissions-peers" class="permission-entity-list"></div>
 	</div>
 
 	<div id="realm-specs-subtab" class="subtab-panel">
@@ -315,9 +291,8 @@
 
 	<div id="realm-scripts-subtab" class="subtab-panel">
 		<h3>My Scripts (<span id="realm-scripts-count">0</span>)</h3>
-		<p class="hint">Fixed commands this machine offers to run on request. Only peers/groups granted the
-			"Run scripts on this machine" permission (see the Permissions section on the Main tab) can list or
-			run them.</p>
+		<p class="hint">Fixed commands this machine offers to run on request. Only peers that share a group with
+			this machine can list or run them.</p>
 		<div class="table-scroll">
 			<table id="realm-my-scripts-table">
 				<thead><tr><th>Name</th><th>Description</th><th>Command</th><th>Args</th><th>Working Directory</th><th></th></tr></thead>
@@ -348,9 +323,8 @@
 
 	<div id="realm-services-subtab" class="subtab-panel">
 		<h3>My Services (<span id="realm-services-count">0</span>)</h3>
-		<p class="hint">Local services this machine offers to proxy to. Only peers/groups granted the
-			"Connect to services on this machine" permission (see the Permissions section on the Main tab) can
-			list or connect to them.</p>
+		<p class="hint">Local services this machine offers to proxy to. Only peers that share a group with this
+			machine can list or connect to them.</p>
 		<div class="table-scroll">
 			<table id="realm-my-services-table">
 				<thead><tr><th>Name</th><th>Description</th><th>Hostname</th><th>Type</th><th>Port</th><th></th></tr></thead>
@@ -410,9 +384,8 @@
 	<div id="realm-speedtest-subtab" class="subtab-panel">
 		<h3>Speed Test</h3>
 		<p class="hint">Runs a raw download/upload throughput test against each selected peer, one after
-			another. Each direction runs for a few seconds. Only peers/groups granted the "Run a speed test
-			against this machine" permission (see the Permissions subtab) can run a test against this
-			machine.</p>
+			another. Each direction runs for a few seconds. Only peers that share a group with this machine can
+			run a test against it.</p>
 		<div class="table-scroll">
 			<table id="realm-speedtest-peers-table">
 				<thead><tr><th><md-checkbox id="realm-speedtest-select-all"></md-checkbox></th><th>Peer</th><th>Connected</th></tr></thead>

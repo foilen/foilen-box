@@ -245,37 +245,6 @@ h3, h4 {
 	display: none !important;
 }
 
-.checkbox-list {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 0.25em 1em;
-}
-
-.checkbox-list label {
-	display: flex;
-	align-items: center;
-	gap: 0.25em;
-}
-
-.permission-entity-list {
-	display: flex;
-	flex-direction: column;
-	gap: 0.5em;
-}
-
-.permission-entity {
-	background: var(--md-surface-container-low);
-	border: 1px solid var(--md-outline-variant);
-	border-radius: 8px;
-	padding: 0.6em 0.9em;
-}
-
-.permission-entity strong {
-	display: block;
-	margin-bottom: 0.25em;
-	color: var(--md-on-surface);
-}
-
 #early-config-body {
 	display: flex;
 	flex-direction: column;

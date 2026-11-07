@@ -14,23 +14,15 @@ func (a *api) groupExists(name string) bool {
 	return ok
 }
 
-func (a *api) createGroup(name string, kp realmmodel.KeyPair, actionNames []string) (realmmodel.Config, error) {
-	actions, err := parseActions(a, actionNames)
-	if err != nil {
-		return realmmodel.Config{}, err
-	}
+func (a *api) createGroup(name string, kp realmmodel.KeyPair) (realmmodel.Config, error) {
 	return a.updateRealmConfig(func(c *realmmodel.Config) {
 		c.Groups = append(c.Groups, realmmodel.Group{Name: name, KeyPair: kp})
-		for _, action := range actions {
-			c.Permissions = append(c.Permissions, realmmodel.Permission{Action: action, GroupName: name})
-		}
 	})
 }
 
 func handleRealmAddGroup(a *api, params json.RawMessage) (any, error) {
 	var p struct {
-		Name    string   `json:"name"`
-		Actions []string `json:"actions"`
+		Name string `json:"name"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, err
@@ -45,7 +37,7 @@ func handleRealmAddGroup(a *api, params json.RawMessage) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	cfg, err := a.createGroup(p.Name, kp, p.Actions)
+	cfg, err := a.createGroup(p.Name, kp)
 	if err != nil {
 		return nil, err
 	}
@@ -54,9 +46,8 @@ func handleRealmAddGroup(a *api, params json.RawMessage) (any, error) {
 
 func handleRealmImportGroup(a *api, params json.RawMessage) (any, error) {
 	var p struct {
-		Name             string   `json:"name"`
-		PrivateKeyBase64 string   `json:"privateKeyBase64"`
-		Actions          []string `json:"actions"`
+		Name             string `json:"name"`
+		PrivateKeyBase64 string `json:"privateKeyBase64"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, err
@@ -71,7 +62,7 @@ func handleRealmImportGroup(a *api, params json.RawMessage) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid private key: %w", err)
 	}
-	cfg, err := a.createGroup(p.Name, kp, p.Actions)
+	cfg, err := a.createGroup(p.Name, kp)
 	if err != nil {
 		return nil, err
 	}
@@ -93,14 +84,6 @@ func handleRealmDeleteGroup(a *api, params json.RawMessage) (any, error) {
 			}
 		}
 		c.Groups = filtered
-
-		filteredPerms := c.Permissions[:0]
-		for _, perm := range c.Permissions {
-			if perm.GroupName != p.Name {
-				filteredPerms = append(filteredPerms, perm)
-			}
-		}
-		c.Permissions = filteredPerms
 	})
 	if err != nil {
 		return nil, err

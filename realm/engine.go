@@ -110,14 +110,6 @@ func (e *Engine) Register(f Feature) {
 	}
 }
 
-func (e *Engine) AvailableActions() []model.PermissionAction {
-	var all []model.PermissionAction
-	for _, f := range e.features {
-		all = append(all, f.Actions()...)
-	}
-	return all
-}
-
 // State
 
 func (e *Engine) Running() bool {

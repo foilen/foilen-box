@@ -2,7 +2,6 @@
 import { report } from "./util.js";
 import { initRealmGroups } from "./realm-groups.js";
 import { initRealmIdentities } from "./realm-identities.js";
-import { initRealmPermissions } from "./realm-permissions.js";
 import { initRealmPeers } from "./realm-peers.js";
 import { initRealmSpecs } from "./realm-specs.js";
 import { initRealmScripts } from "./realm-scripts.js";
@@ -69,8 +68,6 @@ export function initRealmTab(api, isAndroid) {
 	let onGroupsConfigUpdate = () => {};
 	let renderIdentities = () => {};
 	let onIdentitiesConfigUpdate = () => {};
-	let renderPermissions = () => {};
-	let updatePeersForPermissions = () => {};
 	let renderMyScripts = () => {};
 	let renderMyServices = () => {};
 	let onMapsConfigUpdate = () => {};
@@ -86,7 +83,6 @@ export function initRealmTab(api, isAndroid) {
 
 	function pushPeers() {
 		const peers = ownPeer ? [ownPeer, ...latestPeers.filter((p) => p.id !== ownPeer.id)] : latestPeers;
-		updatePeersForPermissions(peers);
 		servicesModule.onPeersUpdate(peers);
 		specsModule.onPeersUpdate(peers);
 		scriptsModule.onPeersUpdate(peers);
@@ -152,7 +148,6 @@ export function initRealmTab(api, isAndroid) {
 		onGroupsConfigUpdate(cfg);
 		renderIdentities(cfg);
 		onIdentitiesConfigUpdate(cfg);
-		renderPermissions(cfg);
 		renderMyScripts(cfg);
 		renderMyServices(cfg);
 		onMapsConfigUpdate(cfg);
@@ -173,9 +168,6 @@ export function initRealmTab(api, isAndroid) {
 	const identitiesModule = initRealmIdentities(api, output, renderConfig);
 	renderIdentities = identitiesModule.renderIdentities;
 	onIdentitiesConfigUpdate = identitiesModule.onConfigUpdate;
-	const permissionsModule = initRealmPermissions(api, output, renderConfig);
-	renderPermissions = permissionsModule.renderPermissions;
-	updatePeersForPermissions = permissionsModule.updatePeers;
 	const scriptsModule = initRealmScripts(api, output, renderConfig);
 	renderMyScripts = scriptsModule.renderMyScripts;
 	onScriptsConfigUpdate = scriptsModule.onConfigUpdate;

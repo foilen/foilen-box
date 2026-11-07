@@ -19,8 +19,6 @@ import (
 type Feature interface {
 	Name() string
 
-	Actions() []model.PermissionAction
-
 	RegisterHandlers(reg *Registrar)
 }
 
@@ -82,10 +80,6 @@ func (r *Registrar) Config() model.Config {
 	r.e.mu.Lock()
 	defer r.e.mu.Unlock()
 	return r.e.cfg
-}
-
-func (r *Registrar) IsAllowed(id peer.ID, action model.PermissionAction) bool {
-	return r.e.isAllowed(id, action)
 }
 
 func (r *Registrar) IsCommonGroupPeer(id peer.ID) bool {

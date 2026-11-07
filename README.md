@@ -6,8 +6,8 @@ A single tool that bundles many features instead of having multiple separate too
 
 Many of the features are peer-to-peer. Your devices (desktop and Android) form a **Realm**: a group of peers
 built on [libp2p](https://libp2p.io/) that find each other on the local network (UDP broadcast) or over the
-internet (DHT) and talk directly, with no central server. Each peer has its own cryptographic identity and
-grants fine-grained permissions to the others. On top of that, peers can:
+internet (DHT) and talk directly, with no central server. Each peer has its own cryptographic identity, and
+peers that share a group can act on each other. On top of that, peers can:
 
 - share live information (specs, locations and other group maps) and replicate encrypted shared maps
 - run scripts on each other
@@ -149,7 +149,7 @@ runs), aligns and signs the APK, then installs it on the connected device.
 | `cmd/mobile`                    | `gomobile bind` entry point wrapping `internal/webserver` for the Android AAR              |
 | `android`                       | Android Studio/Gradle project (`MainActivity` hosts the WebView + Go AAR server)           |
 | `assets`                        | App icon and tray icon                                                                     |
-| `realm`                         | Standalone libp2p library (own Go module): peer identity, discovery, permissions, features |
+| `realm`                         | Standalone libp2p library (own Go module): peer identity, discovery, group membership, features |
 | `internal/early`                | Early.co time-tracking API client, config persistence, and aggregation                     |
 | `internal/troubleshooting`      | DNS subdomain crawl and WHOIS client/parser                                                |
 | `internal/camera`               | Camera capture and streaming (ffmpeg / Android bridge)                                     |

@@ -30,8 +30,6 @@ const (
 	runRetention         = time.Hour
 
 	FeatureName = "common/scripts"
-
-	ActionRun model.PermissionAction = FeatureName + "/run"
 )
 
 type Run struct {
@@ -69,10 +67,6 @@ func (f *Feature) registrar() *realm.Registrar {
 }
 
 func (f *Feature) Name() string { return FeatureName }
-
-func (f *Feature) Actions() []model.PermissionAction {
-	return []model.PermissionAction{ActionRun}
-}
 
 func (f *Feature) RegisterHandlers(reg *realm.Registrar) {
 	f.mu.Lock()
@@ -141,8 +135,8 @@ func (f *Feature) handleRunStream(reg *realm.Registrar) network.StreamHandler {
 			return
 		}
 
-		if !reg.IsAllowed(remote, ActionRun) {
-			log.Printf("realm scripts: script run request from %s rejected: no permission", reg.PeerLabel(remote.String()))
+		if !reg.IsCommonGroupPeer(remote) {
+			log.Printf("realm scripts: script run request from %s rejected: not in a common group", reg.PeerLabel(remote.String()))
 			_ = json.NewEncoder(s).Encode(model.ScriptRunAck{Started: false, Error: "not allowed"})
 			return
 		}

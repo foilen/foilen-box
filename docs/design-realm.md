@@ -103,10 +103,11 @@ See `features.md` for the overview. Details:
   announced right away.
 - `groupKey` identifies a group by its key pair, so a rename is not treated as remove + add.
 
-## Permissions (`relay.go`)
+## Group-based access (`relay.go`)
 
-`isAllowed` is deny-by-default. A permission grants an action to a peer id, or to a group, based on the
-peer's confirmed `GroupNames`.
+There are no per-action permissions. A peer may invoke another peer's feature handlers only if they share
+at least one confirmed group (`peerInCommonGroup` checks the peer's confirmed `GroupNames` against our own
+configured groups).
 
 ## Relay transport (`relay_transport.go`)
 
@@ -188,8 +189,7 @@ load and on import (never trusted from input).
 
 - Small `Map<String,String>` stores scoped to a group, replicated as a signed, last-write-wins event log.
   Deletes are tombstones so they replicate like any mutation.
-- The group signature is the only write authorization (every member holds the group key), so the feature
-  declares no permission actions; subscribing only requires being a confirmed group member.
+- The group signature is the only write authorization (every member holds the group key); subscribing only requires being a confirmed group member.
 - Subscriptions:
   - A peer only receives pushes for the stores it subscribed to.
   - When a peer becomes available for a group (connected, or later confirmed by a challenge), we subscribe to
@@ -247,8 +247,7 @@ load and on import (never trusted from input).
 
 - Owner-defined commands only; callers can trigger a script but never pass arguments.
 - The run request gets a synchronous ack (started or refused). The completion is a best-effort,
-  fire-and-forget push without retry: silence doesn't mean failure. It needs no permission check since it
-  only closes a run we initiated.
+  fire-and-forget push without retry: silence doesn't mean failure. It needs no group check since it only closes a run we initiated.
 - Runs are kept only as long as a caller might poll them.
 
 ### `common/services`
@@ -279,8 +278,7 @@ load and on import (never trusted from input).
 
 ### `common/identity` and `common/group`
 
-- Push a key pair to another peer, which imports it automatically if it granted the push action. The
+- Push a key pair to another peer, which imports it automatically if it shares a group with the sender. The
   connection is already libp2p-authenticated so nothing extra is signed.
 - The key pair id is re-derived from the received private key, never trusted from the wire.
 - The app persists the import through the `onReceive` callback since features can't write the config.
-- A pushed group arrives without permissions; the receiving user assigns them.

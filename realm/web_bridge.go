@@ -22,7 +22,7 @@ const webBridgeIndexHTML = `<!doctype html>
 <p>This is a Realm peer-to-peer node. It exposes a WebSocket
 endpoint at <code>/p2p</code> so other Realm peers can reach it through networks that only allow
 outbound web traffic.</p>
-<p>Realm is a libp2p-based peer identity, discovery and permissions library; this page isn't a
+<p>Realm is a libp2p-based peer identity, discovery and group-membership library; this page isn't a
 general-purpose website.</p>
 </body>
 </html>

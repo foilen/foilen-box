@@ -10,22 +10,20 @@ import (
 )
 
 type realmConfigResult struct {
-	PeerID             string                        `json:"peerId"`
-	Permissions        []permissionResult            `json:"permissions"`
-	AvailableActions   []realmmodel.PermissionAction `json:"availableActions"`
-	Hostname           string                        `json:"hostname"`
-	Addresses          []string                      `json:"addresses"`
-	Description        string                        `json:"description"`
-	Enabled            bool                          `json:"enabled"`
-	DhtMode            string                        `json:"dhtMode"`
-	EnableUdpBroadcast bool                          `json:"enableUdpBroadcast"`
-	EnableDht          bool                          `json:"enableDht"`
-	EnableRelayService bool                          `json:"enableRelayService"`
-	PeerRetentionDays  int                           `json:"peerRetentionDays"`
-	Groups             []groupResult                 `json:"groups"`
-	Identities         []identityResult              `json:"identities"`
-	Scripts            []scriptResult                `json:"scripts"`
-	Services           []serviceResult               `json:"services"`
+	PeerID             string           `json:"peerId"`
+	Hostname           string           `json:"hostname"`
+	Addresses          []string         `json:"addresses"`
+	Description        string           `json:"description"`
+	Enabled            bool             `json:"enabled"`
+	DhtMode            string           `json:"dhtMode"`
+	EnableUdpBroadcast bool             `json:"enableUdpBroadcast"`
+	EnableDht          bool             `json:"enableDht"`
+	EnableRelayService bool             `json:"enableRelayService"`
+	PeerRetentionDays  int              `json:"peerRetentionDays"`
+	Groups             []groupResult    `json:"groups"`
+	Identities         []identityResult `json:"identities"`
+	Scripts            []scriptResult   `json:"scripts"`
+	Services           []serviceResult  `json:"services"`
 
 	RealmListenPort     int    `json:"realmListenPort"`
 	RealmListenPortMode string `json:"realmListenPortMode"`
@@ -48,12 +46,6 @@ type identityResult struct {
 	Name             string `json:"name"`
 	ID               string `json:"id"`
 	PrivateKeyBase64 string `json:"privateKeyBase64"`
-}
-
-type permissionResult struct {
-	Action    string `json:"action"`
-	PeerID    string `json:"peerId"`
-	GroupName string `json:"groupName"`
 }
 
 type scriptResult struct {
@@ -89,14 +81,6 @@ func realmConfigResponse(a *api, cfg realmmodel.Config) realmConfigResult {
 			PrivateKeyBase64: id.KeyPair.PrivateKeyBase64,
 		})
 	}
-	permissions := make([]permissionResult, 0, len(cfg.Permissions))
-	for _, p := range cfg.Permissions {
-		permissions = append(permissions, permissionResult{
-			Action:    string(p.Action),
-			PeerID:    p.PeerID,
-			GroupName: p.GroupName,
-		})
-	}
 	scripts := make([]scriptResult, 0, len(cfg.Scripts))
 	for _, sc := range cfg.Scripts {
 		scripts = append(scripts, scriptResult{
@@ -120,8 +104,6 @@ func realmConfigResponse(a *api, cfg realmmodel.Config) realmConfigResult {
 	hostname := resolveHostname(a.hostnameOverride)
 	return realmConfigResult{
 		PeerID:             cfg.PeerID.ID,
-		Permissions:        permissions,
-		AvailableActions:   a.realmEngine.AvailableActions(),
 		Hostname:           hostname,
 		Addresses:          a.realmEngine.Addrs(),
 		Description:        cfg.Description,

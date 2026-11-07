@@ -9,7 +9,6 @@
 
 # Potential improvements
 
-- Refactor the group permissions
 - Separate `realm` in another git repot since it is a library and not an application
 - Consolidate JS (what about CSS?)
 - Centralized events system

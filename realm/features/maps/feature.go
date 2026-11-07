@@ -96,8 +96,6 @@ func (f *Feature) registrar() *realm.Registrar {
 
 func (f *Feature) Name() string { return FeatureName }
 
-func (f *Feature) Actions() []model.PermissionAction { return nil }
-
 func (f *Feature) RegisterHandlers(reg *realm.Registrar) {
 	f.mu.Lock()
 	f.reg = reg

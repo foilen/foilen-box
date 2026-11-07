@@ -269,8 +269,6 @@ func (m *Manager) reconcileDeviceStore(groupID, storeName string) error {
 
 func (m *Manager) Name() string { return "box/sms" }
 
-func (m *Manager) Actions() []realmmodel.PermissionAction { return nil }
-
 func (m *Manager) RegisterHandlers(reg *realm.Registrar) {}
 
 func (m *Manager) RunPeriodic(reg *realm.Registrar) {

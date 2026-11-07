@@ -65,8 +65,6 @@ func New(mapsFeature *realmmaps.Feature, spec func() (string, SpecSummary), host
 
 func (f *Feature) Name() string { return FeatureName }
 
-func (f *Feature) Actions() []model.PermissionAction { return nil }
-
 func (f *Feature) RegisterHandlers(reg *realm.Registrar) {}
 
 func (f *Feature) RunPeriodic(reg *realm.Registrar) {

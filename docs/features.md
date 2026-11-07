@@ -9,8 +9,7 @@
 - `services` (`common/services`) — proxying; implements `PeerRemovedHook`/`PeerInUseHook` to stay
   connected while actively proxying
 - `identity` (`common/identity`) — push a standalone Identity keypair to a peer, auto-imported on receipt
-- `group` (`common/group`) — push a Group keypair to a peer, auto-imported on receipt (arrives with no
-  permissions granted; the receiving peer assigns those locally)
+- `group` (`common/group`) — push a Group keypair to a peer, auto-imported on receipt if the receiver shares a group with the sender
     - `identity` and `group` are thin wrappers around the shared `keypairpush` implementation
 - `announce` (`common/announce`) — periodic hook that publishes this peer's services/scripts/spec/
   reachability info into the `maps` feature and consumes peers' own announce entries to populate the
@@ -22,12 +21,10 @@
 would want:
 
 - `internal/speedtest` (`box/speedtest`) — peer-to-peer download/upload throughput test
-- `internal/sms/manager.go` (`box/sms`) — SMS sync built on top of the `maps` feature (registers no
-  actions/handlers of its own — it satisfies `Feature` mainly to hook into the engine's periodic tick)
+- `internal/sms/manager.go` (`box/sms`) — SMS sync built on top of the `maps` feature (registers no handlers of its own — it satisfies `Feature` mainly to hook into the engine's periodic tick)
 
 Realm (module `foilen-realm`, at `realm/`) is a standalone libp2p library:
-peer identity, group membership, discovery (UDP broadcast/DHT), and a permission
-system, with everything a peer can actually *do* implemented as a pluggable **Feature**. Foilen Box (the `foilen-box`
+peer identity, group membership, discovery (UDP broadcast/DHT), with everything a peer can actually *do* implemented as a pluggable **Feature**. Foilen Box (the `foilen-box`
 module) is just one consumer of
 this library — it happens to register every built-in feature (`common/maps`, `common/scripts`, `common/services`,
 `common/identity`, `common/group`, `common/announce`), but any application
@@ -41,15 +38,8 @@ Defined in `realm/feature.go`:
 
 ```go
 type Feature interface {
-// Name namespaces this feature's actions, e.g. "common/scripts".
+// Name namespaces this feature, e.g. "common/scripts".
 Name() string
-
-// Actions lists the fully-qualified permission actions this feature's
-// incoming handlers check, of the form Name()+"/"+verb (e.g.
-// "common/scripts/run"). Engine.AvailableActions aggregates
-// these across every registered feature to build the dynamic
-// permission catalog.
-Actions() []model.PermissionAction
 
 // RegisterHandlers is called once whenever the engine's host is
 // (re)created, so the feature can register its own libp2p stream
@@ -64,8 +54,7 @@ A feature is an ordinary Go type (usually `*Feature` by convention) that:
    stores).
 2. Implements one or more libp2p protocols for talking to the same feature
    on another peer.
-3. Declares the permission action (s) that gate its incoming handlers.
-4. Exposes its own public methods for the application to call (there is no
+3. Exposes its own public methods for the application to call (there is no
    generic "call a feature" API on `Engine` — you hold a reference to the
    concrete feature and call its methods directly).
 
@@ -130,9 +119,9 @@ not reach into `Engine`'s internals directly:
 | `Host() host.Host`                                          | The running libp2p host, or `nil` if not running. Use this to dial peers (`host.NewStream(ctx, pid, protocolID)`).                                            |
 | `PrivKey() crypto.PrivKey`                                  | This peer's private key, e.g. for signing wire payloads.                                                                                                      |
 | `Context() context.Context`                                 | The engine's lifetime context — cancelled on `Stop()`; derive per-call timeouts from it.                                                                      |
-| `Config() model.Config`                                     | The currently-applied config (as of the last `Start`/`Reconcile`). Read whatever fields your feature needs (e.g. `scripts.Feature` reads `Config().Scripts`). |
-| `IsAllowed(id peer.ID, action model.PermissionAction) bool` | Permission check against `Config().Permissions`, deny-by-default. Call this at the top of every incoming stream handler.                                      |
-| `Peers() *peers.Store`                                      | The shared known/connected-peers store.                                                                                                                       |
+| `Config() model.Config`                              | The currently-applied config (as of the last `Start`/`Reconcile`). Read whatever fields your feature needs (e.g. `scripts.Feature` reads `Config().Scripts`). |
+| `IsCommonGroupPeer(id peer.ID) bool`                 | Whether the peer shares at least one confirmed group with us. Call this at the top of every incoming stream handler.                                           |
+| `Peers() *peers.Store`                               | The shared known/connected-peers store.                                                                                                                       |
 
 A feature typically stores the `*Registrar` it's given (from
 `RegisterHandlers`) so its own public methods (called later, from
@@ -146,7 +135,7 @@ Using a hypothetical `common/ping` feature (a synchronous request/response
 
 1. **Create the package**: `realm/features/ping/feature.go`.
 
-2. **Define the protocol ID, feature name, and action (s)**:
+2. **Define the protocol ID and feature name**:
 
    ```go
    package ping
@@ -155,9 +144,6 @@ Using a hypothetical `common/ping` feature (a synchronous request/response
        ProtocolID = protocol.ID("/foilen-box/ping/1.0.0")
 
        FeatureName = "common/ping"
-
-       // ActionRespond gates handling of an incoming ping.
-       ActionRespond model.PermissionAction = FeatureName + "/respond"
    )
    ```
 
@@ -181,10 +167,6 @@ Using a hypothetical `common/ping` feature (a synchronous request/response
 
    func (f *Feature) Name() string { return FeatureName }
 
-   func (f *Feature) Actions() []model.PermissionAction {
-       return []model.PermissionAction{ActionRespond}
-   }
-
    func (f *Feature) RegisterHandlers(reg *realm.Registrar) {
        f.mu.Lock()
        f.reg = reg
@@ -193,13 +175,13 @@ Using a hypothetical `common/ping` feature (a synchronous request/response
    }
    ```
 
-4. **Implement the incoming stream handler**, checking permission first:
+4. **Implement the incoming stream handler**, checking group membership first:
 
    ```go
    func (f *Feature) handleStream(reg *realm.Registrar) network.StreamHandler {
        return func(s network.Stream) {
            defer s.Close()
-           if !reg.IsAllowed(s.Conn().RemotePeer(), ActionRespond) {
+           if !reg.IsCommonGroupPeer(s.Conn().RemotePeer()) {
                return
            }
            _, _ = s.Write([]byte("pong"))
@@ -253,10 +235,8 @@ Using a hypothetical `common/ping` feature (a synchronous request/response
    there's no dependency on maps, scripts, or services unless you register
    those features too.
 
-That's the whole contract. `Engine.AvailableActions()` will automatically
-include `common/ping/respond` once `pingFeature` is registered, so it shows
-up in any permission UI/config validation built on top of it without
-further wiring.
+That's the whole contract. Incoming streams are only accepted from peers
+that share a confirmed group with us, so no further access wiring is needed.
 
 ## Where the built-in features live
 

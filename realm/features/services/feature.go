@@ -34,8 +34,6 @@ const (
 	localPortRangeEnd   = 65535
 
 	FeatureName = "common/services"
-
-	ActionConnect model.PermissionAction = FeatureName + "/connect"
 )
 
 type tunnelHeader struct {
@@ -102,10 +100,6 @@ func (f *Feature) registrar() *realm.Registrar {
 
 func (f *Feature) Name() string { return FeatureName }
 
-func (f *Feature) Actions() []model.PermissionAction {
-	return []model.PermissionAction{ActionConnect}
-}
-
 func (f *Feature) RegisterHandlers(reg *realm.Registrar) {
 	f.mu.Lock()
 	f.reg = reg
@@ -129,8 +123,8 @@ func (f *Feature) handleTunnelStream(reg *realm.Registrar) network.StreamHandler
 			return
 		}
 
-		if !reg.IsAllowed(remote, ActionConnect) {
-			log.Printf("realm services: tunnel request from %s rejected: no permission", reg.PeerLabel(remote.String()))
+		if !reg.IsCommonGroupPeer(remote) {
+			log.Printf("realm services: tunnel request from %s rejected: not in a common group", reg.PeerLabel(remote.String()))
 			_ = json.NewEncoder(s).Encode(tunnelAck{OK: false, Error: "not allowed"})
 			s.Close()
 			return

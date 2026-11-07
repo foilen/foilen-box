@@ -38,19 +38,17 @@ type Feature struct {
 	kind        string
 	featureName string
 	protocolID  protocol.ID
-	actionPush  model.PermissionAction
 	onReceive   func(name string, kp model.KeyPair) error
 
 	mu  sync.Mutex
 	reg *realm.Registrar
 }
 
-func New(kind, featureName string, protocolID protocol.ID, actionPush model.PermissionAction, onReceive func(name string, kp model.KeyPair) error) *Feature {
+func New(kind, featureName string, protocolID protocol.ID, onReceive func(name string, kp model.KeyPair) error) *Feature {
 	return &Feature{
 		kind:        kind,
 		featureName: featureName,
 		protocolID:  protocolID,
-		actionPush:  actionPush,
 		onReceive:   onReceive,
 	}
 }
@@ -62,10 +60,6 @@ func (f *Feature) registrar() *realm.Registrar {
 }
 
 func (f *Feature) Name() string { return f.featureName }
-
-func (f *Feature) Actions() []model.PermissionAction {
-	return []model.PermissionAction{f.actionPush}
-}
 
 func (f *Feature) RegisterHandlers(reg *realm.Registrar) {
 	f.mu.Lock()
@@ -138,8 +132,8 @@ func (f *Feature) handlePushStream(reg *realm.Registrar) network.StreamHandler {
 			return
 		}
 
-		if !reg.IsAllowed(remote, f.actionPush) {
-			log.Printf("realm %s: pushed %s from %s rejected: no permission", f.kind, f.kind, remoteLabel)
+		if !reg.IsCommonGroupPeer(remote) {
+			log.Printf("realm %s: pushed %s from %s rejected: not in a common group", f.kind, f.kind, remoteLabel)
 			_ = json.NewEncoder(s).Encode(pushAck{Imported: false, Error: "not allowed"})
 			return
 		}

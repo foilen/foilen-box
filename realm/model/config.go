@@ -24,10 +24,9 @@ type Config struct {
 
 	Services []Service `json:"services"`
 
-	Permissions        []Permission `json:"permissions"`
-	DhtMode            string       `json:"dhtMode"`
-	EnableUdpBroadcast bool         `json:"enableUdpBroadcast"`
-	EnableDht          bool         `json:"enableDht"`
+	DhtMode            string `json:"dhtMode"`
+	EnableUdpBroadcast bool   `json:"enableUdpBroadcast"`
+	EnableDht          bool   `json:"enableDht"`
 
 	Disabled bool `json:"disabled"`
 

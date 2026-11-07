@@ -321,9 +321,6 @@ var handlers = map[string]handlerFunc{
 	"realm.exportIdentity": handleRealmExportIdentity,
 	"realm.pushIdentity":   handleRealmPushIdentity,
 
-	"realm.addPermission":    handleRealmAddPermission,
-	"realm.deletePermission": handleRealmDeletePermission,
-
 	"realm.listPeers":             handleRealmListPeers,
 	"realm.listSwarmPeers":        handleRealmListSwarmPeers,
 	"realm.clearPeerAddresses":    handleRealmClearPeerAddresses,

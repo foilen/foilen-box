@@ -14,15 +14,12 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 
 	realm "foilen-realm"
-	"foilen-realm/model"
 )
 
 const (
 	ProtocolID = protocol.ID("/foilen-box/speedtest/1.0.0")
 
 	FeatureName = "box/speedtest"
-
-	ActionRun model.PermissionAction = FeatureName + "/run"
 
 	testDuration = 5 * time.Second
 
@@ -61,10 +58,6 @@ func (f *Feature) registrar() *realm.Registrar {
 
 func (f *Feature) Name() string { return FeatureName }
 
-func (f *Feature) Actions() []model.PermissionAction {
-	return []model.PermissionAction{ActionRun}
-}
-
 func (f *Feature) RegisterHandlers(reg *realm.Registrar) {
 	f.mu.Lock()
 	f.reg = reg
@@ -83,7 +76,7 @@ func (f *Feature) handleStream(reg *realm.Registrar) network.StreamHandler {
 			return
 		}
 
-		if !reg.IsAllowed(remote, ActionRun) {
+		if !reg.IsCommonGroupPeer(remote) {
 			_, _ = s.Write([]byte{ackDenied})
 			return
 		}
