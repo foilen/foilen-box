@@ -21,16 +21,14 @@ Design rationale for `internal/webserver/web/`.
   Material Web component themed through the `--md-sys-color-*` tokens.
 - `#realm-output` shares its panel with tall subtabs, so it has its own capped height instead of flexing
   (it would otherwise be squeezed to a sliver).
-- The own peer never appears in the peers list, but its id appears in maps (its own specs, scripts,
+- The own peer never appears in the peers list, but its id appears in maps (its own specs,
   services), so a pseudo-peer built from the config is merged into the list for labels.
 - Unknown peer ids are displayed as short ids (e.g. a peer that posted into a map but wasn't seen directly).
 
 ## Subtabs
 
-- Specs, Scripts, Services: aggregate the `specs/`, `scripts/` and `services/` entries every peer posts into
+- Specs, Services: aggregate the `specs/` and `services/` entries every peer posts into
   each group's `common` map (see `common/announce`).
-- Scripts: a triggered run is polled until its completion arrives, giving up after 2 minutes since completion
-  delivery is best-effort.
 - Peers: delete is only shown for disconnected peers since a connected one would be re-added right away.
 - Listen port mode: saved right away so a background config poll doesn't revert it, except when switching to
   "specific" without a port yet (the backend rejects port 0).

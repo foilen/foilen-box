@@ -22,7 +22,6 @@ type realmConfigResult struct {
 	PeerRetentionDays  int              `json:"peerRetentionDays"`
 	Groups             []groupResult    `json:"groups"`
 	Identities         []identityResult `json:"identities"`
-	Scripts            []scriptResult   `json:"scripts"`
 	Services           []serviceResult  `json:"services"`
 
 	RealmListenPort     int    `json:"realmListenPort"`
@@ -46,14 +45,6 @@ type identityResult struct {
 	Name             string `json:"name"`
 	ID               string `json:"id"`
 	PrivateKeyBase64 string `json:"privateKeyBase64"`
-}
-
-type scriptResult struct {
-	Name             string   `json:"name"`
-	Description      string   `json:"description"`
-	Command          string   `json:"command"`
-	Args             []string `json:"args"`
-	WorkingDirectory string   `json:"workingDirectory"`
 }
 
 type serviceResult struct {
@@ -81,16 +72,6 @@ func realmConfigResponse(a *api, cfg realmmodel.Config) realmConfigResult {
 			PrivateKeyBase64: id.KeyPair.PrivateKeyBase64,
 		})
 	}
-	scripts := make([]scriptResult, 0, len(cfg.Scripts))
-	for _, sc := range cfg.Scripts {
-		scripts = append(scripts, scriptResult{
-			Name:             sc.Name,
-			Description:      sc.Description,
-			Command:          sc.Command,
-			Args:             sc.Args,
-			WorkingDirectory: sc.WorkingDirectory,
-		})
-	}
 	services := make([]serviceResult, 0, len(cfg.Services))
 	for _, svc := range cfg.Services {
 		services = append(services, serviceResult{
@@ -115,7 +96,6 @@ func realmConfigResponse(a *api, cfg realmmodel.Config) realmConfigResult {
 		PeerRetentionDays:  cfg.PeerRetentionDays,
 		Groups:             groups,
 		Identities:         identities,
-		Scripts:            scripts,
 		Services:           services,
 
 		RealmListenPort:     cfg.RealmListenPort,

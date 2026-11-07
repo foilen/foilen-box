@@ -124,17 +124,6 @@ func (f *Feature) RunPeriodic(reg *realm.Registrar) {
 				log.Printf("announce: failed to post service %q to group %q: %v", svc.Name, group.Name, err)
 			}
 		}
-		for _, sc := range cfg.Scripts {
-			b, err := json.Marshal(sc)
-			if err != nil {
-				log.Printf("announce: failed to marshal script %q: %v", sc.Name, err)
-				continue
-			}
-			key := "scripts/" + cfg.PeerID.ID + "/" + sc.Name
-			if err := f.mapsFeature.SetValue(group.KeyPair.ID, storeName, key, string(b)); err != nil {
-				log.Printf("announce: failed to post script %q to group %q: %v", sc.Name, group.Name, err)
-			}
-		}
 		if postSpec {
 			key := "specs/" + cfg.PeerID.ID
 			if err := f.mapsFeature.SetValue(group.KeyPair.ID, storeName, key, string(specJSON)); err != nil {

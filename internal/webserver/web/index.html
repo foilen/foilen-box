@@ -39,7 +39,6 @@
 		<a class="subtab-button" data-subtab="realm-main" href="#realm/realm-main">Main</a>
 		<a class="subtab-button" data-subtab="realm-identities-subtab" href="#realm/realm-identities-subtab">Identities</a>
 		<a class="subtab-button" data-subtab="realm-specs-subtab" href="#realm/realm-specs-subtab">Specs</a>
-		<a class="subtab-button" data-subtab="realm-scripts-subtab" href="#realm/realm-scripts-subtab">Scripts</a>
 		<a class="subtab-button" data-subtab="realm-services-subtab" href="#realm/realm-services-subtab">Services</a>
 		<a class="subtab-button" data-subtab="realm-speedtest-subtab" href="#realm/realm-speedtest-subtab">Speed Test</a>
 		<a class="subtab-button" data-subtab="realm-sms-subtab" href="#realm/realm-sms-subtab">SMS</a>
@@ -285,38 +284,6 @@
 			<table id="realm-specs-table">
 				<thead><tr><th>Peer</th><th>Fetched</th><th>OS</th><th>CPU</th><th>Mem</th><th>Battery</th><th>GPU</th><th>Disk</th><th></th></tr></thead>
 				<tbody id="realm-specs-tbody"></tbody>
-			</table>
-		</div>
-	</div>
-
-	<div id="realm-scripts-subtab" class="subtab-panel">
-		<h3>My Scripts (<span id="realm-scripts-count">0</span>)</h3>
-		<p class="hint">Fixed commands this machine offers to run on request. Only peers that share a group with
-			this machine can list or run them.</p>
-		<div class="table-scroll">
-			<table id="realm-my-scripts-table">
-				<thead><tr><th>Name</th><th>Description</th><th>Command</th><th>Args</th><th>Working Directory</th><th></th></tr></thead>
-				<tbody id="realm-my-scripts-tbody"></tbody>
-			</table>
-		</div>
-		<div class="row">
-			<md-outlined-text-field label="Name" id="realm-new-script-name"></md-outlined-text-field>
-			<md-outlined-text-field label="Description (optional)" id="realm-new-script-description"></md-outlined-text-field>
-		</div>
-		<div class="row">
-			<md-outlined-text-field label="Command (e.g. /usr/bin/systemctl)" id="realm-new-script-command"></md-outlined-text-field>
-			<md-outlined-text-field label="Args, space-separated (optional)" id="realm-new-script-args"></md-outlined-text-field>
-			<md-outlined-text-field label="Working directory (optional)" id="realm-new-script-working-directory"></md-outlined-text-field>
-			<md-filled-tonal-button id="realm-add-script-button">Add Script</md-filled-tonal-button>
-		</div>
-
-		<h3>Peer Scripts</h3>
-		<p class="hint">Each peer posts its own scripts to the "common" store of every group it belongs to; this
-			lists whatever the currently-configured groups' maps hold.</p>
-		<div class="table-scroll">
-			<table id="realm-peer-scripts-table">
-				<thead><tr><th>Peer</th><th>Name</th><th>Description</th><th>Connected</th><th>Status</th><th></th></tr></thead>
-				<tbody id="realm-peer-scripts-tbody"></tbody>
 			</table>
 		</div>
 	</div>

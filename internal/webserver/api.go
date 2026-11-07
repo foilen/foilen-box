@@ -22,7 +22,6 @@ import (
 	realmgroup "foilen-realm/features/group"
 	realmidentity "foilen-realm/features/identity"
 	realmmaps "foilen-realm/features/maps"
-	realmscripts "foilen-realm/features/scripts"
 	realmservices "foilen-realm/features/services"
 	realmmodel "foilen-realm/model"
 	realmpeers "foilen-realm/peers"
@@ -50,7 +49,6 @@ type api struct {
 	realmConfig               *realmconfig.Service
 	realmPeers                *realmpeers.Store
 	realmEngine               *realm.Engine
-	realmScripts              *realmscripts.Feature
 	realmServices             *realmservices.Feature
 	realmServicesStore        *realmservices.Store
 	realmMapsStore            *realmmaps.Store
@@ -104,7 +102,6 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 	realmEng.SetHostnameOverride(hostnameOverride)
 	realmEng.SetAppVersion(appVersion())
 	dataDir := realmConfigSvc.Dir()
-	scriptsFeature := realmscripts.New()
 	servicesFeature := realmservices.New(realmServicesStore)
 	mapsFeature := realmmaps.New(realmMapsStore)
 	announceFeature := realmannounce.New(mapsFeature,
@@ -132,7 +129,6 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 	groupFeature := realmgroup.New(func(name string, kp realmmodel.KeyPair) error {
 		return a.importPushedGroup(name, kp)
 	})
-	realmEng.Register(scriptsFeature)
 	realmEng.Register(servicesFeature)
 	realmEng.Register(mapsFeature)
 	realmEng.Register(announceFeature)
@@ -150,7 +146,6 @@ func newAPI(configDir string, defaultDhtMode string, hostnameOverride string) (*
 		realmConfig:               realmConfigSvc,
 		realmPeers:                realmPeerStore,
 		realmEngine:               realmEng,
-		realmScripts:              scriptsFeature,
 		realmServices:             servicesFeature,
 		realmServicesStore:        realmServicesStore,
 		realmMapsStore:            realmMapsStore,
@@ -327,12 +322,6 @@ var handlers = map[string]handlerFunc{
 	"realm.clearAllPeerAddresses": handleRealmClearAllPeerAddresses,
 	"realm.forcePeriodicTick":     handleRealmForcePeriodicTick,
 	"realm.deletePeer":            handleRealmDeletePeer,
-
-	"realm.addScript":      handleRealmAddScript,
-	"realm.updateScript":   handleRealmUpdateScript,
-	"realm.deleteScript":   handleRealmDeleteScript,
-	"realm.runPeerScript":  handleRealmRunPeerScript,
-	"realm.listScriptRuns": handleRealmListScriptRuns,
 
 	"realm.addService":        handleRealmAddService,
 	"realm.updateService":     handleRealmUpdateService,

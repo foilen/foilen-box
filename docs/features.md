@@ -5,13 +5,12 @@
 **Core** (`realm/features/`, namespace `common/*`) — general-purpose, reusable by any Realm-based app:
 
 - `maps` (`common/maps`) — group key/value map replication (realm map/location sharing)
-- `scripts` (`common/scripts`) — remote script execution
 - `services` (`common/services`) — proxying; implements `PeerRemovedHook`/`PeerInUseHook` to stay
   connected while actively proxying
 - `identity` (`common/identity`) — push a standalone Identity keypair to a peer, auto-imported on receipt
 - `group` (`common/group`) — push a Group keypair to a peer, auto-imported on receipt if the receiver shares a group with the sender
     - `identity` and `group` are thin wrappers around the shared `keypairpush` implementation
-- `announce` (`common/announce`) — periodic hook that publishes this peer's services/scripts/spec/
+- `announce` (`common/announce`) — periodic hook that publishes this peer's services/spec/
   reachability info into the `maps` feature and consumes peers' own announce entries to populate the
   known-peers store; this is how peers discover each other well enough to reconnect (see "Connection
   shaping" below)
@@ -26,7 +25,7 @@ would want:
 Realm (module `foilen-realm`, at `realm/`) is a standalone libp2p library:
 peer identity, group membership, discovery (UDP broadcast/DHT), with everything a peer can actually *do* implemented as a pluggable **Feature**. Foilen Box (the `foilen-box`
 module) is just one consumer of
-this library — it happens to register every built-in feature (`common/maps`, `common/scripts`, `common/services`,
+this library — it happens to register every built-in feature (`common/maps`, `common/services`,
 `common/identity`, `common/group`, `common/announce`), but any application
 can register only the ones it needs.
 
@@ -38,7 +37,7 @@ Defined in `realm/feature.go`:
 
 ```go
 type Feature interface {
-// Name namespaces this feature, e.g. "common/scripts".
+// Name namespaces this feature, e.g. "common/services".
 Name() string
 
 // RegisterHandlers is called once whenever the engine's host is
@@ -119,7 +118,7 @@ not reach into `Engine`'s internals directly:
 | `Host() host.Host`                                          | The running libp2p host, or `nil` if not running. Use this to dial peers (`host.NewStream(ctx, pid, protocolID)`).                                            |
 | `PrivKey() crypto.PrivKey`                                  | This peer's private key, e.g. for signing wire payloads.                                                                                                      |
 | `Context() context.Context`                                 | The engine's lifetime context — cancelled on `Stop()`; derive per-call timeouts from it.                                                                      |
-| `Config() model.Config`                              | The currently-applied config (as of the last `Start`/`Reconcile`). Read whatever fields your feature needs (e.g. `scripts.Feature` reads `Config().Scripts`). |
+| `Config() model.Config`                              | The currently-applied config (as of the last `Start`/`Reconcile`). Read whatever fields your feature needs from it.                                                                                                              |
 | `IsCommonGroupPeer(id peer.ID) bool`                 | Whether the peer shares at least one confirmed group with us. Call this at the top of every incoming stream handler.                                           |
 | `Peers() *peers.Store`                               | The shared known/connected-peers store.                                                                                                                       |
 
@@ -232,7 +231,7 @@ Using a hypothetical `common/ping` feature (a synchronous request/response
    ```
 
    An application that only wants this feature registers nothing else —
-   there's no dependency on maps, scripts, or services unless you register
+   there's no dependency on maps or services unless you register
    those features too.
 
 That's the whole contract. Incoming streams are only accepted from peers
@@ -240,7 +239,7 @@ that share a confirmed group with us, so no further access wiring is needed.
 
 ## Where the built-in features live
 
-`realm/features/maps`, `realm/features/announce`, and `realm/features/scripts` are all real, non-trivial
+`realm/features/maps` and `realm/features/announce` are real, non-trivial
 examples to crib from — in particular:
 
 - `maps` shows a signed wire payload and a `PeerConnectedHook`/
@@ -255,15 +254,12 @@ examples to crib from — in particular:
   dump) out of the library — a feature that needs a piece of app-specific
   behavior should take it as a constructor argument like this, not import
   the app's code.
-- `scripts` shows a feature reading its data (the list of runnable
-  scripts) out of `reg.Config()` rather than its own constructor, since
-  `model.Config.Scripts` is already part of the shared config shape.
 
 ## How foilen-box wires features up
 
 See `internal/webserver/api.go`'s `newAPI`: it constructs one `realm.Engine` and registers
-`maps.New(...)`, `scripts.New()`, `services.New(...)`, `identity.New(...)`, and `announce.New(...)`
+`maps.New(...)`, `services.New(...)`, `identity.New(...)`, and `announce.New(...)`
 (the core features) plus `speedtest.New()` and `sms.NewManager(...)` (the app-specific ones) against it,
 then stores each feature instance on the `api` struct so the WebSocket handlers in
 `internal/webserver/api_realm.go` can call their public methods directly (`a.realmMapsFeature.CreateMap(...)`,
-`a.realmScripts.ListScripts(...)`, etc.) instead of going through `Engine`.
+etc.) instead of going through `Engine`.

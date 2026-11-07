@@ -20,8 +20,6 @@ type Config struct {
 
 	Identities []Identity `json:"identities"`
 
-	Scripts []Script `json:"scripts"`
-
 	Services []Service `json:"services"`
 
 	DhtMode            string `json:"dhtMode"`

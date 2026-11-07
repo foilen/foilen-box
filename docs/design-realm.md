@@ -233,7 +233,7 @@ load and on import (never trusted from input).
 
 ### `common/announce`
 
-- Every tick, posts this peer's services, scripts, reachability info and spec into each group's `common` map,
+- Every tick, posts this peer's services, reachability info and spec into each group's `common` map,
   then consumes the other peers' `peers/{peerId}` entries into the peer store.
 - Reachability info is posted on change or every 24h; the (expensive) spec at most every 6h.
 - A valid entry only proves the group key was held, not that the author is the peer named in the key. So it
@@ -242,13 +242,6 @@ load and on import (never trusted from input).
   since `SetValue` creates stores without config.
 - App-specific data (spec, hostname, version) is injected as constructor callbacks to keep the library free
   of app code.
-
-### `common/scripts`
-
-- Owner-defined commands only; callers can trigger a script but never pass arguments.
-- The run request gets a synchronous ack (started or refused). The completion is a best-effort,
-  fire-and-forget push without retry: silence doesn't mean failure. It needs no group check since it only closes a run we initiated.
-- Runs are kept only as long as a caller might poll them.
 
 ### `common/services`
 
