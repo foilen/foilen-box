@@ -36,15 +36,16 @@ func (e *Engine) handleIdentifyStream(s network.Stream) {
 	_ = s.SetDeadline(time.Now().Add(identifyIOTimeout))
 
 	remote := s.Conn().RemotePeer()
-	if _, ok := e.peers.Get(remote.String()); !ok {
-		log.Printf("realm engine: identify request from %s rejected: not a known peer", e.peers.Label(remote.String()))
-		return
-	}
 
 	var reqPayload identifyPayload
 	if err := json.NewDecoder(io.LimitReader(s, identifyMaxBytes)).Decode(&reqPayload); err != nil {
 		log.Printf("realm engine: failed to read identify payload from %s: %v", e.peers.Label(remote.String()), err)
 		return
+	}
+	if _, ok := e.peers.Get(remote.String()); !ok {
+		e.peers.Upsert(model.PeerInfo{ID: remote.String(), LastSeen: time.Now()}, "")
+		log.Printf("realm engine: identify request from new peer %s, recording it", e.peers.Label(remote.String()))
+		go e.fetchPeerIdentity(remote)
 	}
 	e.peers.SetAnnouncedAddresses(remote.String(), reqPayload.Addresses)
 

@@ -93,7 +93,11 @@ See `features.md` for the overview. Details:
 ## Group membership (`peer_identify.go`, `group_challenge.go`)
 
 - On connect, peers exchange an identify payload (hostname, description, version, relay flag, addresses and
-  *claimed* group ids). Only peers already known through our own discovery are answered.
+  *claimed* group ids). A requester that is not yet in the peer store is recorded when it identifies: an
+  established connection already proves its peer id, and the group challenge below is what actually grants
+  membership. Peers that never identify (e.g. DHT swarm hops) stay unknown and are ignored. This lets a peer
+  that learned our address out-of-band (group import, manual add) log in by simply connecting, without waiting
+  for us to discover it first.
 - A claimed group is never trusted. For every claimed group we also hold, a group challenge is sent: the
   remote signs `challengeHash` (both peer ids, the group id and a fresh nonce) with the group private key.
   This binding prevents replaying a signature for another peer pair, another group or a later challenge.
