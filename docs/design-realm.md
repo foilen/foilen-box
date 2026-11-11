@@ -156,10 +156,11 @@ An application-level replacement for circuit-relay-v2:
   merged by priority: LAN first, then self-announced, then public DHT (least likely to be directly reachable).
 - `broadcast`/`dht` can go stale when a peer stops being rediscovered and can be cleared; `announce` comes
   from the `common` map and is kept.
-- A group JSON export carries `onlinePeers` (id + addresses). Importing registers them via
-  `Engine.AddPeer` under the `import` source, which like `announce` is kept (not cleared as discovered),
-  and dials them so the identify/group-challenge flow can confirm membership — discovery alone never grants
-  a group, and neither does an import.
+- A group JSON export carries `onlinePeers` (id + addresses). Importing requires a local peer ID (otherwise
+  the API returns "You need to generate your peer first", since without an engine there is nothing to dial
+  from) and registers them via `Engine.AddPeer` under the `import` source, which like `announce` is kept
+  (not cleared as discovered), and dials them so the identify/group-challenge flow can confirm membership —
+  discovery alone never grants a group, and neither does an import.
 - Becoming connected refreshes `LastSeen`, since a live connection proves the peer was just seen.
 - Connected peers are never pruned. A peer whose `GroupNames` becomes empty is kept.
 

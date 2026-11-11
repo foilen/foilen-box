@@ -54,6 +54,9 @@ func handleRealmImportGroup(a *api, params json.RawMessage) (any, error) {
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, err
 	}
+	if a.realmConfig.Load().PeerID.ID == "" {
+		return nil, fmt.Errorf("You need to generate your peer first")
+	}
 	if p.Name == "" || p.PrivateKeyBase64 == "" {
 		return nil, fmt.Errorf("please enter both a group name and the private key")
 	}
