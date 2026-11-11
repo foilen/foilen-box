@@ -193,6 +193,54 @@ func TestHandleFoundPeerDoesNotGrantGroupMembership(t *testing.T) {
 	}
 }
 
+func TestAddPeerRecordsAddressesWithoutGrantingGroup(t *testing.T) {
+	dir := t.TempDir()
+	kp, err := keypair.Generate()
+	if err != nil {
+		t.Fatalf("keypair.Generate() error = %v", err)
+	}
+	e := newTestEngine(t, dir)
+	defer e.Stop()
+
+	if err := e.Start(model.Config{PeerID: kp}); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	strangerKP, err := keypair.Generate()
+	if err != nil {
+		t.Fatalf("keypair.Generate() error = %v", err)
+	}
+	addrs := []string{"/ip4/192.168.1.10/tcp/4001"}
+	if err := e.AddPeer(strangerKP.ID, addrs, "import"); err != nil {
+		t.Fatalf("AddPeer() error = %v", err)
+	}
+
+	info, ok := e.peers.Get(strangerKP.ID)
+	if !ok {
+		t.Fatal("expected added peer to be recorded")
+	}
+	if len(info.Addresses) != 1 || info.Addresses[0] != addrs[0] {
+		t.Errorf("Addresses = %v, want %v", info.Addresses, addrs)
+	}
+	if got := info.AddressesBySource["import"]; len(got) != 1 || got[0] != addrs[0] {
+		t.Errorf("AddressesBySource[import] = %v, want %v", got, addrs)
+	}
+	if len(info.GroupNames) != 0 {
+		t.Errorf("GroupNames = %v, want empty: adding a peer must not grant group membership", info.GroupNames)
+	}
+
+	if err := e.AddPeer(kp.ID, addrs, "import"); err != nil {
+		t.Fatalf("AddPeer(self) error = %v", err)
+	}
+	if _, ok := e.peers.Get(kp.ID); ok {
+		t.Error("self must not be recorded as a peer")
+	}
+
+	if err := e.AddPeer("not-a-peer-id", addrs, "import"); err == nil {
+		t.Error("AddPeer() with invalid ID = nil error, want error")
+	}
+}
+
 func TestReconcileAddingGroupKeepsHostRunning(t *testing.T) {
 	dir := t.TempDir()
 	kp, err := keypair.Generate()

@@ -63,6 +63,15 @@ func (e *Engine) onDisconnected(net network.Network, conn network.Conn) {
 	}
 }
 
+func (e *Engine) AddPeer(id string, addrs []string, source string) error {
+	pid, err := peer.Decode(id)
+	if err != nil {
+		return fmt.Errorf("invalid peer ID %q: %w", id, err)
+	}
+	e.handleFoundPeer(peer.AddrInfo{ID: pid, Addrs: parseMultiaddrs(addrs)}, "", source)
+	return nil
+}
+
 func (e *Engine) handleFoundPeer(info peer.AddrInfo, groupName, source string) {
 	e.mu.Lock()
 	h := e.host

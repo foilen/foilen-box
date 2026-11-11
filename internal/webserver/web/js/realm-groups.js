@@ -162,21 +162,22 @@ export function initRealmGroups(api, output, renderConfig) {
 
 	importConfirmButton.addEventListener("click", () =>
 		report(output, async () => {
-			let name, privateKeyBase64;
+			let name, privateKeyBase64, onlinePeers;
 			try {
 				const parsed = JSON.parse(importJsonInput.value);
 				name = (parsed.name || "").trim();
 				privateKeyBase64 = (parsed.privateKeyBase64 || "").trim();
+				onlinePeers = Array.isArray(parsed.onlinePeers) ? parsed.onlinePeers : [];
 			} catch (err) {
 				output.textContent = "Invalid JSON: " + err.message;
 				return;
 			}
-			console.log("[action] import group", { name });
+			console.log("[action] import group", { name, peers: onlinePeers.length });
 			if (!name || !privateKeyBase64) {
 				output.textContent = "The JSON must contain a group name and a private key.";
 				return;
 			}
-			renderConfig(await api.call("realm.importGroup", { name, privateKeyBase64 }));
+			renderConfig(await api.call("realm.importGroup", { name, privateKeyBase64, onlinePeers }));
 			importForm.classList.add("hidden");
 			importFileInput.value = "";
 			importJsonInput.value = "";

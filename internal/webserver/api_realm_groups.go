@@ -4,6 +4,7 @@ package webserver
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 
 	realmkeypair "foilen-realm/keypair"
 	realmmodel "foilen-realm/model"
@@ -46,8 +47,9 @@ func handleRealmAddGroup(a *api, params json.RawMessage) (any, error) {
 
 func handleRealmImportGroup(a *api, params json.RawMessage) (any, error) {
 	var p struct {
-		Name             string `json:"name"`
-		PrivateKeyBase64 string `json:"privateKeyBase64"`
+		Name             string             `json:"name"`
+		PrivateKeyBase64 string             `json:"privateKeyBase64"`
+		OnlinePeers      []onlinePeerResult `json:"onlinePeers"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, err
@@ -65,6 +67,14 @@ func handleRealmImportGroup(a *api, params json.RawMessage) (any, error) {
 	cfg, err := a.createGroup(p.Name, kp)
 	if err != nil {
 		return nil, err
+	}
+	for _, op := range p.OnlinePeers {
+		if op.ID == "" {
+			continue
+		}
+		if err := a.realmEngine.AddPeer(op.ID, op.Addresses, "import"); err != nil {
+			log.Printf("webserver: skipping imported peer %q: %v", op.ID, err)
+		}
 	}
 	return realmConfigResponse(a, cfg), nil
 }
