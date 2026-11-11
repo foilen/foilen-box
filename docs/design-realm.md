@@ -269,6 +269,10 @@ load and on import (never trusted from input).
 - A peer is "in use" while it has a live proxy connection or serves a session; detached sessions still count.
 - The JSON header and ack are written with `json.Encoder`, which appends a `\n`. `framedReader` consumes that byte
   before the frame loop starts; otherwise the first frame type read is `\n` and every session detaches at once.
+- The service side clears the handshake deadline before dialing the local service (the dial has its own timeout)
+  and re-arms it just for the ack, and the client leaves the ack window wide enough for that dial. Otherwise a
+  hanging local dial exhausts the stream deadline, the error ack can't be sent, and the client only sees a
+  generic "deadline exceeded" instead of the real dial error.
 - The local proxy port is deterministic: `hash(peerId + serviceName)` picks a start in the dynamic range and
   collisions probe forward.
 - Explicitly started proxies are persisted and restored after a restart. `StopAll` (shutdown) keeps that

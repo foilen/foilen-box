@@ -169,8 +169,11 @@ func (f *Feature) handleTunnelStream(reg *realm.Registrar) network.StreamHandler
 			return
 		}
 
+		_ = s.SetDeadline(time.Time{})
 		conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", svc.Hostname, svc.Port), ioTimeout)
+		_ = s.SetDeadline(time.Now().Add(ioTimeout))
 		if err != nil {
+			log.Printf("realm services: failed to dial local service %q at %s:%d for %s: %v", svc.Name, svc.Hostname, svc.Port, reg.PeerLabel(remote.String()), err)
 			_ = json.NewEncoder(s).Encode(tunnelAck{OK: false, Error: err.Error()})
 			s.Close()
 			return
@@ -420,6 +423,8 @@ func (f *Feature) openTunnel(reg *realm.Registrar, pid peer.ID, header tunnelHea
 		_ = s.Reset()
 		return nil, nil, ack, err
 	}
+	// The peer dials its local service with its own ioTimeout before acking; leave room for that.
+	_ = s.SetDeadline(time.Now().Add(2 * ioTimeout))
 	dec := json.NewDecoder(io.LimitReader(s, maxBytes))
 	if err := dec.Decode(&ack); err != nil {
 		_ = s.Reset()
