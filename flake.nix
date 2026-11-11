@@ -27,7 +27,7 @@
           dontInstall = true;
           outputHashMode = "recursive";
           outputHashAlgo = "sha256";
-          outputHash = "sha256-0hewcyV1hACtslPCmQRznFzoftWUiNNevI01NOvDCKI=";
+          outputHash = "sha256-2cmKIo7EWzwnj1f8GeDG4berUgMJCwYI85CBYPD6/iw=";
         };
 
         vendorJs = pkgs.stdenvNoCC.mkDerivation {
@@ -42,7 +42,7 @@
           dontInstall = true;
           outputHashMode = "recursive";
           outputHashAlgo = "sha256";
-          outputHash = "sha256-e/Ip2ZXn5V9tXNYI9R3xgO0Nwen/LWCEujM3ZeGZCcc=";
+          outputHash = "sha256-zkNfARievp9PhE15HSWSlFPMsJCn5qyPlNRidFWsdQ4=";
         };
       in
       {
